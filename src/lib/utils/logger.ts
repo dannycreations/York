@@ -3,7 +3,7 @@ import { getTimezoneDate } from './util'
 import pino, { Level, StreamEntry } from 'pino'
 
 export const logger = (level?: Level) => {
-	level ||= process.env.NODE_ENV === 'production' ? 'info' : 'trace'
+	level ||= process.env.NODE_ENV === 'development' ? 'trace' : 'info'
 	const sync = level === 'trace' ? true : false
 	const streams: StreamEntry[] = [
 		{
