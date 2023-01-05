@@ -10,7 +10,6 @@ export class DropMainTask extends Task {
 	public queue: QueueStore<ActiveCampaign>
 	public campaign: Campaign
 	public isFetch?: boolean
-	public isPriority?: boolean
 
 	public constructor(context: Task.Context) {
 		super(context, { name: Tasks.DropMain, delay: 6e4 })
@@ -102,62 +101,64 @@ export class DropMainTask extends Task {
 		this.queue.isSleeping(false)
 
 		if (this.queue.isTask()) return
-		if (this.isPriority === undefined) {
-			this.isFetch = true
-			this.isPriority = true
-			this.campaign.gameList([...new Set(this.container.config.priorityList)])
-		}
+		if (this.queue.isStage() === 3 && !this.campaign.gameList().length) {
+			this.queue.isStage(1)
+			this.queue.isSleeping(true)
 
-		if (!this.campaign.gameList().length) {
-			if (this.container.config.isDropPriorityOnly || !this.isPriority) {
-				this.queue.isSleeping(true)
-				this.isPriority = undefined
+			this.campaign.gameList([])
+			this.campaign.campaignList([])
 
-				this.campaign.gameList([])
-				this.campaign.campaignList([])
+			const upcomingList = sortBy(this.campaign.upcomingList(), 'startAt')
+			const selectCampaign = upcomingList.shift()
+			if (!selectCampaign) {
+				this.container.logger.info(chalk`{bold.yellow No upcoming campaigns, Finally I can sleep well}`)
+				process.exit()
+			}
 
-				const upcomingList = sortBy(this.campaign.upcomingList(), 'startAt')
-				const selectCampaign = upcomingList.shift()
-				if (!selectCampaign) {
-					this.container.logger.info(chalk`{bold.yellow No upcoming campaigns, Finally I can sleep well}`)
-					process.exit()
-				}
-
-				const currentDate = new Date()
-				const upcomingDate = new Date(selectCampaign.startAt)
-				const sleepTime = Math.max(0, +upcomingDate - +currentDate)
-				if (!sleepTime) {
-					this.container.logger.info(chalk`{bold.yellow ${selectCampaign.game}} | {strikethrough Upcoming}`)
-					super.setDelay(1000)
-					return
-				}
-
-				const sleepUntil = getTimezoneDate(upcomingDate).format('lll')
-				this.container.logger.info(chalk`{bold.yellow No active campaigns} | ${upcomingList.length} upcoming`)
-				this.container.logger.info(chalk`{bold.yellow Sleeping until ${sleepUntil}}`)
-
-				super.setDelay(sleepTime)
+			const currentDate = new Date()
+			const upcomingDate = new Date(selectCampaign.startAt)
+			const sleepTime = Math.max(0, +upcomingDate - +currentDate)
+			if (!sleepTime) {
+				this.container.logger.info(chalk`{bold.yellow ${selectCampaign.game}} | {strikethrough Upcoming}`)
+				super.setDelay(1000)
 				return
 			}
 
+			const sleepUntil = getTimezoneDate(upcomingDate).format('lll')
+			this.container.logger.info(chalk`{bold.yellow No active campaigns/drops} | ${upcomingList.length} upcoming`)
+			this.container.logger.info(chalk`{bold.yellow Sleeping until ${sleepUntil}}`)
+
+			super.setDelay(sleepTime)
+			return
+		}
+
+		await this.campaign.fetchCampaign()
+
+		if (this.queue.isStage() === 1 && !this.campaign.gameList().length) {
 			this.isFetch = true
-			this.isPriority = false
+			this.queue.isStage(2)
+
+			const priorityList = [...new Set(this.container.config.priorityList)]
+			const gameList = this.campaign
+				.campaignList()
+				.map((r) => r.game.displayName)
+				.filter((r) => !!~priorityList.indexOf(r))
+			this.campaign.gameList([...gameList, ...difference(priorityList, gameList)])
+		}
+
+		if (this.queue.isStage() === 2 && !this.campaign.gameList().length) {
+			this.isFetch = true
+			this.queue.isStage(3)
+
+			if (this.container.config.isDropPriorityOnly) return this.createTask()
+
 			const gameList = this.campaign.campaignList().map((r) => r.game.displayName)
 			this.campaign.gameList(difference(gameList, this.container.config.priorityList))
 		}
 
 		if (this.isFetch) {
-			const isPriority = this.isPriority ? '' : 'Non-'
-			this.container.logger.info(chalk`{bold.yellow Fetching ${[...new Set(this.campaign.gameList())].length} ${isPriority}Priority game!}`)
-		}
-
-		await this.campaign.fetchCampaign()
-		if (this.isPriority) {
-			const gameList = this.campaign
-				.campaignList()
-				.map((r) => r.game.displayName)
-				.filter((r) => !!~this.campaign.gameList().indexOf(r))
-			this.campaign.gameList([...gameList, ...difference(this.campaign.gameList(), gameList)])
+			const isPriority = this.queue.isStage() === 2 ? '' : 'Non-'
+			this.container.logger.info(chalk`{bold.yellow Checking ${[...new Set(this.campaign.gameList())].length} ${isPriority}Priority game!}`)
 		}
 
 		loopGameList: while (this.campaign.gameList().length) {
