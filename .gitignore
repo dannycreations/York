@@ -1,0 +1,12 @@
+dist
+dump
+logs
+build
+debug
+.yarn
+node_modules
+
+.env
+yarn.lock
+settings.json
+package-lock.json

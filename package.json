@@ -1,0 +1,38 @@
+{
+	"name": "york",
+	"version": "1.0.0",
+	"main": "dist/index.js",
+	"author": "Danny Creations",
+	"license": "GPL-3.0",
+	"scripts": {
+		"build:tsc": "rm -rf dist; tsc -b src",
+		"start:pm2": "pm2 start . --stop-exit-codes 0",
+		"dep:update": "npx npm-check-updates -u -x got,chalk",
+		"watch": "rm -rf dist; tsc-watch -b src --noClear --onSuccess 'node .'"
+	},
+	"repository": "github:dannycreations/York",
+	"homepage": "https://github.com/dannycreations/York#readme",
+	"bugs": {
+		"url": "https://github.com/dannycreations/York/issues"
+	},
+	"dependencies": {
+		"@sapphire/pieces": "^3.6.0",
+		"@sapphire/utilities": "^3.11.0",
+		"chalk": "^4",
+		"delay": "^5.0.0",
+		"dotenv": "^16.0.3",
+		"got": "^11",
+		"jsonc-parser": "^3.2.0",
+		"lodash": "^4.17.21",
+		"moment-timezone": "^0.5.40",
+		"pino": "^8.8.0",
+		"pino-pretty": "^9.1.1",
+		"user-agents": "^1.0.1248"
+	},
+	"devDependencies": {
+		"@types/lodash": "^4.14.191",
+		"@types/node": "^18.11.18",
+		"@types/user-agents": "^1.0.2",
+		"typescript": "^4.9.4"
+	}
+}

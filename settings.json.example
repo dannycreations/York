@@ -1,0 +1,11 @@
+{
+	/* This claim options only works when Mobile token is filled */
+	"isClaimDrops": false,
+	"isClaimPoints": false,
+
+	/* Drops filter */
+	"isDropPriorityOnly": false,
+	"isDropConnectedOnly": true,
+	"priorityList": ["Rust", "VALORANT", "Sea of Thieves"],
+	"exclusionList": []
+}
