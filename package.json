@@ -7,7 +7,7 @@
 	"scripts": {
 		"build:tsc": "rm -rf dist; tsc -b src",
 		"start:pm2": "pm2 start . --stop-exit-codes 0",
-		"dep:update": "npx npm-check-updates -u -x got,chalk",
+		"dep:update": "npx npm-check-updates -u -x got,chalk,nanoid",
 		"watch": "rm -rf dist; tsc-watch -b src --noClear --onSuccess 'node .'"
 	},
 	"repository": "github:dannycreations/York",
@@ -25,14 +25,17 @@
 		"jsonc-parser": "^3.2.0",
 		"lodash": "^4.17.21",
 		"moment-timezone": "^0.5.40",
+		"nanoid": "^3",
 		"pino": "^8.8.0",
 		"pino-pretty": "^9.1.1",
-		"user-agents": "^1.0.1248"
+		"user-agents": "^1.0.1251",
+		"ws": "^8.11.0"
 	},
 	"devDependencies": {
 		"@types/lodash": "^4.14.191",
 		"@types/node": "^18.11.18",
 		"@types/user-agents": "^1.0.2",
+		"@types/ws": "^8.5.4",
 		"typescript": "^4.9.4"
 	}
 }
