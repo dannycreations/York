@@ -6,27 +6,27 @@ export abstract class Task<O extends Task.Options = Task.Options> extends Piece<
 	private _pause: boolean = false
 	private _running: boolean = false
 	private _timeout?: NodeJS.Timeout
-	private _task: () => Promise<void>
 
 	public constructor(context: Task.Context, options: O = {} as O) {
 		super(context, { ...options, name: (options.name ?? context.name).toUpperCase() })
 
 		this._delay = options.delay
-		this._task = this._run.bind(this)
 	}
 
 	public runOnInit?(): unknown
 	public abstract run(...args: unknown[]): unknown
 
-	public override async onLoad(): Promise<unknown> {
-		await (this.runOnInit ??= () => true).call(this)
-		this.loop()
-
-		return super.onLoad()
+	public override onLoad(): unknown {
+		return this._run.call(this, true).then(this.loop.bind(this))
 	}
 
-	private async _run(): Promise<void> {
+	private async _run(init?: boolean): Promise<void> {
 		try {
+			if (init && this.runOnInit) {
+				await this.runOnInit()
+				return
+			}
+
 			await this.run()
 		} catch (error) {
 			this.container.logger.error({ error, piece: this })
@@ -45,10 +45,9 @@ export abstract class Task<O extends Task.Options = Task.Options> extends Piece<
 		this._delay = delay
 	}
 
-	public async startTask(force?: boolean): Promise<void> {
+	public async startTask(): Promise<void> {
 		this._pause = false
-		if (force) await this._task()
-		this.loop()
+		return this._run.call(this).then(this.loop.bind(this))
 	}
 
 	public pauseTask(): void {
@@ -77,13 +76,14 @@ export abstract class Task<O extends Task.Options = Task.Options> extends Piece<
 		}
 
 		if (operations()) return
+
 		this._idle = true
 		this._timeout = setTimeout(async () => {
 			this._idle = false
 			if (operations()) return
 
 			this._running = true
-			await this._task()
+			await this._run()
 			this._running = false
 
 			this.loop()
