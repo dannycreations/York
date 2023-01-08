@@ -36,6 +36,10 @@ export class TwitchApi extends QueryStore {
 		}
 	}
 
+	public get userID(): string | undefined {
+		return this.authState.user_id
+	}
+
 	private async request<T>(options: Options): Promise<Response<T> | never> {
 		try {
 			const res = await got({ ...this.options, ...options })
@@ -55,7 +59,6 @@ export class TwitchApi extends QueryStore {
 				}
 			}
 
-			container.logger.error(error)
 			throw error
 		}
 	}
@@ -69,10 +72,12 @@ export class TwitchApi extends QueryStore {
 			request.push(this.request<Graphql<T>[]>({ url: 'gql', body: super.next(), ...options }))
 		}
 
+		const ignoreError = ['service timeout']
 		const response = await Promise.all(request)
 		const result = [...response.flatMap((r) => r.body)]
 		for (const data of result) {
 			if (!data.errors?.length) continue
+			if (ignoreError?.length && data.errors.find((r) => !!~ignoreError.indexOf(r.message))) continue
 			container.logger.fatal(data, `${data.extensions.operationName} | ${capitalize(data.errors[0].message)}`)
 			process.exit()
 		}

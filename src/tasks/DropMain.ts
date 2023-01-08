@@ -1,7 +1,9 @@
 import chalk from 'chalk'
+import delay from 'delay'
 import { Tasks } from '../lib/types/Enum'
 import { Task } from '../lib/structures/Task'
 import { QueueStore } from '../lib/stores/QueueStore'
+import { RequestType } from '../lib/types/twitch/WebSocket'
 import { sortBy, difference, remove, uniqBy } from 'lodash'
 import { getTimezoneDate, hasMobileAuth } from '../lib/utils/util'
 import { ActiveCampaign, Campaign } from '../lib/resolvers/Campaign'
@@ -18,7 +20,10 @@ export class DropMainTask extends Task {
 	}
 
 	public async runOnInit(): Promise<void> {
-		return this.run()
+		await this.run()
+
+		const dropTopic = `user-drop-events.${this.container.twitch.userID}`
+		await this.container.ws.send(RequestType.Listen, dropTopic)
 	}
 
 	public async run(): Promise<void> {
@@ -55,17 +60,25 @@ export class DropMainTask extends Task {
 			this.queue.dequeue()
 			return this.run()
 		} else if (selectDrop.hasMinutesWatchedMet()) {
-			await this.campaign.fetchInventory()
-
 			if (hasMobileAuth() && this.container.config.isClaimDrops) {
 				if (!selectDrop.dropInstanceID) {
-					this.queue.dequeue()
-					this.queue.enqueue(await this.campaign.checkCampaign({ dropID: selectCampaign.id }))
+					const countLimit = 5
+					for (let i = 0; i < countLimit; i++) {
+						const activeCampaign = await this.campaign.checkCampaign({ dropID: selectCampaign.id }, true)
+						Object.assign(selectDrop, activeCampaign.drops)
+						if (selectDrop.dropInstanceID) break
+
+						if (!i) this.container.logger.info(chalk`{red ${selectDrop.name}} | DropID not found`)
+						this.container.logger.info(chalk`{yellow Waiting for ${i + 1}/${countLimit} minutes}`)
+						await delay(6e4)
+					}
 				}
 				if (await selectDrop.claimDrops()) {
 					selectDrop.setNextPreconditions()
 					this.container.logger.info(chalk`{green ${selectDrop.name}} | Drops claimed`)
 				}
+			} else {
+				await this.campaign.fetchInventory()
 			}
 
 			selectDrop.dequeue()
@@ -74,7 +87,7 @@ export class DropMainTask extends Task {
 
 		const selectStream = selectCampaign.channels
 		if (await selectStream.watch()) {
-			selectDrop.addMinutesWatched()
+			selectDrop.setMinutesWatched()
 			const currentMinutes = `${selectDrop.currentMinutesWatched}/${selectDrop.requiredMinutesWatched}`
 			this.container.logger.info(chalk`{green ${selectDrop.name}} | ${selectStream.login} | ${currentMinutes}`)
 
@@ -101,8 +114,8 @@ export class DropMainTask extends Task {
 		this.queue.isSleeping(false)
 
 		if (this.queue.isTask()) return
-		if (this.queue.isStage() === 3 && !this.campaign.gameList().length) {
-			this.queue.isStage(1)
+		if (this.queue.isState() === 3 && !this.campaign.gameList().length) {
+			this.queue.isState(1)
 			this.queue.isSleeping(true)
 
 			this.campaign.gameList([])
@@ -134,9 +147,9 @@ export class DropMainTask extends Task {
 
 		await this.campaign.fetchCampaign()
 
-		if (this.queue.isStage() === 1 && !this.campaign.gameList().length) {
+		if (this.queue.isState() === 1 && !this.campaign.gameList().length) {
 			this.isFetch = true
-			this.queue.isStage(2)
+			this.queue.isState(2)
 
 			const priorityList = [...new Set(this.container.config.priorityList)]
 			const gameList = this.campaign
@@ -146,9 +159,9 @@ export class DropMainTask extends Task {
 			this.campaign.gameList([...gameList, ...difference(priorityList, gameList)])
 		}
 
-		if (this.queue.isStage() === 2 && !this.campaign.gameList().length) {
+		if (this.queue.isState() === 2 && !this.campaign.gameList().length) {
 			this.isFetch = true
-			this.queue.isStage(3)
+			this.queue.isState(3)
 
 			if (this.container.config.isDropPriorityOnly) return this.createTask()
 
@@ -157,7 +170,7 @@ export class DropMainTask extends Task {
 		}
 
 		if (this.isFetch) {
-			const isPriority = this.queue.isStage() === 2 ? '' : 'Non-'
+			const isPriority = this.queue.isState() === 2 ? '' : 'Non-'
 			this.container.logger.info(chalk`{bold.yellow Checking ${[...new Set(this.campaign.gameList())].length} ${isPriority}Priority game!}`)
 		}
 

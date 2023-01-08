@@ -3,6 +3,10 @@ import { container } from '@sapphire/pieces'
 import { ActiveTimeBasedDrop, checkStatus, Status } from '../resolvers/Campaign'
 
 export class DropStore extends Queue<ActiveTimeBasedDrop> {
+	public get id(): string {
+		return super.peek()!.id
+	}
+
 	public get name(): string {
 		return super.peek()!.benefitEdges[0].benefit.name
 	}
@@ -35,8 +39,8 @@ export class DropStore extends Queue<ActiveTimeBasedDrop> {
 		return super.peek()!.self.currentMinutesWatched >= super.peek()!.requiredMinutesWatched
 	}
 
-	public addMinutesWatched(): void {
-		super.peek()!.self.currentMinutesWatched++
+	public setMinutesWatched(inc: number = 1): void {
+		super.peek()!.self.currentMinutesWatched += inc
 	}
 
 	public setNextPreconditions(): void {

@@ -83,8 +83,8 @@ export class Campaign {
 		this._isInventory = true
 	}
 
-	public async checkCampaign(campaign: CampaignDetail): Promise<ActiveCampaign> {
-		if (!this._isInventory) await this.fetchInventory()
+	public async checkCampaign(campaign: CampaignDetail, force?: boolean): Promise<ActiveCampaign> {
+		if (force || !this._isInventory) await this.fetchInventory()
 		const campaignDetails = (await container.twitch.campaignDetails(campaign))[0]
 
 		const detail = campaignDetails.data.user.dropCampaign

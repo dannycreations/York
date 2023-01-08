@@ -8,6 +8,7 @@ import { DropCampaignDetails } from '../types/twitch/DropCampaignDetails'
 import { ChannelPointsContext } from '../types/twitch/ChannelPointsContext'
 import { ViewerDropsDashboard } from '../types/twitch/ViewerDropsDashboard'
 import { ClaimDropRewardsMutation } from '../types/twitch/ClaimDropRewardsMutation'
+import { DropCurrentSessionContext } from '../types/twitch/DropCurrentSessionContext'
 import { ClaimCommunityPointsMutation } from '../types/twitch/ClaimCommunityPointsMutation'
 
 export class TwitchGql extends TwitchApi {
@@ -97,6 +98,16 @@ export class TwitchGql extends TwitchApi {
 		super.add(request)
 		const options = this.useMobileAuth()
 		return super.graphql<ClaimCommunityPointsMutation>(options)
+	}
+
+	public async dropCurrent() {
+		const request = {
+			key: 'DropCurrentSessionContext',
+			hash: '2e4b3630b91552eb05b76a94b6850eb25fe42263b7cf6d06bee6d156dd247c1c'
+		}
+
+		super.add(request)
+		return super.graphql<DropCurrentSessionContext>()
 	}
 
 	public async claimDrops(dropInstanceId: string) {

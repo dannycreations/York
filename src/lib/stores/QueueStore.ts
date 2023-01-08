@@ -1,15 +1,15 @@
 import { Queue } from './Queue'
 
 export class QueueStore<T> extends Queue<T> {
-	private _isStage: StageContext = 1
+	private _isState: StateContext = 1
 	private _isTask: boolean = false
 	private _isSleeping: boolean = false
 
-	public isStage(stage?: StageContext): number {
-		if (typeof stage === 'number') {
-			this._isStage = stage
+	public isState(state?: StateContext): number {
+		if (typeof state === 'number') {
+			this._isState = state
 		}
-		return this._isStage
+		return this._isState
 	}
 
 	public isTask(bool?: boolean): boolean {
@@ -27,4 +27,4 @@ export class QueueStore<T> extends Queue<T> {
 	}
 }
 
-type StageContext = 1 | 2 | 3
+type StateContext = 1 | 2 | 3
