@@ -96,8 +96,6 @@ export class DropMainTask extends Task {
 					this.container.logger.info(chalk`{green ${selectStream.login}} | Points claimed`)
 				}
 			}
-
-			if (selectDrop.hasMinutesWatchedMet()) return this.run()
 		} else {
 			const id = selectCampaign.id
 			const game = selectCampaign.game

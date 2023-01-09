@@ -19,7 +19,7 @@ export class TwitchGql extends TwitchApi {
 	public async dropsDashboard() {
 		const request = {
 			key: 'ViewerDropsDashboard',
-			hash: 'e8b98b52bbd7ccd37d0b671ad0d47be5238caa5bea637d2a65776175b4a23a64'
+			hash: '8d5d9b5e3f088f9d1ff39eb2caab11f7a4cf7a3353da9ce82b5778226ff37268'
 		}
 
 		super.add(request)
@@ -47,7 +47,7 @@ export class TwitchGql extends TwitchApi {
 	public async gameDirectory(name: string) {
 		const request = {
 			key: 'DirectoryPage_Game',
-			hash: 'd5c5df7ab9ae65c3ea0f225738c08a36a4a76e4c6c31db7f8c4b8dc064227f9e',
+			hash: 'df4bb6cc45055237bfaf3ead608bbafb79815c7100b6ee126719fac3762ddf8b',
 			data: {
 				name,
 				limit: 30,
@@ -57,7 +57,7 @@ export class TwitchGql extends TwitchApi {
 					sort: 'RELEVANCE',
 					tags: [Constants.DropTag],
 					requestID: 'JIRA-VXP-2397',
-					freeformTags: ['DropsEnabled']
+					freeformTags: null
 				},
 				sortTypeIsRecency: false
 			}
@@ -70,7 +70,7 @@ export class TwitchGql extends TwitchApi {
 	public async inventory() {
 		const request = {
 			key: 'Inventory',
-			hash: '27f074f54ff74e0b05c8244ef2667180c2f911255e589ccd693a1a52ccca7367'
+			hash: '37fea486d6179047c41d0f549088a4c3a7dd60c05c70956a1490262f532dccd9'
 		}
 
 		super.add(request)
@@ -80,7 +80,7 @@ export class TwitchGql extends TwitchApi {
 	public async channelPoints(channelLogin: string) {
 		const request = {
 			key: 'ChannelPointsContext',
-			hash: '1530a003a7d374b0380b79db0be0534f30ff46e61cffa2bc0e2468a909fbc024',
+			hash: '9988086babc615a918a1e9a722ff41d98847acac822645209ac7379eecb27152',
 			data: { channelLogin }
 		}
 

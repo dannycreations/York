@@ -54,7 +54,17 @@ export class Campaign {
 		if (this._campaignList.length) return
 
 		const dropsDashboard = (await container.twitch.dropsDashboard())[0]
-		const dropCampaigns = sortBy(dropsDashboard.data.currentUser.dropCampaigns, 'startAt')
+		const dropCampaigns = sortBy(dropsDashboard.data.currentUser.dropCampaigns, 'endAt')
+		for (let i = 0; i < dropCampaigns.length; i++) {
+			for (let j = i; j < dropCampaigns.length; j++) {
+				if (dropCampaigns[i].game.id !== dropCampaigns[j].game.id) continue
+				if (dropCampaigns[i].startAt <= dropCampaigns[j].startAt) continue
+
+				const element = dropCampaigns.splice(j, 1)[0]
+				dropCampaigns.splice(i, 0, element)
+			}
+		}
+
 		for (const campaign of dropCampaigns) {
 			const isStatus = checkStatus(campaign.startAt, campaign.endAt)
 			if (isStatus.expired) continue
@@ -145,7 +155,7 @@ export class Campaign {
 		const foundLives: ActiveLiveChannel[] = []
 		if (!whitelist?.length) {
 			const gameDirectory = (await container.twitch.gameDirectory(gameName))[0]
-			if (!gameDirectory.data.game.streams) return foundLives
+			if (!gameDirectory.data.game) return foundLives
 
 			for (const stream of gameDirectory.data.game.streams.edges) {
 				const broadcast_id = stream.node.id
@@ -154,7 +164,8 @@ export class Campaign {
 				foundLives.push({ login, channel_id, broadcast_id })
 			}
 		} else {
-			const streamFetch = (await container.twitch.streamFetch(whitelist.map((r) => r.name)))[0]
+			const logins = whitelist.map((r) => r.name).slice(0, 30)
+			const streamFetch = (await container.twitch.streamFetch(logins))[0]
 			for (const user of streamFetch.data.users) {
 				if (!user.stream) continue
 

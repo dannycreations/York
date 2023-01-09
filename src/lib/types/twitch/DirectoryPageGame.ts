@@ -1,5 +1,5 @@
 export interface DirectoryPageGame {
-	game: Required<Omit<Game, 'boxArtURL'>>
+	game: Required<Omit<Game, 'boxArtURL'>> | null
 }
 
 export interface Node {
