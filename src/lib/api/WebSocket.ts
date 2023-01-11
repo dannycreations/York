@@ -23,6 +23,7 @@ export class WebSocket {
 		container.ev.once('open', this.onOpen.bind(this))
 		container.ev.once('close', this.reconnect.bind(this))
 		container.ev.on('message', this.onMessage.bind(this))
+		container.ev.on('error', (error: Error) => container.logger.error(error.message))
 		this._timeout.reconnect = setTimeout(this.reconnect.bind(this), 1e4)
 	}
 
@@ -86,8 +87,6 @@ export class WebSocket {
 	}
 
 	private async ping(): Promise<void> {
-		container.logger.debug('WS Ping')
-
 		clearTimeout(this._timeout.ping)
 		this._timeout.ping = setTimeout(this.ping.bind(this), 24e4)
 		this._timeout.reconnect = setTimeout(this.reconnect.bind(this), 1e4)

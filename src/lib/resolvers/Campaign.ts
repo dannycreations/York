@@ -103,13 +103,12 @@ export class Campaign {
 
 		const activeCampaign = {
 			id: detail.id,
-			name: detail.name,
+			name: detail.name.trim(),
 			game: detail.game.displayName,
 			drops: new DropStore(),
 			channels: new ChannelStore(detail.game.id)
 		}
 
-		let countDrops = 1
 		for (const drop of timeBasedDrops) {
 			const isStatus = checkStatus(drop.startAt, drop.endAt)
 			if (isStatus.expired) continue
@@ -132,8 +131,6 @@ export class Campaign {
 			} else {
 				if (this._dropsClaimed.find((r) => r.id === selectBenefit.benefit.id)) continue
 			}
-
-			selectBenefit.benefit.name = `Drop ${countDrops++}, ${selectBenefit.benefit.name}`
 
 			drop.self = {
 				isClaimed: false,
@@ -175,7 +172,6 @@ export class Campaign {
 				foundLives.push({ login, channel_id, broadcast_id })
 			}
 		}
-
 		return foundLives
 	}
 }

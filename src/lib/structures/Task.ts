@@ -1,57 +1,65 @@
 import { Piece } from '@sapphire/pieces'
 
 export abstract class Task<O extends Task.Options = Task.Options> extends Piece<O> {
-	private _delay: number
+	private _delay: number = 6e5
 	private _idle: boolean = false
-	private _pause: boolean = false
+	private _stop: boolean = false
 	private _running: boolean = false
 	private _timeout?: NodeJS.Timeout
 
 	public constructor(context: Task.Context, options: O = {} as O) {
 		super(context, { ...options, name: (options.name ?? context.name).toUpperCase() })
 
-		this._delay = options.delay
+		this.setDelay(options.delay)
 	}
 
 	public runOnInit?(): unknown
 	public abstract run(...args: unknown[]): unknown
 
 	public override onLoad(): unknown {
-		return this._run.call(this, true).then(this.loop.bind(this))
+		this._run.call(this, true).then(this.loop.bind(this))
+		return super.onLoad()
+	}
+
+	public override onUnload(): unknown {
+		this.stopTask()
+		return super.onUnload()
 	}
 
 	private async _run(init?: boolean): Promise<void> {
 		try {
-			if (init && this.runOnInit) {
+			if (!init) {
+				await this.run()
+			} else if (this.runOnInit) {
 				await this.runOnInit()
-				return
 			}
-
-			await this.run()
 		} catch (error) {
-			this.container.logger.error({ error, piece: this })
+			this.container.logger.error(error, this.location.name)
 		}
 	}
 
 	public isStatus() {
 		return {
 			idle: () => this._idle,
-			pause: () => this._pause,
+			stop: () => this._stop,
 			running: () => this._running
 		}
 	}
 
 	public setDelay(delay: number): void {
+		const maxDelay = 2147483647
+		if (delay > maxDelay) delay = maxDelay
+
 		this._delay = delay
 	}
 
-	public async startTask(): Promise<void> {
-		this._pause = false
+	public startTask(): Promise<void> {
+		this._stop = false
 		return this._run.call(this).then(this.loop.bind(this))
 	}
 
-	public pauseTask(): void {
-		this._pause = true
+	public stopTask(): void {
+		this._stop = true
 	}
 
 	public sleepUntil(f: () => boolean, sleep: number = 20): Promise<boolean> {
@@ -66,13 +74,16 @@ export abstract class Task<O extends Task.Options = Task.Options> extends Piece<
 	}
 
 	private loop(): void {
-		const maxDelay = 2147483647
-		if (this._delay > maxDelay) this._delay = maxDelay
-
 		clearTimeout(this._timeout)
 		const operations = () => {
-			if (this._running) return true
-			if (this._pause) return true
+			if (this._running) {
+				this._running = false
+				return true
+			}
+			if (this._stop) {
+				delete this._timeout
+				return true
+			}
 		}
 
 		if (operations()) return

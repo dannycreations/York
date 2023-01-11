@@ -31,6 +31,10 @@ export class Queue<V> {
 		return item
 	}
 
+	public clear(): void {
+		while (this.length) this.dequeue()
+	}
+
 	public values(): V[] {
 		return Object.values(this._elements)
 	}
