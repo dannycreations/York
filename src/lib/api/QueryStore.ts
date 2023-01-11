@@ -27,18 +27,8 @@ export class QueryStore {
 		return this
 	}
 
-	public clear(i: number): QueryStore {
-		this.queryList[i] = []
-		return this
-	}
-
-	public clearAll(): QueryStore {
-		this.queryList = []
-		return this
-	}
-
 	public hasNext(): boolean {
-		return this.queryList.length ? true : false
+		return !!this.queryList.length
 	}
 
 	public next(): string {

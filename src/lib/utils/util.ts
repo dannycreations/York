@@ -14,11 +14,11 @@ export function writeDebugFile(data: string | object, name: string): void {
 }
 
 export function isReplit(): boolean {
-	return process.env.REPL_ID ? true : false
+	return !!process.env.REPL_ID
 }
 
 export function hasMobileAuth(): boolean {
-	return process.env.AUTH_TOKEN_MOBILE ? true : false
+	return !!process.env.AUTH_TOKEN_MOBILE
 }
 
 export function processRestart(): void {

@@ -4,7 +4,6 @@ import pino, { Level, StreamEntry } from 'pino'
 
 export const logger = (level?: Level) => {
 	level ||= process.env.NODE_ENV === 'development' ? 'trace' : 'info'
-	const sync = level === 'trace' ? true : false
 	const streams: StreamEntry[] = [
 		{
 			level: 'warn',
@@ -16,7 +15,7 @@ export const logger = (level?: Level) => {
 		{
 			level,
 			stream: pretty({
-				sync,
+				sync: level === 'trace',
 				colorize: true,
 				customPrettifiers: {
 					time: () => `[${getTimezoneDate().format('HH:mm:ss')}]`
@@ -25,7 +24,7 @@ export const logger = (level?: Level) => {
 		}
 	]
 
-	const logger = pino(
+	return pino(
 		{
 			level,
 			base: undefined,
@@ -33,6 +32,4 @@ export const logger = (level?: Level) => {
 		},
 		pino.multistream(streams)
 	)
-
-	return logger
 }

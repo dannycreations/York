@@ -31,7 +31,6 @@ export abstract class Listener<O extends Listener.Options = Listener.Options> ex
 			if (maxListeners !== 0) emitter.setMaxListeners(maxListeners + 1)
 			emitter[this.once ? 'once' : 'on'](this.event, this._listener)
 		}
-
 		return super.onLoad()
 	}
 
@@ -43,7 +42,6 @@ export abstract class Listener<O extends Listener.Options = Listener.Options> ex
 			emitter.off(this.event, this._listener)
 			this._listener = null
 		}
-
 		return super.onUnload()
 	}
 
@@ -51,7 +49,7 @@ export abstract class Listener<O extends Listener.Options = Listener.Options> ex
 		try {
 			await this.run(...args)
 		} catch (error) {
-			this.container.logger.error({ error, piece: this })
+			this.container.logger.error(error, this.location.name)
 		}
 	}
 

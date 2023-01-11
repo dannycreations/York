@@ -57,7 +57,6 @@ export class DropStore extends Queue<ActiveTimeBasedDrop> {
 		if (!this.dropInstanceID) return false
 
 		await container.twitch.claimDrops(this.dropInstanceID)
-
 		return true
 	}
 }

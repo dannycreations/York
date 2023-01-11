@@ -1,5 +1,4 @@
 import delay from 'delay'
-import { capitalize } from 'lodash'
 import userAgent from 'user-agents'
 import { QueryStore } from './QueryStore'
 import { Constants } from '../types/Enum'
@@ -72,17 +71,8 @@ export class TwitchApi extends QueryStore {
 			request.push(this.request<Graphql<T>[]>({ url: 'gql', body: super.next(), ...options }))
 		}
 
-		const ignoreError = ['service timeout']
 		const response = await Promise.all(request)
-		const result = [...response.flatMap((r) => r.body)]
-		for (const data of result) {
-			if (!data.errors?.length) continue
-			if (ignoreError?.length && data.errors.find((r) => !!~ignoreError.indexOf(r.message))) continue
-			container.logger.fatal(data, `${data.extensions.operationName} | ${capitalize(data.errors[0].message)}`)
-			process.exit()
-		}
-
-		return result
+		return [...response.flatMap((r) => r.body)]
 	}
 
 	private async home() {

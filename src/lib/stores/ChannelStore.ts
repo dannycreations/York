@@ -37,7 +37,6 @@ export class ChannelStore extends Queue<ActiveLiveChannel> {
 		Object.assign(selectStream, stream)
 
 		await container.twitch.watch(selectStream)
-
 		return true
 	}
 
@@ -56,7 +55,6 @@ export class ChannelStore extends Queue<ActiveLiveChannel> {
 
 		const channelID = selectStream.channel_id
 		await container.twitch.claimPoints({ channelID, claimID })
-
 		return true
 	}
 }
