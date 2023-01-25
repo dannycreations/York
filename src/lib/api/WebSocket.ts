@@ -12,8 +12,7 @@ export class WebSocket {
 	} = {}
 
 	public async connect(): Promise<void> {
-		container.logger.debug('WS Connecting')
-
+		container.logger.trace('WS Connecting')
 		container.ev = new ws(Constants.WssUrl)
 		if (container.stores) {
 			const getListeners = container.stores.get('listeners').values()
@@ -24,12 +23,13 @@ export class WebSocket {
 		container.ev.once('close', this.reconnect.bind(this))
 		container.ev.on('message', this.onMessage.bind(this))
 		container.ev.on('error', (error: Error) => container.logger.error(error.message))
-		this._timeout.reconnect = setTimeout(this.reconnect.bind(this), 1e4)
+		this._timeout.reconnect = setTimeout(() => this.reconnect(), 1e4)
 	}
 
 	public async send(type: RequestType, topic: string): Promise<void> {
 		if (this._resList.has(topic) || this._reqList.has(topic)) return
 
+		container.logger.trace(`WS Send: ${type} ${topic}`)
 		const payload = {
 			type,
 			nonce: container.client.randomString(),
@@ -41,8 +41,7 @@ export class WebSocket {
 	}
 
 	private async onOpen(): Promise<void> {
-		container.logger.debug('WS Connected')
-
+		container.logger.trace('WS Connected')
 		clearTimeout(this._timeout.reconnect)
 		await this.ping()
 
@@ -59,10 +58,12 @@ export class WebSocket {
 			case ResponseType.Pong:
 				clearTimeout(this._timeout.reconnect)
 				break
+			case ResponseType.Reconnect:
+				break
 			case ResponseType.Response:
 				const reqList = [...this._reqList.values()].find((r) => r.nonce === response.nonce)
 				if (!reqList) {
-					container.logger.warn(response, 'Unknown websocket message')
+					container.logger.warn(response, 'Unknown websocket response')
 					break
 				}
 
@@ -88,17 +89,16 @@ export class WebSocket {
 
 	private async ping(): Promise<void> {
 		clearTimeout(this._timeout.ping)
-		this._timeout.ping = setTimeout(this.ping.bind(this), 24e4)
-		this._timeout.reconnect = setTimeout(this.reconnect.bind(this), 1e4)
+		this._timeout.ping = setTimeout(() => this.ping(), 24e4)
+		this._timeout.reconnect = setTimeout(() => this.reconnect(), 1e4)
 		return this.sendPromise({ type: RequestType.Ping } as Request).catch()
 	}
 
 	private reconnect(): void {
-		container.logger.debug('WS Reconnect')
-
+		container.logger.trace('WS Reconnect')
 		container.ev.removeAllListeners()
 		clearTimeout(this._timeout.reconnect)
-		this._timeout.reconnect = setTimeout(this.connect.bind(this), 1e4)
+		this._timeout.reconnect = setTimeout(() => this.connect(), 1e4)
 	}
 
 	private async sendPromise(request: Request): Promise<void> {

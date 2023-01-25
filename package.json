@@ -28,7 +28,7 @@
 		"nanoid": "^3",
 		"pino": "^8.8.0",
 		"pino-pretty": "^9.1.1",
-		"user-agents": "^1.0.1256",
+		"user-agents": "^1.0.1269",
 		"ws": "^8.12.0"
 	},
 	"devDependencies": {
@@ -36,6 +36,7 @@
 		"@types/node": "^18.11.18",
 		"@types/user-agents": "^1.0.2",
 		"@types/ws": "^8.5.4",
+		"tsc-watch": "^6.0.0",
 		"typescript": "^4.9.4"
 	}
 }
