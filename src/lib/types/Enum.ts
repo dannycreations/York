@@ -14,5 +14,6 @@ export enum Status {
 
 export enum Tasks {
 	DropMain = 'DROPMAIN',
-	DropOffline = 'DROPOFFLINE'
+	DropOffline = 'DROPOFFLINE',
+	DropUpcoming = 'DROPUPCOMING'
 }
