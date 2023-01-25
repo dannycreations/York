@@ -1,8 +1,10 @@
 import chalk from 'chalk'
+import delay from 'delay'
 import { remove } from 'lodash'
 import { DropMainTask } from './DropMain'
 import { Tasks } from '../lib/types/Enum'
 import { Task } from '../lib/structures/Task'
+import { DropCampaign } from '../lib/types/twitch/ViewerDropsDashboard'
 
 export class DropOfflineTask extends Task {
 	public constructor(context: Task.Context) {
@@ -17,31 +19,34 @@ export class DropOfflineTask extends Task {
 		const offlineList = hasPriority.length ? hasPriority : main.campaign.offlineList()
 		for (const offline of offlineList) {
 			const activeCampaign = await main.campaign.checkCampaign({ dropID: offline.id })
-			if (!activeCampaign.drops.isStatus()?.active) {
+			const selectDrop = activeCampaign.drops.peek()
+			if (!selectDrop || !activeCampaign.drops.isStatus().active) {
 				remove(main.campaign.offlineList(), { id: offline.id })
 				continue
 			}
 			if (!(await activeCampaign.channels.watch())) continue
 
-			main.stopTask()
-			await main.sleepUntil(() => !main.isStatus().running())
-
-			const selectDrop = main.queue.peek()?.drops.peek()
-			if (selectDrop && selectDrop.endAt > activeCampaign.drops.peek()!.endAt) {
-				const tempActiveCampaign = [activeCampaign, ...main.queue.values()]
-				main.queue.clear()
-				main.queue.enqueueMany(tempActiveCampaign)
-			} else {
-				main.queue.enqueue(activeCampaign)
-			}
 			remove(main.campaign.offlineList(), { id: offline.id })
+			this.container.logger.info(chalk`{bold.yellow ${activeCampaign.name}} | {strikethrough Offline}`)
 
-			main.setDelay(main.options.delay)
-			main.startTask()
+			main.stopTask()
+			await super.sleepUntil(() => !main.isStatus().running)
 
-			this.container.logger.info(chalk`{green ${activeCampaign.name}} | {yellow Waking from sleep}`)
-			this.container.logger.info(chalk`{green ${activeCampaign.name}} | Found ${activeCampaign.drops.length} drops`)
-			break
+			const mainDrop = main.queue.peek()?.drops.peek()
+			const isGame = main.queue.peek()?.game.displayName === activeCampaign.game.displayName
+			if (mainDrop && mainDrop.endAt > selectDrop.endAt && (!isGame || mainDrop.startAt > selectDrop.startAt)) {
+				main.queue.clear()
+				main.queue.isTask(false)
+				main.campaign.gameList([activeCampaign.game.displayName, ...main.campaign.gameList()])
+				main.campaign.campaignList([activeCampaign as unknown as DropCampaign, ...main.campaign.campaignList()])
+			} else {
+				main.campaign.gameList().push(activeCampaign.game.displayName)
+				main.campaign.campaignList().push(activeCampaign as unknown as DropCampaign)
+			}
+
+			main.campaign.resetInventory()
+			await delay.range(0, 5000)
+			return main.startTask(true)
 		}
 	}
 }

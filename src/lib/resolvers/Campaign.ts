@@ -17,7 +17,7 @@ export class Campaign {
 	private _upcomingList: Upcoming[] = []
 	private _campaignList: DropCampaign[] = []
 
-	private _isInventory: boolean = false
+	private _isInventory?: boolean
 	private _dropsClaimed: GameEventDrop[] = []
 	private _dropsProgress: DropCampaignsInProgress[] = []
 
@@ -49,6 +49,12 @@ export class Campaign {
 		return this._upcomingList
 	}
 
+	public resetInventory(): void {
+		delete this._isInventory
+		this._dropsClaimed.length = 0
+		this._dropsProgress.length = 0
+	}
+
 	public async fetchCampaign(force?: boolean): Promise<void> {
 		if (force) this._campaignList.length = 0
 		if (this._campaignList.length) return
@@ -74,14 +80,14 @@ export class Campaign {
 				if (!campaign.self.isAccountConnected) continue
 			}
 			if (isStatus.upcoming) {
-				if (this._upcomingList.find((r) => r.id === campaign.id)) continue
+				if (!~this._upcomingList.findIndex((r) => r.id === campaign.id)) {
+					this._upcomingList.push(campaign)
+				}
 
-				const id = campaign.id
-				const startAt = campaign.startAt
-				const game = campaign.game.displayName
-				this._upcomingList.push({ id, game, startAt })
 				continue
 			}
+
+			campaign.name = campaign.name.trim()
 			this._campaignList.push(campaign)
 		}
 	}
@@ -93,32 +99,32 @@ export class Campaign {
 		this._isInventory = true
 	}
 
-	public async checkCampaign(campaign: CampaignDetail, force?: boolean): Promise<ActiveCampaign> {
-		if (force || !this._isInventory) await this.fetchInventory()
+	public async checkCampaign(campaign: CampaignDetail): Promise<ActiveCampaign> {
+		if (!this._isInventory) await this.fetchInventory()
 		const campaignDetails = (await container.twitch.campaignDetails(campaign))[0]
 
 		const detail = campaignDetails.data.user.dropCampaign
 		const campaignProgress = this._dropsProgress.find((r) => r.id === detail.id)
 		const timeBasedDrops = (campaignProgress ? campaignProgress.timeBasedDrops : detail.timeBasedDrops) as TimeBasedDrop[]
+		const cloneTimeBasedDrops = timeBasedDrops.map((r) => ({ ...r }))
 
 		const activeCampaign = {
 			id: detail.id,
 			name: detail.name.trim(),
-			game: detail.game.displayName,
+			game: { ...detail.game },
 			drops: new DropStore(),
 			channels: new ChannelStore(detail.game.id)
 		}
 
-		for (const drop of timeBasedDrops) {
+		const activeDrops: ActiveTimeBasedDrop[] = []
+		for (const drop of cloneTimeBasedDrops) {
 			const isStatus = checkStatus(drop.startAt, drop.endAt)
 			if (isStatus.expired) continue
 			if (isStatus.upcoming) {
-				if (this._upcomingList.find((r) => r.id === detail.id)) continue
+				if (!~this._upcomingList.findIndex((r) => r.id === detail.id)) {
+					this._upcomingList.push({ ...detail, startAt: drop.startAt, endAt: drop.endAt })
+				}
 
-				const id = detail.id
-				const startAt = drop.startAt
-				const game = detail.game.displayName
-				this._upcomingList.push({ id, game, startAt })
 				continue
 			}
 
@@ -129,7 +135,7 @@ export class Campaign {
 					if (!hasMobileAuth() || !container.config.isClaimDrops) continue
 				}
 			} else {
-				if (this._dropsClaimed.find((r) => r.id === selectBenefit.benefit.id)) continue
+				if (!!~this._dropsClaimed.findIndex((r) => r.id === selectBenefit.benefit.id)) continue
 			}
 
 			drop.self = {
@@ -140,9 +146,15 @@ export class Campaign {
 				...(drop.self as {})
 			}
 
-			activeCampaign.drops.enqueue(drop as ActiveTimeBasedDrop)
+			activeDrops.push(drop as ActiveTimeBasedDrop)
 		}
-		if (!activeCampaign.drops.peek()) return activeCampaign
+		if (!activeDrops.length) return activeCampaign
+
+		for (let i = 0; i < activeDrops.length; i++) {
+			const selectBenefit = activeDrops[i].benefitEdges[0]
+			selectBenefit.benefit.name = `${i + 1}/${activeDrops.length}, ${selectBenefit.benefit.name.trim()}`
+			activeCampaign.drops.enqueue(activeDrops[i])
+		}
 
 		activeCampaign.channels.enqueueMany(await this.getLive(detail.game.displayName, detail.allow.channels))
 		return activeCampaign
@@ -163,7 +175,8 @@ export class Campaign {
 		} else {
 			const logins = whitelist.map((r) => r.name).slice(0, 30)
 			const streamFetch = (await container.twitch.streamFetch(logins))[0]
-			for (const user of streamFetch.data.users) {
+			const filterSuspend = streamFetch.data.users.filter(Boolean)
+			for (const user of filterSuspend) {
 				if (!user.stream) continue
 
 				const login = user.login
@@ -199,14 +212,20 @@ export interface Offline {
 
 export interface Upcoming {
 	id: string
-	game: string
+	name: string
+	game: {
+		displayName: string
+	}
 	startAt: string
+	endAt: string
 }
 
 export interface ActiveCampaign {
 	id: string
 	name: string
-	game: string
+	game: {
+		displayName: string
+	}
 	drops: DropStore
 	channels: ChannelStore
 }

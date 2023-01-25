@@ -16,6 +16,7 @@ export interface Request {
 export enum ResponseType {
 	Pong = 'PONG',
 	Response = 'RESPONSE',
+	Reconnect = 'RECONNECT',
 	Message = 'MESSAGE'
 }
 
@@ -32,12 +33,28 @@ export interface Message extends Omit<Response, 'error' | 'nonce'> {
 	}
 }
 
-export interface UserDropEvents {
-	type: string
-	data: {
-		drop_id: string
-		channel_id: string
-		current_progress_min: number
-		required_progress_min: number
-	}
+export interface MessageData<T = string, V = {}> {
+	type: T
+	data: V
 }
+
+export interface DropClaim
+	extends MessageData<
+		'drop-claim',
+		{
+			drop_id: string
+			channel_id: string
+			drop_instance_id: string
+		}
+	> {}
+
+export interface DropProgress
+	extends MessageData<
+		'drop-progress',
+		{
+			drop_id: string
+			channel_id: string
+			current_progress_min: number
+			required_progress_min: number
+		}
+	> {}

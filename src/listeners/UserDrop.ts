@@ -3,14 +3,14 @@ import { Tasks } from '../lib/types/Enum'
 import { DropMainTask } from '../tasks/DropMain'
 import { DropStore } from '../lib/stores/DropStore'
 import { Listener } from '../lib/structures/Listener'
-import { UserDropEvents } from '../lib/types/twitch/WebSocket'
+import { DropProgress, MessageData } from '../lib/types/twitch/WebSocket'
 
 export class UserDropListener extends Listener {
 	public constructor(context: Listener.Context) {
 		super(context, { event: 'user-drop-events' })
 	}
 
-	public async run(message: UserDropEvents): Promise<void> {
+	public async run(message: MessageData): Promise<void> {
 		const main = this.container.stores.get('tasks').get(Tasks.DropMain) as DropMainTask
 		const selectCampaign = main.queue.peek()
 		if (!selectCampaign) return
@@ -18,23 +18,36 @@ export class UserDropListener extends Listener {
 		const selectDrop = selectCampaign.drops
 		if (!selectDrop.peek()) return
 
-		if (selectDrop.id === message.data.drop_id) {
-			this.checkDesync(selectDrop, message.data.current_progress_min)
-		} else {
-			const dropCurrent = (await this.container.twitch.dropCurrent())[0].data.currentUser.dropCurrentSession
-			if (!dropCurrent || selectDrop.id !== dropCurrent.dropID) return
-
-			this.checkDesync(selectDrop, dropCurrent.currentMinutesWatched)
+		switch (message.type) {
+			case 'drop-claim':
+				this.dropClaim()
+				break
+			case 'drop-progress':
+				this.dropProgress(message as DropProgress, selectDrop)
+				break
 		}
 	}
 
-	private checkDesync(selectDrop: DropStore, currentMinutesWatched: number): void {
-		if (typeof currentMinutesWatched !== 'number') return
-		if (typeof selectDrop.currentMinutesWatched !== 'number') return
-		if (selectDrop.currentMinutesWatched === currentMinutesWatched) return
+	private async dropClaim() {}
 
-		const desync = currentMinutesWatched - selectDrop.currentMinutesWatched
-		selectDrop.setMinutesWatched(desync)
-		this.container.logger.info(chalk`{green ${selectDrop.name}} | Desync ${!!~desync ? '+' : ''}${desync} minutes`)
+	private async dropProgress(message: DropProgress, selectDrop: DropStore) {
+		const checkDesync = (currentMinutesWatched: number) => {
+			if (selectDrop.currentMinutesWatched === currentMinutesWatched) return
+
+			const desync = currentMinutesWatched - selectDrop.currentMinutesWatched
+			selectDrop.setMinutesWatched(desync)
+			this.container.logger.info(chalk`{bold.yellow ${selectDrop.name}} | Desync ${Math.max(0, desync) ? '+' : ''}${desync} minutes`)
+		}
+
+		if (selectDrop.id === message.data.drop_id) {
+			this.container.logger.debug(message, 'user-drop-events-1')
+			checkDesync(message.data.current_progress_min)
+		} else {
+			const dropCurrent = (await this.container.twitch.dropCurrent())[0].data.currentUser.dropCurrentSession
+			this.container.logger.debug(dropCurrent, 'user-drop-events-2')
+			if (!dropCurrent || selectDrop.id !== dropCurrent.dropID) return
+
+			checkDesync(dropCurrent.currentMinutesWatched)
+		}
 	}
 }

@@ -1,11 +1,11 @@
 import { Piece } from '@sapphire/pieces'
 
 export abstract class Task<O extends Task.Options = Task.Options> extends Piece<O> {
-	private _delay: number = 6e5
-	private _idle: boolean = false
-	private _stop: boolean = false
-	private _running: boolean = false
-	private _timeout?: NodeJS.Timeout
+	private delay: number = 6e5
+	private isIdle: boolean = false
+	private isStop: boolean = false
+	private isRunning: boolean = false
+	private timeout?: NodeJS.Timeout
 
 	public constructor(context: Task.Context, options: O = {} as O) {
 		super(context, { ...options, name: (options.name ?? context.name).toUpperCase() })
@@ -17,7 +17,7 @@ export abstract class Task<O extends Task.Options = Task.Options> extends Piece<
 	public abstract run(...args: unknown[]): unknown
 
 	public override onLoad(): unknown {
-		this._run.call(this, true).then(this.loop.bind(this))
+		this._run(true).then(() => this.loop())
 		return super.onLoad()
 	}
 
@@ -27,6 +27,8 @@ export abstract class Task<O extends Task.Options = Task.Options> extends Piece<
 	}
 
 	private async _run(init?: boolean): Promise<void> {
+		this.container.logger.trace(`Task Run: ${this.options.name}`)
+		this.isRunning = true
 		try {
 			if (!init) {
 				await this.run()
@@ -36,13 +38,15 @@ export abstract class Task<O extends Task.Options = Task.Options> extends Piece<
 		} catch (error) {
 			this.container.logger.error(error, this.location.name)
 		}
+		this.isRunning = false
+		this.container.logger.trace(`Task End: ${this.options.name}`)
 	}
 
 	public isStatus() {
 		return {
-			idle: () => this._idle,
-			stop: () => this._stop,
-			running: () => this._running
+			idle: this.isIdle,
+			stop: this.isStop,
+			running: this.isRunning
 		}
 	}
 
@@ -50,61 +54,53 @@ export abstract class Task<O extends Task.Options = Task.Options> extends Piece<
 		const maxDelay = 2147483647
 		if (delay > maxDelay) delay = maxDelay
 
-		this._delay = delay
+		this.delay = delay
 	}
 
-	public startTask(): Promise<void> {
-		this._stop = false
-		return this._run.call(this).then(this.loop.bind(this))
+	public startTask(force?: boolean): void {
+		this.isStop = false
+		this.loop(force)
 	}
 
 	public stopTask(): void {
-		this._stop = true
+		this.isStop = true
 	}
 
-	public sleepUntil(f: () => boolean, sleep: number = 20): Promise<boolean> {
+	protected sleepUntil(f: () => boolean, ms: number = 20): Promise<void> {
 		return new Promise((resolve) => {
 			const wait = setInterval(() => {
 				if (f()) {
 					clearInterval(wait)
-					resolve(true)
+					resolve()
 				}
-			}, sleep)
+			}, ms)
 		})
 	}
 
-	private loop(): void {
-		clearTimeout(this._timeout)
+	private async loop(force?: boolean): Promise<void> {
+		clearTimeout(this.timeout)
 		const operations = () => {
-			if (this._running) {
-				this._running = false
-				return true
-			}
-			if (this._stop) {
-				delete this._timeout
+			if (this.isRunning) return true
+			if (this.isStop) {
+				delete this.timeout
 				return true
 			}
 		}
-
 		if (operations()) return
+		if (force) await this._run()
 
-		this._idle = true
-		this._timeout = setTimeout(async () => {
-			this._idle = false
+		this.isIdle = true
+		this.timeout = setTimeout(() => {
+			this.isIdle = false
 			if (operations()) return
 
-			this._running = true
-			await this._run()
-			this._running = false
-
-			this.loop()
-		}, this._delay)
+			this._run().then(() => this.loop())
+		}, this.delay)
 	}
 }
 
 export interface TaskOptions extends Piece.Options {
-	delay: number
-	name?: string
+	readonly delay: number
 }
 
 export namespace Task {

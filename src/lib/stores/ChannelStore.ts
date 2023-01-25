@@ -15,9 +15,9 @@ export class ChannelStore extends Queue<ActiveLiveChannel> {
 	public async isLive(login: string): Promise<ActiveLiveChannel | null> {
 		const adRequest = (await container.twitch.adRequest(login))[0]
 		const hasStream = adRequest.data.user.stream
-		const isGame = this.gameID && hasStream?.game.id === this.gameID
+		const isGame = hasStream?.game.id === this.gameID
 		const isTag = hasStream?.tags.find((r) => r.id === Constants.DropTag)
-		if (!hasStream || ((isGame || !isGame) && !isTag)) return null
+		if (!hasStream || (this.gameID && (!isGame || !isTag))) return null
 
 		const broadcast_id = hasStream.id
 		const channel_id = adRequest.data.user.id
