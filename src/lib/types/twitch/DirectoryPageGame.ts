@@ -28,7 +28,7 @@ export interface Game {
 	id: string
 	name: string
 	displayName: string
-	streams: Streams
+	streams: Streams | null
 	boxArtURL: string
 }
 

@@ -15,7 +15,7 @@ export const logger = (level?: Level) => {
 		{
 			level,
 			stream: pretty({
-				sync: level === 'trace',
+				sync: true,
 				colorize: true,
 				customPrettifiers: {
 					time: () => `[${getTimezoneDate().format('HH:mm:ss')}]`

@@ -113,10 +113,6 @@ export class DropMainTask extends Task {
 	async createTask(): Promise<void> {
 		this.queue.isSleeping(false)
 		if (this.queue.isTask()) return
-		if (this.campaign.gameList().length !== this.campaign.campaignList().length) {
-			this.container.logger.info(chalk`{bold.red Campaigns maybe corrupted} | Restarting`)
-			return processRestart()
-		}
 
 		if (this.queue.isState() === 3 && !this.campaign.gameList().length) {
 			this.queue.isState(1)

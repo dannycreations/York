@@ -10,7 +10,7 @@ export interface CurrentUser {
 }
 
 export interface UserInventory {
-	dropCampaignsInProgress: DropCampaignsInProgress[]
+	dropCampaignsInProgress: DropCampaignsInProgress[] | null
 	gameEventDrops: GameEventDrop[]
 	completedRewardCampaigns: unknown[]
 }

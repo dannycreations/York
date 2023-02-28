@@ -16,8 +16,8 @@ export class YorkClient {
 		container.config = {
 			isClaimDrops: false,
 			isClaimPoints: false,
-			isDropPriorityOnly: false,
-			isDropConnectedOnly: true,
+			isDropPriorityOnly: true,
+			usePriorityConnected: true,
 			priorityList: [],
 			exclusionList: []
 		}
@@ -69,7 +69,7 @@ declare module '@sapphire/pieces' {
 			isClaimDrops: boolean
 			isClaimPoints: boolean
 			isDropPriorityOnly: boolean
-			isDropConnectedOnly: boolean
+			usePriorityConnected: boolean
 			priorityList: string[]
 			exclusionList: string[]
 		}

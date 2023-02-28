@@ -3,7 +3,7 @@ import { Tasks } from '../lib/types/Enum'
 import { DropMainTask } from '../tasks/DropMain'
 import { DropStore } from '../lib/stores/DropStore'
 import { Listener } from '../lib/structures/Listener'
-import { DropProgress, MessageData } from '../lib/types/twitch/WebSocket'
+import { DropClaim, DropProgress, MessageData } from '../lib/types/twitch/WebSocket'
 
 export class UserDropListener extends Listener {
 	public constructor(context: Listener.Context) {
@@ -20,7 +20,7 @@ export class UserDropListener extends Listener {
 
 		switch (message.type) {
 			case 'drop-claim':
-				this.dropClaim()
+				this.dropClaim(message as DropClaim)
 				break
 			case 'drop-progress':
 				this.dropProgress(message as DropProgress, selectDrop)
@@ -28,7 +28,9 @@ export class UserDropListener extends Listener {
 		}
 	}
 
-	private async dropClaim() {}
+	private async dropClaim(message: DropClaim) {
+		await this.container.twitch.claimDrops(message.data.drop_instance_id)
+	}
 
 	private async dropProgress(message: DropProgress, selectDrop: DropStore) {
 		const checkDesync = (currentMinutesWatched: number) => {

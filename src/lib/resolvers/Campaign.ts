@@ -51,12 +51,12 @@ export class Campaign {
 
 	public resetInventory(): void {
 		delete this._isInventory
-		this._dropsClaimed.length = 0
-		this._dropsProgress.length = 0
+		this._dropsClaimed = []
+		this._dropsProgress = []
 	}
 
 	public async fetchCampaign(force?: boolean): Promise<void> {
-		if (force) this._campaignList.length = 0
+		if (force) this._campaignList = []
 		if (this._campaignList.length) return
 
 		const dropsDashboard = (await container.twitch.dropsDashboard())[0]
@@ -76,8 +76,10 @@ export class Campaign {
 			if (isStatus.expired) continue
 			if (!!~container.config.exclusionList.indexOf(campaign.game.displayName)) continue
 			if (container.config.isDropPriorityOnly) continue
-			if (container.config.isDropConnectedOnly) {
-				if (!campaign.self.isAccountConnected) continue
+			if (container.config.usePriorityConnected && campaign.self.isAccountConnected) {
+				if (!~container.config.priorityList.indexOf(campaign.game.displayName)) {
+					container.config.priorityList.push(campaign.game.displayName)
+				}
 			}
 			if (isStatus.upcoming) {
 				if (!~this._upcomingList.findIndex((r) => r.id === campaign.id)) {
@@ -95,7 +97,7 @@ export class Campaign {
 	public async fetchInventory(): Promise<void> {
 		const inventory = (await container.twitch.inventory())[0]
 		this._dropsClaimed = inventory.data.currentUser.inventory.gameEventDrops
-		this._dropsProgress = inventory.data.currentUser.inventory.dropCampaignsInProgress
+		this._dropsProgress = inventory.data.currentUser.inventory.dropCampaignsInProgress ?? []
 		this._isInventory = true
 	}
 
@@ -164,7 +166,7 @@ export class Campaign {
 		const foundLives: ActiveLiveChannel[] = []
 		if (!whitelist?.length) {
 			const gameDirectory = (await container.twitch.gameDirectory(gameName))[0]
-			if (!gameDirectory.data.game) return foundLives
+			if (!gameDirectory.data.game?.streams) return foundLives
 
 			for (const stream of gameDirectory.data.game.streams.edges) {
 				const broadcast_id = stream.node.id

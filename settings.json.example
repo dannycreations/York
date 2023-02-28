@@ -4,8 +4,8 @@
 	"isClaimPoints": false,
 
 	/* Drops filter */
-	"isDropPriorityOnly": false,
-	"isDropConnectedOnly": true,
+	"isDropPriorityOnly": true,
+	"usePriorityConnected": true,
 	"priorityList": ["Rust", "VALORANT", "Sea of Thieves"],
 	"exclusionList": []
 }

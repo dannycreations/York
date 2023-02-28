@@ -15,8 +15,8 @@ export class DropStore extends Queue<ActiveTimeBasedDrop> {
 		return super.peek()!.preconditionDrops?.[0].id
 	}
 
-	public get dropInstanceID(): string | null {
-		return super.peek()!.self.dropInstanceID
+	public get dropInstanceID(): string | null | undefined {
+		return super.peek()?.self.dropInstanceID
 	}
 
 	public get currentMinutesWatched(): number {
@@ -31,11 +31,12 @@ export class DropStore extends Queue<ActiveTimeBasedDrop> {
 		return checkStatus(super.peek()!.startAt, super.peek()!.endAt)
 	}
 
-	public hasPreconditionsMet(): boolean {
-		return super.peek()!.self.hasPreconditionsMet
+	public hasPreconditionsMet(): boolean | undefined {
+		return super.peek()?.self.hasPreconditionsMet
 	}
 
 	public hasMinutesWatchedMet(): boolean {
+		if (!super.peek()?.self) return false
 		return super.peek()!.self.currentMinutesWatched >= super.peek()!.requiredMinutesWatched
 	}
 

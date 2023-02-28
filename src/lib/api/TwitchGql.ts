@@ -80,7 +80,7 @@ export class TwitchGql extends TwitchApi {
 	public async channelPoints(channelLogin: string) {
 		const request = {
 			key: 'ChannelPointsContext',
-			hash: '9988086babc615a918a1e9a722ff41d98847acac822645209ac7379eecb27152',
+			hash: '1530a003a7d374b0380b79db0be0534f30ff46e61cffa2bc0e2468a909fbc024',
 			data: { channelLogin }
 		}
 
