@@ -1,4 +1,4 @@
-import { Queue } from './Queue'
+import { Queue } from '../database/Queue'
 import { Constants } from '../types/Enum'
 import { container } from '@sapphire/pieces'
 import { ActiveLiveChannel } from '../api/TwitchApi'

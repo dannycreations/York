@@ -26,11 +26,7 @@ export class TwitchApi extends QueryStore {
 				'User-Agent': ua.toString(),
 				Authorization: `OAuth ${access_token}`
 			},
-			timeout: 6e4,
-			retry: {
-				limit: 3,
-				maxRetryAfter: 6e4
-			},
+			timeout: 10_000,
 			responseType: 'json'
 		}
 	}
@@ -50,10 +46,10 @@ export class TwitchApi extends QueryStore {
 					container.logger.fatal(error.response.body, error.message)
 					process.exit()
 				} else if (error.code === 'ENOTFOUND') {
-					await delay(1e3)
+					await delay(1_000)
 					return this.request(options)
 				} else if (error.code === 'EAI_AGAIN') {
-					await delay(1e4)
+					await delay(10_000)
 					return this.request(options)
 				}
 			}
@@ -72,7 +68,10 @@ export class TwitchApi extends QueryStore {
 		}
 
 		const response = await Promise.all(request)
-		return [...response.flatMap((r) => r.body)]
+		return [...response.flatMap((r) => r.body)].map((r) => {
+			if (r.errors?.length) throw r
+			return r
+		})
 	}
 
 	private async home() {

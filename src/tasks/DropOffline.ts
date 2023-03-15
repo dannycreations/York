@@ -8,7 +8,7 @@ import { DropCampaign } from '../lib/types/twitch/ViewerDropsDashboard'
 
 export class DropOfflineTask extends Task {
 	public constructor(context: Task.Context) {
-		super(context, { name: Tasks.DropOffline, delay: 6e5 })
+		super(context, { name: Tasks.DropOffline, delay: 600_000 })
 	}
 
 	public async run(): Promise<void> {
@@ -45,7 +45,7 @@ export class DropOfflineTask extends Task {
 			}
 
 			main.campaign.resetInventory()
-			await delay.range(0, 5000)
+			await delay.range(0, 5_000)
 			return main.startTask(true)
 		}
 	}

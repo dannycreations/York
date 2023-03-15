@@ -97,7 +97,7 @@ export class Campaign {
 	public async fetchInventory(): Promise<void> {
 		const inventory = (await container.twitch.inventory())[0]
 		this._dropsClaimed = inventory.data.currentUser.inventory.gameEventDrops
-		this._dropsProgress = inventory.data.currentUser.inventory.dropCampaignsInProgress ?? []
+		this._dropsProgress = inventory.data.currentUser.inventory.dropCampaignsInProgress
 		this._isInventory = true
 	}
 
@@ -212,12 +212,7 @@ export interface Offline {
 	game: string
 }
 
-export interface Upcoming {
-	id: string
-	name: string
-	game: {
-		displayName: string
-	}
+export interface Upcoming extends Omit<ActiveCampaign, 'drops' | 'channels'> {
 	startAt: string
 	endAt: string
 }

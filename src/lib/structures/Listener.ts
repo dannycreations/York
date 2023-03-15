@@ -52,7 +52,7 @@ export abstract class Listener<O extends Listener.Options = Listener.Options> ex
 		} catch (error) {
 			this.container.logger.error(error, this.location.name)
 		}
-		this.container.logger.trace(`Listener Run: ${this.options.event!.toString()}`)
+		this.container.logger.trace(`Listener End: ${this.options.event!.toString()}`)
 	}
 
 	private async _runOnce(...args: unknown[]): Promise<void> {

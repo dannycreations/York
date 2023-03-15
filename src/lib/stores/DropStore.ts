@@ -1,4 +1,4 @@
-import { Queue } from './Queue'
+import { Queue } from '../database/Queue'
 import { container } from '@sapphire/pieces'
 import { ActiveTimeBasedDrop, checkStatus, Status } from '../resolvers/Campaign'
 
@@ -11,12 +11,12 @@ export class DropStore extends Queue<ActiveTimeBasedDrop> {
 		return super.peek()!.benefitEdges[0].benefit.name
 	}
 
-	public get preconditionID(): string | undefined {
-		return super.peek()!.preconditionDrops?.[0].id
+	public get preconditionID(): string | null {
+		return super.peek()!.preconditionDrops?.[0].id ?? null
 	}
 
-	public get dropInstanceID(): string | null | undefined {
-		return super.peek()?.self.dropInstanceID
+	public get dropInstanceID(): string | null {
+		return super.peek()?.self.dropInstanceID ?? null
 	}
 
 	public get currentMinutesWatched(): number {
@@ -31,13 +31,15 @@ export class DropStore extends Queue<ActiveTimeBasedDrop> {
 		return checkStatus(super.peek()!.startAt, super.peek()!.endAt)
 	}
 
-	public hasPreconditionsMet(): boolean | undefined {
-		return super.peek()?.self.hasPreconditionsMet
+	public hasPreconditionsMet(): boolean {
+		return super.peek()?.self.hasPreconditionsMet ?? false
 	}
 
 	public hasMinutesWatchedMet(): boolean {
-		if (!super.peek()?.self) return false
-		return super.peek()!.self.currentMinutesWatched >= super.peek()!.requiredMinutesWatched
+		const selectDrop = super.peek()
+		if (!selectDrop) return false
+
+		return selectDrop.self.currentMinutesWatched >= selectDrop.requiredMinutesWatched
 	}
 
 	public setMinutesWatched(inc: number = 1): void {

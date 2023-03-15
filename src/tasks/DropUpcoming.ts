@@ -11,7 +11,7 @@ export class DropUpcomingTask extends Task {
 	private isSleeping?: boolean
 
 	public constructor(context: Task.Context) {
-		super(context, { name: Tasks.DropUpcoming, delay: 6e5 })
+		super(context, { name: Tasks.DropUpcoming, delay: 600_000 })
 	}
 
 	public async run(): Promise<void> {
@@ -21,7 +21,7 @@ export class DropUpcomingTask extends Task {
 		const isSleeping = main.queue.isSleeping() && !super.isStatus().running
 		if (!main.campaign.upcomingList().length) {
 			if (isSleeping) {
-				const sleepTime = 3.6e6
+				const sleepTime = 3_600_000 // 1 hours
 				const sleepUntil = getTimezoneDate(new Date(Date.now() + sleepTime)).format('lll')
 				this.container.logger.info(chalk`{bold.yellow No upcoming campaigns, Finally I can sleep well}`)
 				this.container.logger.info(chalk`{bold.yellow Sleeping until ${sleepUntil}}`)
@@ -67,7 +67,7 @@ export class DropUpcomingTask extends Task {
 			}
 
 			main.campaign.resetInventory()
-			await delay.range(0, 5000)
+			await delay.range(0, 5_000)
 			return main.startTask(true)
 		}
 

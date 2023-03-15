@@ -1,6 +1,7 @@
 import chalk from 'chalk'
 import { Tasks } from '../lib/types/Enum'
 import { DropMainTask } from '../tasks/DropMain'
+import { hasMobileAuth } from '../lib/utils/util'
 import { DropStore } from '../lib/stores/DropStore'
 import { Listener } from '../lib/structures/Listener'
 import { DropClaim, DropProgress, MessageData } from '../lib/types/twitch/WebSocket'
@@ -12,27 +13,25 @@ export class UserDropListener extends Listener {
 
 	public async run(message: MessageData): Promise<void> {
 		const main = this.container.stores.get('tasks').get(Tasks.DropMain) as DropMainTask
-		const selectCampaign = main.queue.peek()
-		if (!selectCampaign) return
-
-		const selectDrop = selectCampaign.drops
-		if (!selectDrop.peek()) return
+		const selectDrop = main.queue.peek()?.drops
+		if (!selectDrop?.peek()) return
 
 		switch (message.type) {
 			case 'drop-claim':
-				this.dropClaim(message as DropClaim)
-				break
+				return this.dropClaim(message as DropClaim)
 			case 'drop-progress':
-				this.dropProgress(message as DropProgress, selectDrop)
-				break
+				return this.dropProgress(message as DropProgress, selectDrop)
+			default:
+				this.container.logger.warn(message, 'Unknown message at user-drop-events')
 		}
 	}
 
-	private async dropClaim(message: DropClaim) {
+	private async dropClaim(message: DropClaim): Promise<void> {
+		if (!hasMobileAuth() || !this.container.config.isClaimDrops) return
 		await this.container.twitch.claimDrops(message.data.drop_instance_id)
 	}
 
-	private async dropProgress(message: DropProgress, selectDrop: DropStore) {
+	private async dropProgress(message: DropProgress, selectDrop: DropStore): Promise<void> {
 		const checkDesync = (currentMinutesWatched: number) => {
 			if (selectDrop.currentMinutesWatched === currentMinutesWatched) return
 

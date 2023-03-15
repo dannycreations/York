@@ -3,7 +3,6 @@ import { Logger } from 'pino'
 import { join } from 'node:path'
 import { parse } from 'jsonc-parser'
 import { customAlphabet } from 'nanoid'
-import { logger } from './utils/logger'
 import { TwitchGql } from './api/TwitchGql'
 import { WebSocket } from './api/WebSocket'
 import { existsSync, readFileSync } from 'node:fs'
@@ -23,7 +22,6 @@ export class YorkClient {
 		}
 
 		container.client = this
-		container.logger = logger()
 		container.ws = new WebSocket()
 		container.twitch = new TwitchGql(process.env.AUTH_TOKEN)
 

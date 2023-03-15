@@ -1,6 +1,6 @@
 export interface AdRequestHandling {
 	currentUser: CurrentUser
-	user: User | null
+	user: User
 }
 
 export interface CurrentUser {

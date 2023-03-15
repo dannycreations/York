@@ -1,7 +1,7 @@
 import { Piece } from '@sapphire/pieces'
 
 export abstract class Task<O extends Task.Options = Task.Options> extends Piece<O> {
-	private delay: number = 6e5
+	private delay: number = 0
 	private isIdle: boolean = false
 	private isStop: boolean = false
 	private isRunning: boolean = false

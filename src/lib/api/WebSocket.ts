@@ -12,18 +12,31 @@ export class WebSocket {
 	} = {}
 
 	public async connect(): Promise<void> {
-		container.logger.trace('WS Connecting')
-		container.ev = new ws(Constants.WssUrl)
-		if (container.stores) {
-			const getListeners = container.stores.get('listeners').values()
-			await Promise.all([...getListeners].map((store) => store.reload()))
-		}
+		return new Promise(async (resolve) => {
+			try {
+				container.logger.trace('WS Connecting')
+				container.ev = new ws(Constants.WssUrl)
+				if (container.stores) {
+					const getListeners = container.stores.get('listeners').values()
+					await Promise.all([...getListeners].map((store) => store.reload()))
+				}
 
-		container.ev.once('open', this.onOpen.bind(this))
-		container.ev.once('close', this.reconnect.bind(this))
-		container.ev.on('message', this.onMessage.bind(this))
-		container.ev.on('error', (error: Error) => container.logger.error(error.message))
-		this._timeout.reconnect = setTimeout(() => this.reconnect(), 1e4)
+				container.ev.once('open', this.onOpen.bind(this))
+				container.ev.once('close', this.reconnect.bind(this))
+				container.ev.on('message', this.onMessage.bind(this))
+				container.ev.on('error', (error: Error) => container.logger.error(error, 'at WS onError'))
+				this._timeout.reconnect = setTimeout(() => this.reconnect(), 10_000)
+
+				const interval = setInterval(() => {
+					if (container.ev?.readyState === 1) {
+						clearInterval(interval)
+						resolve()
+					}
+				}, 100)
+			} catch (error) {
+				container.logger.error(error, 'at WS onConnect')
+			}
+		})
 	}
 
 	public async send(type: RequestType, topic: string): Promise<void> {
@@ -37,7 +50,7 @@ export class WebSocket {
 		}
 
 		this._reqList.set(topic, payload)
-		return this.sendPromise(payload).catch()
+		await this.sendPromise(payload).catch()
 	}
 
 	private async onOpen(): Promise<void> {
@@ -63,7 +76,7 @@ export class WebSocket {
 			case ResponseType.Response:
 				const reqList = [...this._reqList.values()].find((r) => r.nonce === response.nonce)
 				if (!reqList) {
-					container.logger.warn(response, 'Unknown websocket response')
+					container.logger.warn(response, 'Unknown websocket response 1')
 					break
 				}
 
@@ -83,22 +96,23 @@ export class WebSocket {
 				container.ev.emit(resEventTopic, resEventMessage)
 				break
 			default:
-				container.logger.warn(response, 'Unknown websocket message')
+				container.logger.warn(response, 'Unknown websocket message 2')
 		}
 	}
 
 	private async ping(): Promise<void> {
+		// Ping every 4 minutes
 		clearTimeout(this._timeout.ping)
-		this._timeout.ping = setTimeout(() => this.ping(), 24e4)
-		this._timeout.reconnect = setTimeout(() => this.reconnect(), 1e4)
-		return this.sendPromise({ type: RequestType.Ping } as Request).catch()
+		this._timeout.ping = setTimeout(() => this.ping(), 240_000)
+		this._timeout.reconnect = setTimeout(() => this.reconnect(), 10_000)
+		await this.sendPromise({ type: RequestType.Ping } as Request).catch()
 	}
 
 	private reconnect(): void {
 		container.logger.trace('WS Reconnect')
 		container.ev.removeAllListeners()
 		clearTimeout(this._timeout.reconnect)
-		this._timeout.reconnect = setTimeout(() => this.connect(), 1e4)
+		this._timeout.reconnect = setTimeout(() => this.connect(), 10_000)
 	}
 
 	private async sendPromise(request: Request): Promise<void> {

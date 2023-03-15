@@ -1,4 +1,4 @@
-import { Queue } from './Queue'
+import { Queue } from '../database/Queue'
 
 export class QueueStore<T> extends Queue<T> {
 	private _isState: StateContext = 1

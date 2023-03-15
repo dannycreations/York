@@ -4,7 +4,7 @@ import { container } from '@sapphire/pieces'
 import { Moment, tz } from 'moment-timezone'
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 
-export function writeDebugFile(data: string | object, name: string): void {
+export function writeDebugFile(data: string | object, name?: string): void {
 	if (typeof data === 'object') data = JSON.stringify(data, null, 4)
 
 	const dirDebug = `${process.cwd()}/debug`
@@ -25,22 +25,27 @@ export function processRestart(): void {
 	isReplit() ? exec('kill 1') : process.exit(1)
 }
 
-export function keepAlive(): void {
-	if (!isReplit()) return
+export function keepAlive(): Promise<void> {
+	return new Promise((resolve) => {
+		if (!isReplit()) return
 
-	const port = process.env.PORT || 0
-	const server = createServer((req, res) => {
-		if (req.url === '/' && req.method === 'GET') {
-			res.writeHead(200)
-			res.end("I'm alive")
-		} else {
-			res.writeHead(404)
-			res.end(`Cannot ${req.method} ${req.url}`)
-		}
+		const port = process.env.PORT || 0
+		const server = createServer((req, res) => {
+			if (req.url === '/' && req.method === 'GET') {
+				res.writeHead(200)
+				res.end("I'm alive")
+			} else {
+				res.writeHead(404)
+				res.end(`Cannot ${req.method} ${req.url}`)
+			}
+		})
+		server.listen(port, () => {
+			container.logger.info(`App listening on port ${port}`)
+			resolve()
+		})
 	})
-	server.listen(port, () => container.logger.info(`App listening on port ${port}`))
 }
 
 export function getTimezoneDate(date: Date = new Date(), timezone?: string): Moment {
-	return tz(date, timezone || process.env.TIMEZONE || 'UTC')
+	return tz(date, timezone || process.env.TIMEZONE || Intl.DateTimeFormat().resolvedOptions().timeZone)
 }

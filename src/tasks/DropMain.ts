@@ -4,9 +4,9 @@ import { Tasks } from '../lib/types/Enum'
 import { difference, remove } from 'lodash'
 import { Task } from '../lib/structures/Task'
 import { DropUpcomingTask } from './DropUpcoming'
+import { hasMobileAuth } from '../lib/utils/util'
 import { QueueStore } from '../lib/stores/QueueStore'
 import { RequestType } from '../lib/types/twitch/WebSocket'
-import { hasMobileAuth, processRestart } from '../lib/utils/util'
 import { ActiveCampaign, Campaign } from '../lib/resolvers/Campaign'
 
 export class DropMainTask extends Task {
@@ -14,7 +14,7 @@ export class DropMainTask extends Task {
 	public campaign: Campaign
 
 	public constructor(context: Task.Context) {
-		super(context, { name: Tasks.DropMain, delay: 6e4 })
+		super(context, { name: Tasks.DropMain, delay: 60_000 })
 		this.queue = new QueueStore()
 		this.campaign = new Campaign()
 	}
@@ -72,7 +72,7 @@ export class DropMainTask extends Task {
 
 						if (!i) this.container.logger.info(chalk`{red ${selectDrop.name}} | DropID not found`)
 						this.container.logger.info(chalk`{yellow Waiting for ${i + 1}/${countLimit} minutes}`)
-						await delay(6e4)
+						await delay(this.options.delay)
 					}
 				}
 				if (await selectDrop.claimDrops()) {

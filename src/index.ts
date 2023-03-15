@@ -1,16 +1,23 @@
 import 'dotenv/config'
+import { logger } from './lib/utils/logger'
 import { container } from '@sapphire/pieces'
 import { YorkClient } from './lib/YorkClient'
-import { keepAlive, processRestart } from './lib/utils/util'
+import { isReplit, keepAlive, processRestart } from './lib/utils/util'
+
+container.logger = logger()
 
 if (process.env.NODE_INSPECT === 'true' && process.env.NODE_ENV === 'development') {
 	// @ts-expect-error
 	globalThis.container = container
 }
 
-// Restart process every 6 hours
-setTimeout(() => processRestart(), 2.16e7)
+;(async () => {
+	if (isReplit()) {
+		// Restart process every 6 hours
+		setTimeout(() => processRestart(), 2.16e7)
+	}
 
-keepAlive()
+	await keepAlive()
 
-new YorkClient().start()
+	new YorkClient().start()
+})()
