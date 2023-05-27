@@ -12,15 +12,26 @@ export class ChannelStore extends Queue<ActiveLiveChannel> {
 		return super.peek()!.login
 	}
 
-	public async isLive(login: string): Promise<ActiveLiveChannel | null> {
-		const adRequest = (await container.twitch.adRequest(login))[0]
-		const hasStream = adRequest.data.user?.stream
-		const isGame = hasStream?.game?.id === this.gameID
-		const isTag = hasStream?.tags.find((r) => r.id === Constants.DropTag)
-		if (!hasStream || (this.gameID && (!isGame || !isTag))) return null
+	public async isLive(id: string): Promise<ActiveLiveChannel | null> {
+		const helix = await container.twitch.helix(id)
+		if (!helix || !helix.data.length) return null
 
-		const broadcast_id = hasStream.id
-		const channel_id = adRequest.data.user!.id
+		// const adRequest = (await container.twitch.adRequest(login))[0]
+		// const hasStream = adRequest.data.user?.stream
+		// const isGame = hasStream?.game?.id === this.gameID
+		// const isTag = hasStream?.tags.find((r) => r.id === Constants.DropTag)
+		// if (!hasStream || (this.gameID && (!isGame || !isTag))) return null
+		// const broadcast_id = hasStream.id
+		// const channel_id = adRequest.data.user!.id
+
+		const isGame = helix.data[0].game_id === this.gameID
+		// const isTag = helix.data[0].tags.find((r) => !!~r.indexOf('Drop'))
+		if (this.gameID && !isGame) return null
+
+		const login = helix.data[0].user_login
+		const channel_id = helix.data[0].user_id
+		const broadcast_id = helix.data[0].id
+
 		return { login, channel_id, broadcast_id }
 	}
 
@@ -28,7 +39,7 @@ export class ChannelStore extends Queue<ActiveLiveChannel> {
 		const selectStream = super.peek()
 		if (!selectStream) return false
 
-		const stream = await this.isLive(selectStream.login)
+		const stream = await this.isLive(selectStream.channel_id)
 		if (!stream) {
 			super.dequeue()
 			return this.watch()

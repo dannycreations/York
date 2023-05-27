@@ -9,15 +9,15 @@ export class QueryStore {
 
 		const json: QueryRequest = {
 			operationName: key,
-			variables: data ?? {}
+			variables: data ?? {},
 		}
 
 		if (hash) {
 			json.extensions = {
 				persistedQuery: {
 					version: 1,
-					sha256Hash: hash
-				}
+					sha256Hash: hash,
+				},
 			}
 		} else if (query) {
 			json.query = query

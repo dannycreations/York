@@ -19,7 +19,7 @@ export class TwitchGql extends TwitchApi {
 	public async dropsDashboard() {
 		const request = {
 			key: 'ViewerDropsDashboard',
-			hash: '8d5d9b5e3f088f9d1ff39eb2caab11f7a4cf7a3353da9ce82b5778226ff37268'
+			hash: '8d5d9b5e3f088f9d1ff39eb2caab11f7a4cf7a3353da9ce82b5778226ff37268',
 		}
 
 		super.add(request)
@@ -29,7 +29,7 @@ export class TwitchGql extends TwitchApi {
 	public async campaignDetails(data: CampaignDetail | CampaignDetail[]) {
 		const request = {
 			key: 'DropCampaignDetails',
-			hash: 'f6396f5ffdde867a8f6f6da18286e4baf02e5b98d14689a69b5af320a4c7b7b8'
+			hash: 'f6396f5ffdde867a8f6f6da18286e4baf02e5b98d14689a69b5af320a4c7b7b8',
 		}
 
 		if (Array.isArray(data)) {
@@ -54,13 +54,13 @@ export class TwitchGql extends TwitchApi {
 				options: {
 					includeRestricted: ['SUB_ONLY_LIVE'],
 					recommendationsContext: { platform: 'web' },
-					sort: 'RELEVANCE',
+					sort: 'VIEWER_COUNT',
 					tags: [Constants.DropTag],
 					requestID: 'JIRA-VXP-2397',
-					freeformTags: null
+					freeformTags: null,
 				},
-				sortTypeIsRecency: false
-			}
+				sortTypeIsRecency: false,
+			},
 		}
 
 		super.add(request)
@@ -70,7 +70,7 @@ export class TwitchGql extends TwitchApi {
 	public async inventory() {
 		const request = {
 			key: 'Inventory',
-			hash: '37fea486d6179047c41d0f549088a4c3a7dd60c05c70956a1490262f532dccd9'
+			hash: '37fea486d6179047c41d0f549088a4c3a7dd60c05c70956a1490262f532dccd9',
 		}
 
 		super.add(request)
@@ -81,7 +81,7 @@ export class TwitchGql extends TwitchApi {
 		const request = {
 			key: 'ChannelPointsContext',
 			hash: '1530a003a7d374b0380b79db0be0534f30ff46e61cffa2bc0e2468a909fbc024',
-			data: { channelLogin }
+			data: { channelLogin },
 		}
 
 		super.add(request)
@@ -92,7 +92,7 @@ export class TwitchGql extends TwitchApi {
 		const request = {
 			key: 'ClaimCommunityPointsMutation',
 			hash: '3ee69ceb3cfa8c952d572968fc2571cbdf76760bca52c643772eb61c09281915',
-			data: { input: { channelID, claimID } }
+			data: { input: { channelID, claimID } },
 		}
 
 		super.add(request)
@@ -103,7 +103,7 @@ export class TwitchGql extends TwitchApi {
 	public async dropCurrent() {
 		const request = {
 			key: 'DropCurrentSessionContext',
-			hash: '2e4b3630b91552eb05b76a94b6850eb25fe42263b7cf6d06bee6d156dd247c1c'
+			hash: '2e4b3630b91552eb05b76a94b6850eb25fe42263b7cf6d06bee6d156dd247c1c',
 		}
 
 		super.add(request)
@@ -114,7 +114,7 @@ export class TwitchGql extends TwitchApi {
 		const request = {
 			key: 'ClaimDropRewardsMutation',
 			hash: '8beae4d57187980eb9a3db758dfb7c839adf01dae778a6599edbfbe2b2a00fe9',
-			data: { dropInstanceId }
+			data: { dropInstanceId },
 		}
 
 		super.add(request)
@@ -132,8 +132,8 @@ export class TwitchGql extends TwitchApi {
 				isVOD: false,
 				vodID: '',
 				isCollection: false,
-				collectionID: ''
-			}
+				collectionID: '',
+			},
 		}
 
 		super.add(request)
@@ -146,7 +146,7 @@ export class TwitchGql extends TwitchApi {
 		const request = {
 			key: 'FFZ_StreamFetch',
 			hash: 'e3dbb5d8509ff2ef9d6518bf6749d2112bf6fc3ee2886248579bd7db0feb6504',
-			data: { logins }
+			data: { logins },
 		}
 
 		super.add(request)
@@ -160,8 +160,8 @@ export class TwitchGql extends TwitchApi {
 		return {
 			headers: {
 				Authorization: `OAuth ${process.env.AUTH_TOKEN_MOBILE}`,
-				'Client-Id': 'kd1unb4b3q4t58fwlpcbzcbnm76a8fp'
-			}
+				'Client-Id': 'kd1unb4b3q4t58fwlpcbzcbnm76a8fp',
+			},
 		}
 	}
 }

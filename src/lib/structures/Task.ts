@@ -46,7 +46,7 @@ export abstract class Task<O extends Task.Options = Task.Options> extends Piece<
 		return {
 			idle: this.isIdle,
 			stop: this.isStop,
-			running: this.isRunning
+			running: this.isRunning,
 		}
 	}
 

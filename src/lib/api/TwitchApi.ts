@@ -24,10 +24,10 @@ export class TwitchApi extends QueryStore {
 			prefixUrl: Constants.ApiUrl,
 			headers: {
 				'User-Agent': ua.toString(),
-				Authorization: `OAuth ${access_token}`
+				Authorization: `OAuth ${access_token}`,
 			},
 			timeout: 10_000,
-			responseType: 'json'
+			responseType: 'json',
 		}
 	}
 
@@ -189,8 +189,8 @@ export class TwitchApi extends QueryStore {
 					channel_id,
 					broadcast_id,
 					player: 'site',
-					user_id: this.authState.user_id
-				}
+					user_id: this.authState.user_id,
+				},
 			}
 
 			const json_event = JSON.stringify([payload])
@@ -198,6 +198,50 @@ export class TwitchApi extends QueryStore {
 			await this.request({ prefixUrl, url: this.authState.spade, body: base64_event, responseType })
 
 			return true
+		} catch (error) {
+			container.logger.error(error)
+			return false
+		}
+	}
+
+	public async helix(user_id: string) {
+		try {
+			interface Helix {
+				data: Datum[]
+				pagination: Pagination
+			}
+
+			interface Datum {
+				id: string
+				user_id: string
+				user_login: string
+				user_name: string
+				game_id: string
+				game_name: string
+				type: string
+				title: string
+				viewer_count: number
+				started_at: string
+				language: string
+				thumbnail_url: string
+				tag_ids: any[]
+				tags: string[]
+				is_mature: boolean
+			}
+
+			interface Pagination {
+				cursor: string
+			}
+
+			const prefixUrl = 'https://api.twitch.tv'
+			const res = await this.request<Helix>({
+				method: 'GET',
+				prefixUrl,
+				url: 'helix/streams',
+				headers: { 'client-id': 'uaw3vx1k0ttq74u9b2zfvt768eebh1' },
+				searchParams: { user_id },
+			})
+			return res.body
 		} catch (error) {
 			container.logger.error(error)
 			return false

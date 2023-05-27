@@ -46,7 +46,7 @@ export class WebSocket {
 		const payload = {
 			type,
 			nonce: container.client.randomString(),
-			data: { topics: [topic], auth_token: process.env.AUTH_TOKEN }
+			data: { topics: [topic], auth_token: process.env.AUTH_TOKEN },
 		}
 
 		this._reqList.set(topic, payload)

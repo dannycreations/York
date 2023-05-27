@@ -75,11 +75,16 @@ export class Campaign {
 			const isStatus = checkStatus(campaign.startAt, campaign.endAt)
 			if (isStatus.expired) continue
 			if (!!~container.config.exclusionList.indexOf(campaign.game.displayName)) continue
-			if (container.config.isDropPriorityOnly) continue
 			if (container.config.usePriorityConnected && campaign.self.isAccountConnected) {
 				if (!~container.config.priorityList.indexOf(campaign.game.displayName)) {
 					container.config.priorityList.push(campaign.game.displayName)
 				}
+			}
+
+			campaign.name = campaign.name.trim()
+			if (container.config.isDropPriorityOnly && !!~container.config.priorityList.indexOf(campaign.game.displayName)) {
+				this._campaignList.push(campaign)
+				continue
 			}
 			if (isStatus.upcoming) {
 				if (!~this._upcomingList.findIndex((r) => r.id === campaign.id)) {
@@ -89,7 +94,6 @@ export class Campaign {
 				continue
 			}
 
-			campaign.name = campaign.name.trim()
 			this._campaignList.push(campaign)
 		}
 	}
@@ -115,7 +119,7 @@ export class Campaign {
 			name: detail.name.trim(),
 			game: { ...detail.game },
 			drops: new DropStore(),
-			channels: new ChannelStore(detail.game.id)
+			channels: new ChannelStore(detail.game.id),
 		}
 
 		const activeDrops: ActiveTimeBasedDrop[] = []
@@ -145,7 +149,7 @@ export class Campaign {
 				dropInstanceID: null,
 				currentMinutesWatched: 0,
 				hasPreconditionsMet: true,
-				...(drop.self as {})
+				...(drop.self as {}),
 			}
 
 			activeDrops.push(drop as ActiveTimeBasedDrop)

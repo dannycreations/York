@@ -11,7 +11,7 @@ if (process.env.NODE_INSPECT === 'true' && process.env.NODE_ENV === 'development
 	globalThis.container = container
 }
 
-;(async () => {
+async function bootstrap() {
 	if (isReplit()) {
 		// Restart process every 6 hours
 		setTimeout(() => processRestart(), 2.16e7)
@@ -20,4 +20,5 @@ if (process.env.NODE_INSPECT === 'true' && process.env.NODE_ENV === 'development
 	await keepAlive()
 
 	new YorkClient().start()
-})()
+}
+bootstrap()

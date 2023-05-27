@@ -5,10 +5,10 @@
 	"author": "Danny Creations",
 	"license": "GPL-3.0",
 	"scripts": {
-		"build:tsc": "rm -rf dist; tsc -b src",
+		"build:tsc": "rm -rf dist; tsc",
 		"start:pm2": "pm2 start . --stop-exit-codes 0",
 		"dep:update": "npx npm-check-updates -u -x got,chalk,nanoid",
-		"watch": "rm -rf dist; tsc-watch -b src --noClear --onSuccess 'node .'"
+		"watch": "rm -rf dist; tsc-watch --noClear --onSuccess 'node .'"
 	},
 	"repository": "github:dannycreations/York",
 	"homepage": "https://github.com/dannycreations/York#readme",

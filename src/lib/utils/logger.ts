@@ -9,8 +9,8 @@ export const logger = (level?: Level) => {
 			level: 'warn',
 			stream: pino.destination({
 				mkdir: true,
-				dest: `${process.cwd()}/logs/errors.log`
-			})
+				dest: `${process.cwd()}/logs/errors.log`,
+			}),
 		},
 		{
 			level,
@@ -18,18 +18,18 @@ export const logger = (level?: Level) => {
 				sync: true,
 				colorize: true,
 				customPrettifiers: {
-					time: () => `[${getTimezoneDate().format('HH:mm:ss')}]`
-				}
-			})
-		}
+					time: () => `[${getTimezoneDate().format('HH:mm:ss')}]`,
+				},
+			}),
+		},
 	]
 
 	return pino(
 		{
 			level,
 			base: undefined,
-			nestedKey: 'payload'
+			nestedKey: 'payload',
 		},
-		pino.multistream(streams)
+		pino.multistream(streams),
 	)
 }

@@ -39,7 +39,7 @@ export class DropStore extends Queue<ActiveTimeBasedDrop> {
 		const selectDrop = super.peek()
 		if (!selectDrop) return false
 
-		return selectDrop.self.currentMinutesWatched >= selectDrop.requiredMinutesWatched
+		return selectDrop.self.currentMinutesWatched >= selectDrop.requiredMinutesWatched + 1
 	}
 
 	public setMinutesWatched(inc: number = 1): void {

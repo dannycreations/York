@@ -27,7 +27,7 @@ export function processRestart(): void {
 
 export function keepAlive(): Promise<void> {
 	return new Promise((resolve) => {
-		if (!isReplit()) return
+		if (!isReplit()) return resolve()
 
 		const port = process.env.PORT || 0
 		const server = createServer((req, res) => {

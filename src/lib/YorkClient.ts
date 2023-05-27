@@ -18,7 +18,7 @@ export class YorkClient {
 			isDropPriorityOnly: true,
 			usePriorityConnected: true,
 			priorityList: [],
-			exclusionList: []
+			exclusionList: [],
 		}
 
 		container.client = this
