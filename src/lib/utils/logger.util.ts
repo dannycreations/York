@@ -1,5 +1,5 @@
 import pretty from 'pino-pretty'
-import { getTimezoneDate } from './util'
+import { Moment, tz } from 'moment-timezone'
 import pino, { Level, StreamEntry } from 'pino'
 
 export const logger = (level?: Level) => {
@@ -32,4 +32,8 @@ export const logger = (level?: Level) => {
 		},
 		pino.multistream(streams),
 	)
+}
+
+export function getTimezoneDate(date: Date = new Date(), timezone?: string): Moment {
+	return tz(date, timezone || process.env.TIMEZONE || Intl.DateTimeFormat().resolvedOptions().timeZone)
 }

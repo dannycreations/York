@@ -1,9 +1,9 @@
-import delay from 'delay'
-import userAgent from 'user-agents'
+import UserAgent from 'user-agents'
 import { QueryStore } from './QueryStore'
 import { Constants } from '../types/Enum'
 import { container } from '@sapphire/pieces'
-import { processRestart } from '../utils/util'
+import { processRestart } from '../utils/common.util'
+import { setTimeout } from 'node:timers/promises'
 import got, { Options, RequestError, Response } from 'got'
 
 export class TwitchApi extends QueryStore {
@@ -18,7 +18,7 @@ export class TwitchApi extends QueryStore {
 
 	public constructor(access_token: string) {
 		super()
-		const ua = new userAgent({ deviceCategory: 'desktop' })
+		const ua = new UserAgent({ deviceCategory: 'desktop' })
 		this.options = {
 			method: 'POST',
 			prefixUrl: Constants.ApiUrl,
@@ -46,10 +46,10 @@ export class TwitchApi extends QueryStore {
 					container.logger.fatal(error.response.body, error.message)
 					process.exit()
 				} else if (error.code === 'ENOTFOUND') {
-					await delay(1_000)
+					await setTimeout(1_000)
 					return this.request(options)
 				} else if (error.code === 'EAI_AGAIN') {
-					await delay(10_000)
+					await setTimeout(10_000)
 					return this.request(options)
 				}
 			}
@@ -67,7 +67,7 @@ export class TwitchApi extends QueryStore {
 			request.push(this.request<Graphql<T>[]>({ url: 'gql', body: super.next(), ...options }))
 		}
 
-		const response = await Promise.all(request)
+		const response: Response<Graphql<T>>[] = await Promise.all(request)
 		return [...response.flatMap((r) => r.body)].map((r) => {
 			if (r.errors?.length) throw r
 			return r
@@ -206,33 +206,6 @@ export class TwitchApi extends QueryStore {
 
 	public async helix(user_id: string) {
 		try {
-			interface Helix {
-				data: Datum[]
-				pagination: Pagination
-			}
-
-			interface Datum {
-				id: string
-				user_id: string
-				user_login: string
-				user_name: string
-				game_id: string
-				game_name: string
-				type: string
-				title: string
-				viewer_count: number
-				started_at: string
-				language: string
-				thumbnail_url: string
-				tag_ids: any[]
-				tags: string[]
-				is_mature: boolean
-			}
-
-			interface Pagination {
-				cursor: string
-			}
-
 			const prefixUrl = 'https://api.twitch.tv'
 			const res = await this.request<Helix>({
 				method: 'GET',
@@ -268,4 +241,31 @@ export interface ActiveLiveChannel {
 	login: string
 	channel_id: string
 	broadcast_id: string
+}
+
+interface Helix {
+	data: Datum[]
+	pagination: Pagination
+}
+
+interface Datum {
+	id: string
+	user_id: string
+	user_login: string
+	user_name: string
+	game_id: string
+	game_name: string
+	type: string
+	title: string
+	viewer_count: number
+	started_at: string
+	language: string
+	thumbnail_url: string
+	tag_ids: any[]
+	tags: string[]
+	is_mature: boolean
+}
+
+interface Pagination {
+	cursor: string
 }

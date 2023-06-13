@@ -1,23 +1,24 @@
 import 'dotenv/config'
-import { logger } from './lib/utils/logger'
+
 import { container } from '@sapphire/pieces'
 import { YorkClient } from './lib/YorkClient'
-import { isReplit, keepAlive, processRestart } from './lib/utils/util'
-
-container.logger = logger()
+import { logger } from './lib/utils/logger.util'
+import { MikroORM } from './lib/database/MikroORM'
+import { isReplit, processRestart, keepAlive } from './lib/utils/common.util'
 
 if (process.env.NODE_INSPECT === 'true' && process.env.NODE_ENV === 'development') {
-	// @ts-expect-error
 	globalThis.container = container
 }
 
 async function bootstrap() {
+	container.logger = logger()
+
 	if (isReplit()) {
 		// Restart process every 6 hours
 		setTimeout(() => processRestart(), 2.16e7)
 	}
 
-	await keepAlive()
+	await Promise.all([keepAlive(), MikroORM()])
 
 	new YorkClient().start()
 }

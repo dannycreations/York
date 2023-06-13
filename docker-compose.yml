@@ -1,0 +1,13 @@
+services:
+    app:
+        build:
+            context: .
+            target: development
+        command: pnpm run start:dev
+        env_file: .env
+        environment:
+            - TSC_WATCHFILE=PriorityPollingInterval
+        restart: always
+        volumes:
+            - .:/app
+            - /app/node_modules

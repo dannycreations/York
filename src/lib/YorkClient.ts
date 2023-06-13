@@ -1,17 +1,20 @@
-import ws from 'ws'
+import ws, { WebSocket } from 'ws'
 import { Logger } from 'pino'
 import { join } from 'node:path'
 import { parse } from 'jsonc-parser'
-import { customAlphabet } from 'nanoid'
 import { TwitchGql } from './api/TwitchGql'
-import { WebSocket } from './api/WebSocket'
+// import { WebSocket } from './api/WebSocket'
 import { existsSync, readFileSync } from 'node:fs'
 import { TaskStore } from './structures/TaskStore'
+import { DropEntity } from './database/entities/drop.entity'
 import { ListenerStore } from './structures/ListenerStore'
 import { container, StoreRegistry } from '@sapphire/pieces'
+import { ChannelEntity } from './database/entities/channel.entity'
+import { CampaignEntity } from './database/entities/campaign.entity'
+import { MikroORM, EntityManager, EntityRepository } from '@mikro-orm/core'
 
 export class YorkClient {
-	public constructor() {
+	constructor() {
 		container.config = {
 			isClaimDrops: false,
 			isClaimPoints: false,
@@ -22,7 +25,7 @@ export class YorkClient {
 		}
 
 		container.client = this
-		container.ws = new WebSocket()
+		// container.ws = new WebSocket()
 		container.twitch = new TwitchGql(process.env.AUTH_TOKEN)
 
 		container.stores = new StoreRegistry()
@@ -30,7 +33,7 @@ export class YorkClient {
 		container.stores.register(new ListenerStore().registerPath(join(__dirname, '..', 'listeners')))
 	}
 
-	public async start(): Promise<void> {
+	async start(): Promise<void> {
 		try {
 			const pathSettings = `${process.cwd()}/settings.json`
 			if (existsSync(pathSettings)) {
@@ -39,20 +42,12 @@ export class YorkClient {
 				Object.freeze(container.config)
 			}
 
-			await container.ws.connect()
+			// await container.ws.connect()
 			await Promise.all([...container.stores.values()].map((store) => store.loadAll()))
 		} catch (error) {
 			container.logger.fatal(error)
 			process.exit()
 		}
-	}
-
-	public randomString(length: number = 30, str?: string): string {
-		const asciiDigits = '0123456789'
-		const asciiLowers = 'abcdefghijklmnopqrstuvwxyz'
-		const asciiUppers = asciiLowers.toUpperCase()
-		str ||= asciiLowers + asciiUppers + asciiDigits
-		return customAlphabet(str)(length)
 	}
 }
 
@@ -71,6 +66,12 @@ declare module '@sapphire/pieces' {
 			priorityList: string[]
 			exclusionList: string[]
 		}
+
+		orm: MikroORM
+		em: EntityManager
+		campaignRepository: EntityRepository<CampaignEntity>
+		dropRepository: EntityRepository<DropEntity>
+		channelRepository: EntityRepository<ChannelEntity>
 	}
 
 	interface StoreRegistryEntries {
