@@ -1,6 +1,6 @@
 import { cloneDeep, sortBy } from 'lodash'
 import { container } from '@sapphire/pieces'
-import { hasMobileAuth } from '../utils/util'
+import { hasMobileAuth } from '../utils/common.util'
 import { DropStore } from '../stores/DropStore'
 import { CampaignDetail } from '../api/TwitchGql'
 import { ActiveLiveChannel } from '../api/TwitchApi'

@@ -7,7 +7,7 @@
 	"scripts": {
 		"build": "rm -rf dist && tsc",
 		"start:pm2": "pm2 start . --stop-exit-codes 0",
-		"start:dev": "rm -rf dist && tsc -watch & nodemon --legacy-watch --inspect=0.0.0.0:9229 dist/main.js",
+		"start:dev": "rm -rf dist && tsc-watch --onSuccess \"node .\"",
 		"dep:update": "npx npm-check-updates -u -x got,chalk,nanoid,@types/node"
 	},
 	"repository": "github:dannycreations/York",

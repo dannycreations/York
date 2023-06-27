@@ -1,9 +1,9 @@
 import chalk from 'chalk'
 import { Tasks } from '../lib/types/Enum'
 import { DropMainTask } from '../tasks/DropMain'
-import { hasMobileAuth } from '../lib/utils/util'
 import { DropStore } from '../lib/stores/DropStore'
 import { Listener } from '../lib/structures/Listener'
+import { hasMobileAuth } from '../lib/utils/common.util'
 import { DropClaim, DropProgress, MessageData } from '../lib/types/twitch/WebSocket'
 
 export class UserDropListener extends Listener {

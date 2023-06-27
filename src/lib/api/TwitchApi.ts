@@ -1,9 +1,10 @@
 import userAgent from 'user-agents'
+import { defaultsDeep } from 'lodash'
 import { QueryStore } from './QueryStore'
 import { Constants } from '../types/Enum'
 import { container } from '@sapphire/pieces'
-import { processRestart } from '../utils/util'
 import { setTimeout } from 'node:timers/promises'
+import { processRestart } from '../utils/common.util'
 import got, { Options, RequestError, Response } from 'got'
 import { HelixStreams } from '../types/twitch/HelixStreams'
 
@@ -27,7 +28,7 @@ export class TwitchApi extends QueryStore {
 				'User-Agent': ua.toString(),
 				Authorization: `OAuth ${access_token}`,
 			},
-			timeout: 10_000,
+			timeout: 60_000,
 			responseType: 'json',
 		}
 	}
@@ -38,7 +39,7 @@ export class TwitchApi extends QueryStore {
 
 	private async request<T>(options: Options): Promise<Response<T> | never> {
 		try {
-			const res = await got({ ...this.options, ...options })
+			const res = await got(defaultsDeep({}, options, this.options))
 			return res as Response<T>
 		} catch (error) {
 			//! TODO: Better error handling
@@ -54,6 +55,7 @@ export class TwitchApi extends QueryStore {
 					return this.request(options)
 				}
 			}
+			console.log(options)
 
 			throw error
 		}
@@ -91,7 +93,7 @@ export class TwitchApi extends QueryStore {
 			const res = await this.request<Validate>({ method: 'GET', prefixUrl, url: 'oauth2/validate' })
 
 			this.authState.user_id = res.body.user_id
-			this.options.headers!['Client-Id'] = res.body.client_id
+			this.options.headers['Client-Id'] = res.body.client_id
 
 			return true
 		} catch (error) {
@@ -119,14 +121,14 @@ export class TwitchApi extends QueryStore {
 			for (const cookie of res.headers['set-cookie']!) {
 				const clean = cookie.match(/(?<=\=)\w+(?=\;)/g)
 				if (cookie.startsWith('server_session_id')) {
-					this.options.headers!['Client-Session-Id'] = clean![0]
+					this.options.headers['Client-Session-Id'] = clean![0]
 				} else if (cookie.startsWith('unique_id') && !cookie.startsWith('unique_id_durable')) {
-					this.options.headers!['X-Device-Id'] = clean![0]
+					this.options.headers['X-Device-Id'] = clean![0]
 				}
 			}
 
 			const htmlReg = new RegExp('twilightBuildID="([-a-z0-9]+)"')
-			this.options.headers!['Client-Version'] = htmlReg.exec(res.body)![1]
+			this.options.headers['Client-Version'] = htmlReg.exec(res.body)![1]
 
 			return true
 		} catch (error) {
@@ -153,8 +155,8 @@ export class TwitchApi extends QueryStore {
 			const res = await this.request<Integrity>({ url: 'integrity' })
 
 			this.authState.integrity_expires = res.body.expiration
-			this.options.headers!['Client-Integrity'] = res.body.token
-			this.options.headers!['Client-Request-Id'] = ''
+			this.options.headers['Client-Integrity'] = res.body.token
+			this.options.headers['Client-Request-Id'] = ''
 
 			return true
 		} catch (error) {
@@ -173,7 +175,7 @@ export class TwitchApi extends QueryStore {
 				this.authState.setting = settingsUrl
 			}
 
-			const prefixUrl = undefined
+			const prefixUrl = ''
 			const responseType = 'text'
 
 			if (!this.authState.spade) {
@@ -212,7 +214,7 @@ export class TwitchApi extends QueryStore {
 				method: 'GET',
 				prefixUrl,
 				url: 'helix/streams',
-				headers: { 'client-id': 'uaw3vx1k0ttq74u9b2zfvt768eebh1' },
+				headers: { 'Client-Id': 'uaw3vx1k0ttq74u9b2zfvt768eebh1' },
 				searchParams: { user_id },
 			})
 			return res.body

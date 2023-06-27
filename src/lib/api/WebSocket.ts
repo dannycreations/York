@@ -1,6 +1,7 @@
 import ws from 'ws'
 import { Constants } from '../types/Enum'
 import { container } from '@sapphire/pieces'
+import { randomString } from '../utils/common.util'
 import { Message, Request, RequestType, Response, ResponseType } from '../types/twitch/WebSocket'
 
 export class WebSocket {
@@ -45,7 +46,7 @@ export class WebSocket {
 		container.logger.trace(`WS Send: ${type} ${topic}`)
 		const payload = {
 			type,
-			nonce: container.client.randomString(),
+			nonce: randomString(),
 			data: { topics: [topic], auth_token: process.env.AUTH_TOKEN },
 		}
 

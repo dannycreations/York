@@ -2,7 +2,6 @@ import ws from 'ws'
 import { Logger } from 'pino'
 import { join } from 'node:path'
 import { parse } from 'jsonc-parser'
-import { customAlphabet } from 'nanoid'
 import { TwitchGql } from './api/TwitchGql'
 import { WebSocket } from './api/WebSocket'
 import { existsSync, readFileSync } from 'node:fs'
@@ -30,7 +29,7 @@ export class YorkClient {
 		container.stores.register(new ListenerStore().registerPath(join(__dirname, '..', 'listeners')))
 	}
 
-	public async start(): Promise<void> {
+	public async start() {
 		try {
 			const pathSettings = `${process.cwd()}/settings.json`
 			if (existsSync(pathSettings)) {
@@ -45,14 +44,6 @@ export class YorkClient {
 			container.logger.fatal(error)
 			process.exit()
 		}
-	}
-
-	public randomString(length: number = 30, str?: string): string {
-		const asciiDigits = '0123456789'
-		const asciiLowers = 'abcdefghijklmnopqrstuvwxyz'
-		const asciiUppers = asciiLowers.toUpperCase()
-		str ||= asciiLowers + asciiUppers + asciiDigits
-		return customAlphabet(str, length)()
 	}
 }
 

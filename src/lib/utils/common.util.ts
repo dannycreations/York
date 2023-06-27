@@ -1,7 +1,7 @@
+import { customAlphabet } from 'nanoid'
 import { createServer } from 'node:http'
 import { exec } from 'node:child_process'
 import { container } from '@sapphire/pieces'
-import { Moment, tz } from 'moment-timezone'
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 
 export function writeDebugFile(data: string | object, name?: string): void {
@@ -46,6 +46,10 @@ export function keepAlive(): Promise<void> {
 	})
 }
 
-export function getTimezoneDate(date: Date = new Date(), timezone?: string): Moment {
-	return tz(date, timezone || process.env.TIMEZONE || Intl.DateTimeFormat().resolvedOptions().timeZone)
+export function randomString(length: number = 30, str?: string) {
+	const asciiDigits = '0123456789'
+	const asciiLowers = 'abcdefghijklmnopqrstuvwxyz'
+	const asciiUppers = asciiLowers.toUpperCase()
+	str ||= asciiLowers + asciiUppers + asciiDigits
+	return customAlphabet(str, length)()
 }

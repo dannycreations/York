@@ -4,7 +4,7 @@ import { Tasks } from '../lib/types/Enum'
 import { Task } from '../lib/structures/Task'
 import { random, remove, sortBy } from 'lodash'
 import { setTimeout } from 'node:timers/promises'
-import { getTimezoneDate } from '../lib/utils/util'
+import { getTimezoneDate } from '../lib/utils/logger.util'
 import { DropCampaign } from '../lib/types/twitch/ViewerDropsDashboard'
 
 export class DropUpcomingTask extends Task {

@@ -3,7 +3,7 @@ services:
         build:
             context: .
             target: development
-        command: pnpm run start:dev
+        command: rm -rf dist && tsc -watch & nodemon --legacy-watch --inspect=0.0.0.0:9229 dist/main.js
         env_file: .env
         restart: always
         ports:

@@ -1,9 +1,9 @@
-import pretty from 'pino-pretty'
-import { getTimezoneDate } from './util'
+import PinoPretty from 'pino-pretty'
+import { Moment, tz } from 'moment-timezone'
 import pino, { Level, StreamEntry } from 'pino'
 
 export const logger = (level?: Level) => {
-	level ||= process.env.NODE_ENV === 'development' ? 'trace' : 'info'
+	level ||= process.env.NODE_ENV === 'development' ? 'debug' : 'info'
 	const streams: StreamEntry[] = [
 		{
 			level: 'warn',
@@ -14,9 +14,10 @@ export const logger = (level?: Level) => {
 		},
 		{
 			level,
-			stream: pretty({
+			stream: PinoPretty({
 				sync: true,
 				colorize: true,
+				singleLine: true,
 				customPrettifiers: {
 					time: () => `[${getTimezoneDate().format('HH:mm:ss')}]`,
 				},
@@ -32,4 +33,8 @@ export const logger = (level?: Level) => {
 		},
 		pino.multistream(streams),
 	)
+}
+
+export function getTimezoneDate(date: Date = new Date(), timezone?: string): Moment {
+	return tz(date, timezone || process.env.TIMEZONE || Intl.DateTimeFormat().resolvedOptions().timeZone)
 }
