@@ -1,9 +1,9 @@
 import chalk from 'chalk'
-import delay from 'delay'
-import { remove } from 'lodash'
+import { random, remove } from 'lodash'
 import { DropMainTask } from './DropMain'
 import { Tasks } from '../lib/types/Enum'
 import { Task } from '../lib/structures/Task'
+import { setTimeout } from 'node:timers/promises'
 import { DropCampaign } from '../lib/types/twitch/ViewerDropsDashboard'
 
 export class DropOfflineTask extends Task {
@@ -45,7 +45,7 @@ export class DropOfflineTask extends Task {
 			}
 
 			main.campaign.resetInventory()
-			await delay.range(0, 5_000)
+			await setTimeout(random(0, 5_000))
 			return main.startTask(true)
 		}
 	}

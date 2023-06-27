@@ -1,14 +1,14 @@
 {
 	"name": "york",
 	"version": "1.0.0",
-	"main": "dist/index.js",
+	"main": "dist/main.js",
 	"author": "Danny Creations",
 	"license": "GPL-3.0",
 	"scripts": {
-		"build:tsc": "rm -rf dist; tsc",
+		"build": "rm -rf dist && tsc",
 		"start:pm2": "pm2 start . --stop-exit-codes 0",
-		"dep:update": "npx npm-check-updates -u -x got,chalk,nanoid",
-		"watch": "rm -rf dist; tsc-watch --noClear --onSuccess 'node .'"
+		"start:dev": "rm -rf dist && tsc -watch & nodemon --legacy-watch --inspect=0.0.0.0:9229 dist/main.js",
+		"dep:update": "npx npm-check-updates -u -x got,chalk,nanoid,@types/node"
 	},
 	"repository": "github:dannycreations/York",
 	"homepage": "https://github.com/dannycreations/York#readme",
@@ -16,27 +16,27 @@
 		"url": "https://github.com/dannycreations/York/issues"
 	},
 	"dependencies": {
-		"@sapphire/pieces": "^3.6.0",
-		"@sapphire/utilities": "^3.11.0",
-		"chalk": "^4",
-		"delay": "^5.0.0",
-		"dotenv": "^16.0.3",
-		"got": "^11",
+		"@sapphire/pieces": "^3.6.3",
+		"@sapphire/utilities": "^3.12.0",
+		"chalk": "^4.1.2",
+		"dotenv": "^16.1.4",
+		"got": "^11.8.6",
 		"jsonc-parser": "^3.2.0",
 		"lodash": "^4.17.21",
-		"moment-timezone": "^0.5.40",
-		"nanoid": "^3",
-		"pino": "^8.8.0",
-		"pino-pretty": "^9.1.1",
-		"user-agents": "^1.0.1269",
-		"ws": "^8.12.0"
+		"moment-timezone": "^0.5.43",
+		"nanoid": "^3.3.6",
+		"pino": "^8.14.1",
+		"pino-pretty": "^10.0.0",
+		"user-agents": "^1.0.1410",
+		"ws": "^8.13.0"
 	},
 	"devDependencies": {
-		"@types/lodash": "^4.14.191",
-		"@types/node": "^18.11.18",
+		"@types/lodash": "^4.14.195",
+		"@types/node": "^16.18.36",
 		"@types/user-agents": "^1.0.2",
-		"@types/ws": "^8.5.4",
-		"tsc-watch": "^6.0.0",
-		"typescript": "^4.9.4"
+		"@types/ws": "^8.5.5",
+		"nodemon": "^2.0.22",
+		"ts-node": "^10.9.1",
+		"typescript": "^5.1.3"
 	}
 }

@@ -50,7 +50,7 @@ export class WebSocket {
 		}
 
 		this._reqList.set(topic, payload)
-		await this.sendPromise(payload).catch()
+		await this.sendPromise(payload)
 	}
 
 	private async onOpen(): Promise<void> {
@@ -105,7 +105,7 @@ export class WebSocket {
 		clearTimeout(this._timeout.ping)
 		this._timeout.ping = setTimeout(() => this.ping(), 240_000)
 		this._timeout.reconnect = setTimeout(() => this.reconnect(), 10_000)
-		await this.sendPromise({ type: RequestType.Ping } as Request).catch()
+		await this.sendPromise({ type: RequestType.Ping } as Request)
 	}
 
 	private reconnect(): void {
@@ -116,12 +116,12 @@ export class WebSocket {
 	}
 
 	private async sendPromise(request: Request): Promise<void> {
-		return new Promise((resolve, reject) => {
+		return new Promise((resolve) => {
 			try {
 				const payload = JSON.stringify(request)
 				container.ev.send(payload, () => resolve())
-			} catch (error) {
-				reject(error)
+			} catch {
+				resolve()
 			}
 		})
 	}

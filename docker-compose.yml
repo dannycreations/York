@@ -1,0 +1,13 @@
+services:
+    app:
+        build:
+            context: .
+            target: development
+        command: pnpm run start:dev
+        env_file: .env
+        restart: always
+        ports:
+            - 9229:9229
+        volumes:
+            - .:/app
+            - /app/node_modules

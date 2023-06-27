@@ -2,6 +2,7 @@ export class Queue<V> {
 	private _elements: Element<V> = {}
 	private _head = 0
 	private _tail = 0
+	private _last: V
 
 	public get length(): number {
 		return this._tail - this._head
@@ -9,6 +10,10 @@ export class Queue<V> {
 
 	public peek(i: number = 0): V | undefined {
 		return this._elements[this._head + i]
+	}
+
+	public last(): V {
+		return this._last
 	}
 
 	public enqueue(element: V): this {
@@ -26,6 +31,7 @@ export class Queue<V> {
 
 	public dequeue(i: number = 0): V | undefined {
 		const item = this._elements[this._head + i]
+		this._last = item
 		delete this._elements[this._head + i]
 		this._head++
 		return item

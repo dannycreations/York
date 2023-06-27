@@ -1,8 +1,8 @@
 import chalk from 'chalk'
-import delay from 'delay'
 import { Tasks } from '../lib/types/Enum'
 import { difference, remove } from 'lodash'
 import { Task } from '../lib/structures/Task'
+import { setTimeout } from 'node:timers/promises'
 import { DropUpcomingTask } from './DropUpcoming'
 import { hasMobileAuth } from '../lib/utils/util'
 import { QueueStore } from '../lib/stores/QueueStore'
@@ -38,7 +38,8 @@ export class DropMainTask extends Task {
 		const selectCampaign = this.queue.peek()
 		if (!selectCampaign) {
 			this.campaign.gameList().shift()
-			this.campaign.campaignList().shift()
+			const id = this.queue.last().id
+			remove(this.campaign.campaignList(), { id })
 			this.queue.isTask(false)
 			return this.run()
 		}
@@ -72,7 +73,7 @@ export class DropMainTask extends Task {
 
 						if (!i) this.container.logger.info(chalk`{red ${selectDrop.name}} | DropID not found`)
 						this.container.logger.info(chalk`{yellow Waiting for ${i + 1}/${countLimit} minutes}`)
-						await delay(this.options.delay)
+						await setTimeout(this.options.delay)
 					}
 				}
 				if (await selectDrop.claimDrops()) {

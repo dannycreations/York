@@ -52,7 +52,7 @@ export class YorkClient {
 		const asciiLowers = 'abcdefghijklmnopqrstuvwxyz'
 		const asciiUppers = asciiLowers.toUpperCase()
 		str ||= asciiLowers + asciiUppers + asciiDigits
-		return customAlphabet(str)(length)
+		return customAlphabet(str, length)()
 	}
 }
 

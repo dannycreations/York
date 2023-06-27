@@ -1,9 +1,9 @@
 import chalk from 'chalk'
-import delay from 'delay'
-import { remove, sortBy } from 'lodash'
 import { DropMainTask } from './DropMain'
 import { Tasks } from '../lib/types/Enum'
 import { Task } from '../lib/structures/Task'
+import { random, remove, sortBy } from 'lodash'
+import { setTimeout } from 'node:timers/promises'
 import { getTimezoneDate } from '../lib/utils/util'
 import { DropCampaign } from '../lib/types/twitch/ViewerDropsDashboard'
 
@@ -40,6 +40,11 @@ export class DropUpcomingTask extends Task {
 		const sleepTime = Math.max(0, +upcomingDate - +currentDate)
 		if (!sleepTime) {
 			remove(main.campaign.upcomingList(), { id: selectCampaign.id })
+			if (this.container.config.isDropPriorityOnly) {
+				if (!~this.container.config.priorityList.indexOf(selectCampaign.game.displayName)) {
+					return
+				}
+			}
 			if (this.isSleeping) {
 				delete this.isSleeping
 				return main.startTask(true)
@@ -67,7 +72,7 @@ export class DropUpcomingTask extends Task {
 			}
 
 			main.campaign.resetInventory()
-			await delay.range(0, 5_000)
+			await setTimeout(random(0, 5_000))
 			return main.startTask(true)
 		}
 

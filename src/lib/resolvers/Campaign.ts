@@ -1,4 +1,4 @@
-import { sortBy } from 'lodash'
+import { cloneDeep, sortBy } from 'lodash'
 import { container } from '@sapphire/pieces'
 import { hasMobileAuth } from '../utils/util'
 import { DropStore } from '../stores/DropStore'
@@ -82,15 +82,16 @@ export class Campaign {
 			}
 
 			campaign.name = campaign.name.trim()
-			if (container.config.isDropPriorityOnly && !!~container.config.priorityList.indexOf(campaign.game.displayName)) {
-				this._campaignList.push(campaign)
-				continue
-			}
 			if (isStatus.upcoming) {
 				if (!~this._upcomingList.findIndex((r) => r.id === campaign.id)) {
 					this._upcomingList.push(campaign)
 				}
-
+				continue
+			}
+			if (container.config.isDropPriorityOnly) {
+				if (!!~container.config.priorityList.indexOf(campaign.game.displayName)) {
+					this._campaignList.push(campaign)
+				}
 				continue
 			}
 
@@ -111,8 +112,7 @@ export class Campaign {
 
 		const detail = campaignDetails.data.user.dropCampaign
 		const campaignProgress = this._dropsProgress.find((r) => r.id === detail.id)
-		const timeBasedDrops = (campaignProgress ? campaignProgress.timeBasedDrops : detail.timeBasedDrops) as TimeBasedDrop[]
-		const cloneTimeBasedDrops = timeBasedDrops.map((r) => ({ ...r }))
+		const timeBasedDrops = cloneDeep(campaignProgress ? campaignProgress.timeBasedDrops : detail.timeBasedDrops) as TimeBasedDrop[]
 
 		const activeCampaign = {
 			id: detail.id,
@@ -123,7 +123,7 @@ export class Campaign {
 		}
 
 		const activeDrops: ActiveTimeBasedDrop[] = []
-		for (const drop of cloneTimeBasedDrops) {
+		for (const drop of timeBasedDrops) {
 			const isStatus = checkStatus(drop.startAt, drop.endAt)
 			if (isStatus.expired) continue
 			if (isStatus.upcoming) {
