@@ -3,7 +3,7 @@ import { Tasks } from '../lib/types/Enum'
 import { DropMainTask } from '../tasks/DropMain'
 import { DropStore } from '../lib/stores/DropStore'
 import { Listener } from '../lib/structures/Listener'
-import { hasMobileAuth } from '../lib/utils/common.util'
+import { hasMobileAuth } from '../lib/utils/replit.util'
 import { DropClaim, DropProgress, MessageData } from '../lib/types/twitch/WebSocket'
 
 export class UserDropListener extends Listener {

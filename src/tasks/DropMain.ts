@@ -5,7 +5,7 @@ import { Task } from '../lib/structures/Task'
 import { setTimeout } from 'node:timers/promises'
 import { DropUpcomingTask } from './DropUpcoming'
 import { QueueStore } from '../lib/stores/QueueStore'
-import { hasMobileAuth } from '../lib/utils/common.util'
+import { hasMobileAuth } from '../lib/utils/replit.util'
 import { RequestType } from '../lib/types/twitch/WebSocket'
 import { ActiveCampaign, Campaign } from '../lib/resolvers/Campaign'
 

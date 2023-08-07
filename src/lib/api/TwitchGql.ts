@@ -23,7 +23,8 @@ export class TwitchGql extends TwitchApi {
 		}
 
 		super.add(request)
-		return super.graphql<ViewerDropsDashboard>()
+		const options = this.useMobileAuth()
+		return super.graphql<ViewerDropsDashboard>(options)
 	}
 
 	public async campaignDetails(data: CampaignDetail | CampaignDetail[]) {
@@ -41,7 +42,9 @@ export class TwitchGql extends TwitchApi {
 			data.channelLogin = data.channelLogin ?? this.authState.user_id
 			super.add({ ...request, data })
 		}
-		return super.graphql<DropCampaignDetails>()
+
+		const options = this.useMobileAuth()
+		return super.graphql<DropCampaignDetails>(options)
 	}
 
 	public async gameDirectory(name: string) {

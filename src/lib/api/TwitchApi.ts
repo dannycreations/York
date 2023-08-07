@@ -4,7 +4,7 @@ import { QueryStore } from './QueryStore'
 import { Constants } from '../types/Enum'
 import { container } from '@sapphire/pieces'
 import { setTimeout } from 'node:timers/promises'
-import { processRestart } from '../utils/common.util'
+import { processRestart } from '../utils/replit.util'
 import got, { Options, RequestError, Response } from 'got'
 import { HelixStreams } from '../types/twitch/HelixStreams'
 
