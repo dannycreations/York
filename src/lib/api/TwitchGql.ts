@@ -58,7 +58,7 @@ export class TwitchGql extends TwitchApi {
 					includeRestricted: ['SUB_ONLY_LIVE'],
 					recommendationsContext: { platform: 'web' },
 					sort: 'VIEWER_COUNT',
-					tags: [Constants.DropTag],
+					tags: [],
 					requestID: 'JIRA-VXP-2397',
 					freeformTags: null,
 				},
