@@ -2,7 +2,7 @@ import PinoPretty from 'pino-pretty'
 import { Moment, tz } from 'moment-timezone'
 import pino, { Level, StreamEntry } from 'pino'
 
-export const logger = (level?: Level) => {
+export function logger(level?: Level) {
 	level ||= process.env.NODE_ENV === 'development' ? 'debug' : 'info'
 	const streams: StreamEntry[] = [
 		{

@@ -4,12 +4,11 @@ import { DropStore } from '../stores/DropStore'
 import { CampaignDetail } from '../api/TwitchGql'
 import { ActiveLiveChannel } from '../api/TwitchApi'
 import { RequiredExcept } from '@sapphire/utilities'
-import { hasMobileAuth } from '../utils/replit.util'
 import { ChannelStore } from '../stores/ChannelStore'
-import { Game } from '../types/twitch/DropCampaignDetails'
-import { DropCampaign } from '../types/twitch/ViewerDropsDashboard'
-import { TimeBasedDrop as InventoryDrop } from '../types/twitch/Inventory'
-import { DropCampaignsInProgress, GameEventDrop } from '../types/twitch/Inventory'
+import { Game } from '../api/types/DropCampaignDetails'
+import { DropCampaign } from '../api/types/ViewerDropsDashboard'
+import { TimeBasedDrop as InventoryDrop } from '../api/types/Inventory'
+import { DropCampaignsInProgress, GameEventDrop } from '../api/types/Inventory'
 
 export class Campaign {
 	private _gameList: string[] = []
@@ -59,7 +58,7 @@ export class Campaign {
 		if (force) this._campaignList = []
 		if (this._campaignList.length) return
 
-		const dropsDashboard = (await container.twitch.dropsDashboard())[0]
+		const dropsDashboard = await container.twitch.dropsDashboard()
 		const dropCampaigns = sortBy(dropsDashboard.data.currentUser.dropCampaigns, 'endAt')
 		for (let i = 0; i < dropCampaigns.length; i++) {
 			for (let j = i; j < dropCampaigns.length; j++) {
@@ -100,7 +99,7 @@ export class Campaign {
 	}
 
 	public async fetchInventory(): Promise<void> {
-		const inventory = (await container.twitch.inventory())[0]
+		const inventory = await container.twitch.inventory()
 		this._dropsClaimed = inventory.data.currentUser.inventory.gameEventDrops
 		this._dropsProgress = inventory.data.currentUser.inventory.dropCampaignsInProgress
 		this._isInventory = true
@@ -108,7 +107,7 @@ export class Campaign {
 
 	public async checkCampaign(campaign: CampaignDetail): Promise<ActiveCampaign> {
 		if (!this._isInventory) await this.fetchInventory()
-		const campaignDetails = (await container.twitch.campaignDetails(campaign))[0]
+		const campaignDetails = await container.twitch.campaignDetails(campaign)
 
 		const detail = campaignDetails.data.user.dropCampaign
 		const campaignProgress = this._dropsProgress.find((r) => r.id === detail.id)
@@ -138,7 +137,7 @@ export class Campaign {
 			if (drop.self) {
 				if (drop.self.isClaimed) continue
 				if (drop.self.currentMinutesWatched >= drop.requiredMinutesWatched) {
-					if (!hasMobileAuth() || !container.config.isClaimDrops) continue
+					if (!container.config.isClaimDrops) continue
 				}
 			} else {
 				if (!!~this._dropsClaimed.findIndex((r) => r.id === selectBenefit.benefit.id)) continue
@@ -162,14 +161,14 @@ export class Campaign {
 			activeCampaign.drops.enqueue(activeDrops[i])
 		}
 
-		activeCampaign.channels.enqueueMany(await this.getLive(detail.game.displayName, detail.allow.channels))
+		activeCampaign.channels.enqueueMany(await this.getLive(detail.game.slug, detail.allow.channels))
 		return activeCampaign
 	}
 
-	private async getLive(gameName: string, whitelist: Game[] | null): Promise<ActiveLiveChannel[]> {
+	private async getLive(slug: string, channels: Game[] | null): Promise<ActiveLiveChannel[]> {
 		const foundLives: ActiveLiveChannel[] = []
-		if (!whitelist?.length) {
-			const gameDirectory = (await container.twitch.gameDirectory(gameName))[0]
+		if (!channels?.length) {
+			const gameDirectory = await container.twitch.gameDirectory(slug)
 			if (!gameDirectory.data.game?.streams) return foundLives
 
 			for (const stream of gameDirectory.data.game.streams.edges) {
@@ -179,8 +178,8 @@ export class Campaign {
 				foundLives.push({ login, channel_id, broadcast_id })
 			}
 		} else {
-			const logins = whitelist.map((r) => r.name).slice(0, 30)
-			const streamFetch = (await container.twitch.streamFetch(logins))[0]
+			const logins = channels.map((r) => r.name).slice(0, 30)
+			const streamFetch = await container.twitch.streamFetch(logins)
 			const filterSuspend = streamFetch.data.users.filter(Boolean)
 			for (const user of filterSuspend) {
 				if (!user.stream) continue
@@ -225,7 +224,10 @@ export interface ActiveCampaign {
 	id: string
 	name: string
 	game: {
-		displayName: string
+		id: string
+		displayName?: string
+		name?: string
+		slug?: string
 	}
 	drops: DropStore
 	channels: ChannelStore

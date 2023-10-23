@@ -22,7 +22,7 @@ export class YorkClient {
 
 		container.client = this
 		container.ws = new WebSocket()
-		container.twitch = new TwitchGql(process.env.AUTH_TOKEN)
+		container.twitch = new TwitchGql(process.env.AUTH_TOKEN_MOBILE)
 
 		container.stores = new StoreRegistry()
 		container.stores.register(new TaskStore().registerPath(join(__dirname, '..', 'tasks')))

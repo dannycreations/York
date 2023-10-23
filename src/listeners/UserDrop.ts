@@ -1,10 +1,9 @@
 import chalk from 'chalk'
-import { Tasks } from '../lib/types/Enum'
 import { DropMainTask } from '../tasks/DropMain'
+import { Tasks } from '../lib/api/constants/Enum'
 import { DropStore } from '../lib/stores/DropStore'
 import { Listener } from '../lib/structures/Listener'
-import { hasMobileAuth } from '../lib/utils/replit.util'
-import { DropClaim, DropProgress, MessageData } from '../lib/types/twitch/WebSocket'
+import { DropClaim, DropProgress, MessageData } from '../lib/api/types/WebSocket'
 
 export class UserDropListener extends Listener {
 	public constructor(context: Listener.Context) {
@@ -27,7 +26,7 @@ export class UserDropListener extends Listener {
 	}
 
 	private async dropClaim(message: DropClaim): Promise<void> {
-		if (!hasMobileAuth() || !this.container.config.isClaimDrops) return
+		if (!this.container.config.isClaimDrops) return
 		await this.container.twitch.claimDrops(message.data.drop_instance_id)
 	}
 
@@ -44,7 +43,7 @@ export class UserDropListener extends Listener {
 			this.container.logger.debug(message, 'user-drop-events-1')
 			checkDesync(message.data.current_progress_min)
 		} else {
-			const dropCurrent = (await this.container.twitch.dropCurrent())[0].data.currentUser.dropCurrentSession
+			const dropCurrent = (await this.container.twitch.dropCurrent()).data.currentUser.dropCurrentSession
 			this.container.logger.debug(dropCurrent, 'user-drop-events-2')
 			if (!dropCurrent || selectDrop.id !== dropCurrent.dropID) return
 

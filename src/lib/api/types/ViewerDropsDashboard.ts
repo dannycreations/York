@@ -1,8 +1,8 @@
-import { Status } from '../Enum'
+import { Status } from '../constants/Enum'
 
 export interface ViewerDropsDashboard {
 	currentUser: CurrentUser
-	rewardCampaignsAvailableToUser: unknown[]
+	rewardCampaignsAvailableToUser: any[]
 }
 
 export interface CurrentUser {

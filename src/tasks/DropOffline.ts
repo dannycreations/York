@@ -1,10 +1,10 @@
 import chalk from 'chalk'
 import { random, remove } from 'lodash'
 import { DropMainTask } from './DropMain'
-import { Tasks } from '../lib/types/Enum'
 import { Task } from '../lib/structures/Task'
 import { setTimeout } from 'node:timers/promises'
-import { DropCampaign } from '../lib/types/twitch/ViewerDropsDashboard'
+import { Tasks } from '../lib/api/constants/Enum'
+import { DropCampaign } from '../lib/api/types/ViewerDropsDashboard'
 
 export class DropOfflineTask extends Task {
 	public constructor(context: Task.Context) {

@@ -1,12 +1,11 @@
 import chalk from 'chalk'
-import { Tasks } from '../lib/types/Enum'
 import { difference, remove } from 'lodash'
 import { Task } from '../lib/structures/Task'
 import { setTimeout } from 'node:timers/promises'
 import { DropUpcomingTask } from './DropUpcoming'
+import { Tasks } from '../lib/api/constants/Enum'
 import { QueueStore } from '../lib/stores/QueueStore'
-import { hasMobileAuth } from '../lib/utils/replit.util'
-import { RequestType } from '../lib/types/twitch/WebSocket'
+import { RequestType } from '../lib/api/types/WebSocket'
 import { ActiveCampaign, Campaign } from '../lib/resolvers/Campaign'
 
 export class DropMainTask extends Task {
@@ -61,7 +60,7 @@ export class DropMainTask extends Task {
 			this.queue.dequeue()
 			return this.run()
 		} else if (selectDrop.hasMinutesWatchedMet()) {
-			if (hasMobileAuth() && this.container.config.isClaimDrops) {
+			if (this.container.config.isClaimDrops) {
 				if (!selectDrop.dropInstanceID) {
 					const countLimit = 5
 					for (let i = 0; i < countLimit; i++) {
@@ -69,7 +68,10 @@ export class DropMainTask extends Task {
 						const activeCampaign = await this.campaign.checkCampaign({ dropID: selectCampaign.id })
 						Object.assign(selectDrop, activeCampaign.drops)
 						if (selectDrop.dropInstanceID) break
-						if (!selectDrop.hasMinutesWatchedMet()) return this.run()
+						if (!selectDrop.hasMinutesWatchedMet()) {
+							this.queue.isDone(selectDrop.id, true)
+							return this.run()
+						}
 
 						if (!i) this.container.logger.info(chalk`{red ${selectDrop.name}} | DropID not found`)
 						this.container.logger.info(chalk`{yellow Waiting for ${i + 1}/${countLimit} minutes}`)
@@ -82,9 +84,16 @@ export class DropMainTask extends Task {
 				}
 			}
 
+			this.queue.isDone(selectDrop.id, true)
 			this.campaign.resetInventory()
 			selectDrop.dequeue()
 			return this.run()
+		} else if (this.queue.isDone(selectDrop.id)) {
+			if (selectDrop.requiredMinutesWatched - selectDrop.currentMinutesWatched >= 10) {
+				this.container.logger.info(chalk`{red ${selectDrop.name}} | Possible broken drops`)
+				this.queue.dequeue()
+				return this.run()
+			}
 		}
 
 		const selectStream = selectCampaign.channels
@@ -93,7 +102,7 @@ export class DropMainTask extends Task {
 			const currentMinutes = `${selectDrop.currentMinutesWatched}/${selectDrop.requiredMinutesWatched}`
 			this.container.logger.info(chalk`{green ${selectDrop.name}} | ${selectStream.login} | ${currentMinutes}`)
 
-			if (hasMobileAuth() && this.container.config.isClaimPoints) {
+			if (this.container.config.isClaimPoints) {
 				if (await selectStream.claimPoints()) {
 					this.container.logger.info(chalk`{green ${selectStream.login}} | Points claimed`)
 				}

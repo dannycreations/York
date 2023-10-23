@@ -1,11 +1,11 @@
 import chalk from 'chalk'
 import { DropMainTask } from './DropMain'
-import { Tasks } from '../lib/types/Enum'
 import { Task } from '../lib/structures/Task'
 import { random, remove, sortBy } from 'lodash'
 import { setTimeout } from 'node:timers/promises'
+import { Tasks } from '../lib/api/constants/Enum'
 import { getTimezoneDate } from '../lib/utils/logger.util'
-import { DropCampaign } from '../lib/types/twitch/ViewerDropsDashboard'
+import { DropCampaign } from '../lib/api/types/ViewerDropsDashboard'
 
 export class DropUpcomingTask extends Task {
 	private isSleeping?: boolean

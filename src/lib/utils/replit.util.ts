@@ -1,17 +1,13 @@
 import { createServer } from 'node:http'
-import { exec } from 'node:child_process'
 import { container } from '@sapphire/pieces'
+import { execSync } from 'node:child_process'
 
 export function isReplit(): boolean {
 	return !!process.env.REPL_ID
 }
 
-export function hasMobileAuth(): boolean {
-	return !!process.env.AUTH_TOKEN_MOBILE
-}
-
 export function processRestart(): void {
-	isReplit() ? exec('kill 1') : process.exit(1)
+	isReplit() ? execSync('kill 1') : process.exit(1)
 }
 
 export function keepAlive(): Promise<void> {

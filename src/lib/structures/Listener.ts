@@ -1,11 +1,13 @@
 import { Piece } from '@sapphire/pieces'
 import { EventEmitter } from 'node:events'
+import { ListenerStore } from './ListenerStore'
 
 export abstract class Listener<O extends Listener.Options = Listener.Options> extends Piece<O> {
-	public readonly once: boolean
-	public readonly event: string | symbol
+	public declare store: ListenerStore
 	public readonly emitter: EventEmitter | null
-	private _listener: ((...args: unknown[]) => void) | null
+	public readonly event: string | symbol
+	public readonly once: boolean
+	private _listener: ((...args: any[]) => void) | null
 
 	public constructor(context: Listener.Context, options: O = {} as O) {
 		super(context, options)
@@ -13,7 +15,9 @@ export abstract class Listener<O extends Listener.Options = Listener.Options> ex
 		this.emitter =
 			typeof options.emitter === 'undefined'
 				? this.container.ev
-				: (typeof options.emitter === 'string' ? (Reflect.get(this.container.ev, options.emitter) as EventEmitter) : options.emitter) ?? null
+				: (typeof options.emitter === 'string'
+						? (Reflect.get(this.container.ev, options.emitter) as EventEmitter)
+						: (options.emitter as EventEmitter)) ?? null
 		this.event = options.event ?? this.name
 		this.once = options.once ?? false
 

@@ -1,14 +1,13 @@
 import userAgent from 'user-agents'
 import { defaultsDeep } from 'lodash'
-import { QueryStore } from './QueryStore'
-import { Constants } from '../types/Enum'
+import { Common } from './constants/Enum'
 import { container } from '@sapphire/pieces'
 import { setTimeout } from 'node:timers/promises'
+import { HelixStreams } from './types/HelixStreams'
 import { processRestart } from '../utils/replit.util'
 import got, { Options, RequestError, Response } from 'got'
-import { HelixStreams } from '../types/twitch/HelixStreams'
 
-export class TwitchApi extends QueryStore {
+export class TwitchApi {
 	private options: Options
 	private isStateInit?: boolean
 	protected authState: {
@@ -19,15 +18,15 @@ export class TwitchApi extends QueryStore {
 	} = {}
 
 	public constructor(access_token: string) {
-		super()
 		const ua = new userAgent({ deviceCategory: 'desktop' })
 		this.options = {
 			method: 'POST',
-			prefixUrl: Constants.ApiUrl,
+			prefixUrl: Common.ApiUrl,
 			headers: {
 				'User-Agent': ua.toString(),
 				Authorization: `OAuth ${access_token}`,
 			},
+			retry: 1,
 			timeout: 60_000,
 			responseType: 'json',
 		}
@@ -55,26 +54,17 @@ export class TwitchApi extends QueryStore {
 					return this.request(options)
 				}
 			}
-			console.log(options)
 
+			console.log(options)
 			throw error
 		}
 	}
 
-	public async graphql<T>(options?: Options): Promise<Graphql<T>[]> {
+	public async graphql<T>(options?: Options): Promise<Graphql<T>> {
 		if ((await this.stateInit()) === null) processRestart()
-		// if (Date.now() >= this.authState.integrity_expires!) await this.integrity()
-
-		const request = []
-		while (super.hasNext()) {
-			request.push(this.request<Graphql<T>[]>({ url: 'gql', body: super.next(), ...options }))
-		}
-
-		const response = await Promise.all(request)
-		return [...response.flatMap((r) => r.body)].map((r) => {
-			if (r.errors?.length) throw r
-			return r
-		})
+		const response = await this.request<Graphql<T>>({ url: 'gql', ...options })
+		if (response.body.errors?.length) throw response.body
+		return response.body
 	}
 
 	private async home() {
@@ -93,7 +83,7 @@ export class TwitchApi extends QueryStore {
 			const res = await this.request<Validate>({ method: 'GET', prefixUrl, url: 'oauth2/validate' })
 
 			this.authState.user_id = res.body.user_id
-			this.options.headers['Client-Id'] = res.body.client_id
+			this.options.headers['Client-Id'] = 'kd1unb4b3q4t58fwlpcbzcbnm76a8fp'
 
 			return true
 		} catch (error) {
@@ -109,8 +99,6 @@ export class TwitchApi extends QueryStore {
 
 		const twitchHome = await this.home()
 		if (!this.unique(twitchHome)) return null
-
-		// if (!(await this.integrity())) return null
 
 		this.isStateInit = true
 		return true
@@ -137,39 +125,11 @@ export class TwitchApi extends QueryStore {
 		}
 	}
 
-	/**
-	 * ! TODO: Bypass x-kpsdk-cd & x-kpsdk-ct
-	 * @note force skip for now
-	 */
-	private async integrity() {
-		this.authState.integrity_expires ??= 0
-		if (!this.authState.integrity_expires) return true
-
-		try {
-			interface Integrity {
-				token: string
-				expiration: number
-				integrity_token: string
-			}
-
-			const res = await this.request<Integrity>({ url: 'integrity' })
-
-			this.authState.integrity_expires = res.body.expiration
-			this.options.headers['Client-Integrity'] = res.body.token
-			this.options.headers['Client-Request-Id'] = ''
-
-			return true
-		} catch (error) {
-			container.logger.error(error, 'Could not fetch your integrity')
-			return false
-		}
-	}
-
-	public async watch({ channel_id, broadcast_id }: ActiveLiveChannel) {
+	public async watch({ login: channel, channel_id, broadcast_id }: ActiveLiveChannel) {
 		try {
 			if (!this.authState.setting) {
 				const twitchHome = await this.home()
-				const settingsReg = new RegExp(Constants.SettingReg)
+				const settingsReg = new RegExp(Common.SettingReg)
 				const settingsUrl = settingsReg.exec(twitchHome.body)![0]
 				if (!settingsUrl) throw 'Could not parsing Settings Url'
 				this.authState.setting = settingsUrl
@@ -180,7 +140,7 @@ export class TwitchApi extends QueryStore {
 
 			if (!this.authState.spade) {
 				const getSettings = await this.request<string>({ method: 'GET', prefixUrl, url: this.authState.setting, responseType })
-				const spadeReg = new RegExp(Constants.SpadeReg)
+				const spadeReg = new RegExp(Common.SpadeReg)
 				const spadeUrl = spadeReg.exec(getSettings.body)![0]
 				if (!spadeUrl) throw 'Could not parsing Spade Url'
 				this.authState.spade = spadeUrl
@@ -189,8 +149,14 @@ export class TwitchApi extends QueryStore {
 			const payload = {
 				event: 'minute-watched',
 				properties: {
-					channel_id,
 					broadcast_id,
+					channel_id,
+					channel,
+					hidden: false,
+					live: true,
+					location: 'channel',
+					logged_in: true,
+					muted: false,
 					player: 'site',
 					user_id: this.authState.user_id,
 				},

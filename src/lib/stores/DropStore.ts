@@ -51,11 +51,6 @@ export class DropStore extends Queue<ActiveTimeBasedDrop> {
 		this.peek(1)!.self.hasPreconditionsMet = true
 	}
 
-	/**
-	 * ! TODO: Bypass integrity check
-	 * @see {@link TwitchApi#integrity}
-	 * @see {@link TwitchGql#useMobileAuth}
-	 */
 	public async claimDrops(): Promise<boolean> {
 		if (!this.dropInstanceID) return false
 

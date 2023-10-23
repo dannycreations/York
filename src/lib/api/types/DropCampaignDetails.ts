@@ -1,5 +1,3 @@
-import { Status } from '../Enum'
-
 export interface DropCampaignDetails {
 	user: User
 }
@@ -17,25 +15,31 @@ export interface DropCampaign {
 	description: string
 	detailsURL: string
 	endAt: string
-	eventBasedDrops: unknown[]
+	eventBasedDrops: any[]
 	game: Game
 	imageURL: string
 	name: string
-	owner: Omit<Game, 'displayName'>
+	owner: Owner
 	startAt: string
-	status: Status
+	status: string
 	timeBasedDrops: TimeBasedDrop[]
 }
 
 export interface Allow {
-	channels: Game[] | null
+	channels: null
 	isEnabled: boolean
 }
 
 export interface Game {
 	id: string
+	displayName?: string
+	name?: string
+	slug?: string
+}
+
+export interface Owner {
+	id: string
 	name: string
-	displayName: string
 }
 
 export interface Self {
@@ -47,7 +51,7 @@ export interface TimeBasedDrop {
 	benefitEdges: BenefitEdge[]
 	endAt: string
 	name: string
-	preconditionDrops: PreconditionDrop[] | null
+	preconditionDrops: null
 	requiredMinutesWatched: number
 	startAt: string
 }
@@ -61,13 +65,9 @@ export interface Benefit {
 	id: string
 	createdAt: string
 	entitlementLimit: number
-	game: Omit<Game, 'displayName'>
+	game: Owner
 	imageAssetURL: string
 	isIosAvailable: boolean
 	name: string
-	ownerOrganization: Omit<Game, 'displayName'>
-}
-
-export interface PreconditionDrop {
-	id: string
+	ownerOrganization: Owner
 }

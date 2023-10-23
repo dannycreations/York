@@ -15,7 +15,7 @@ export interface User {
 	self: Self
 	roles: Roles
 	broadcastSettings: BroadcastSettings
-	stream: Stream | null
+	stream: Stream
 }
 
 export interface AdProperties {
@@ -44,7 +44,7 @@ export interface Stream {
 	id: string
 	broadcasterSoftware: string
 	game: Game
-	tags: Tag[]
+	tags: any[]
 }
 
 export interface Game {

@@ -1,8 +1,8 @@
 import ws from 'ws'
-import { Constants } from '../types/Enum'
+import { Common } from './constants/Enum'
 import { container } from '@sapphire/pieces'
 import { randomString } from '../utils/common.util'
-import { Message, Request, RequestType, Response, ResponseType } from '../types/twitch/WebSocket'
+import { Message, Request, RequestType, Response, ResponseType } from './types/WebSocket'
 
 export class WebSocket {
 	private _resList: Map<string, Request> = new Map()
@@ -16,21 +16,21 @@ export class WebSocket {
 		return new Promise(async (resolve) => {
 			try {
 				container.logger.trace('WS Connecting')
-				container.ev = new ws(Constants.WssUrl)
+				container.ev = new ws(Common.WssUrl)
 				if (container.stores) {
 					const getListeners = container.stores.get('listeners').values()
 					await Promise.all([...getListeners].map((store) => store.reload()))
 				}
 
-				container.ev.once('open', this.onOpen.bind(this))
-				container.ev.once('close', this.reconnect.bind(this))
-				container.ev.on('message', this.onMessage.bind(this))
+				container.ev.removeAllListeners()
+				container.ev.once('open', () => this.onOpen())
+				container.ev.once('close', () => this.reconnect())
+				container.ev.on('message', (buffer: Buffer) => this.onMessage(buffer))
 				container.ev.on('error', (error: Error) => container.logger.error(error, 'at WS onError'))
 				this._timeout.reconnect = setTimeout(() => this.reconnect(), 10_000)
 
-				const interval = setInterval(() => {
+				setInterval(() => {
 					if (container.ev?.readyState === 1) {
-						clearInterval(interval)
 						resolve()
 					}
 				}, 100)
@@ -47,7 +47,7 @@ export class WebSocket {
 		const payload = {
 			type,
 			nonce: randomString(),
-			data: { topics: [topic], auth_token: process.env.AUTH_TOKEN },
+			data: { topics: [topic], auth_token: process.env.AUTH_TOKEN_MOBILE },
 		}
 
 		this._reqList.set(topic, payload)
@@ -111,7 +111,6 @@ export class WebSocket {
 
 	private reconnect(): void {
 		container.logger.trace('WS Reconnect')
-		container.ev.removeAllListeners()
 		clearTimeout(this._timeout.reconnect)
 		this._timeout.reconnect = setTimeout(() => this.connect(), 10_000)
 	}
