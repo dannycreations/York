@@ -26,8 +26,8 @@ export class TwitchApi {
 				'User-Agent': ua.toString(),
 				Authorization: `OAuth ${access_token}`,
 			},
-			retry: 1,
-			timeout: 60_000,
+			retry: 0,
+			timeout: 10_000,
 			responseType: 'json',
 		}
 	}

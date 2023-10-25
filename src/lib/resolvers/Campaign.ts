@@ -112,6 +112,7 @@ export class Campaign {
 		const detail = campaignDetails.data.user.dropCampaign
 		const campaignProgress = this._dropsProgress.find((r) => r.id === detail.id)
 		const timeBasedDrops = cloneDeep(campaignProgress ? campaignProgress.timeBasedDrops : detail.timeBasedDrops) as TimeBasedDrop[]
+		const sortTimeBasedDrops = sortBy(timeBasedDrops, 'requiredMinutesWatched')
 
 		const activeCampaign = {
 			id: detail.id,
@@ -122,7 +123,7 @@ export class Campaign {
 		}
 
 		const activeDrops: ActiveTimeBasedDrop[] = []
-		for (const drop of timeBasedDrops) {
+		for (const drop of sortTimeBasedDrops) {
 			const isStatus = checkStatus(drop.startAt, drop.endAt)
 			if (isStatus.expired) continue
 			if (isStatus.upcoming) {
