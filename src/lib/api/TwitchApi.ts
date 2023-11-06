@@ -55,7 +55,6 @@ export class TwitchApi {
 				}
 			}
 
-			console.log(options)
 			throw error
 		}
 	}
@@ -125,7 +124,7 @@ export class TwitchApi {
 		}
 	}
 
-	public async watch({ login: channel, channel_id, broadcast_id }: ActiveLiveChannel) {
+	public async watch(stream: ActiveLiveChannel) {
 		try {
 			if (!this.authState.setting) {
 				const twitchHome = await this.home()
@@ -149,9 +148,9 @@ export class TwitchApi {
 			const payload = {
 				event: 'minute-watched',
 				properties: {
-					broadcast_id,
-					channel_id,
-					channel,
+					broadcast_id: stream.broadcast_id,
+					channel_id: stream.channel_id,
+					channel: stream.login,
 					hidden: false,
 					live: true,
 					location: 'channel',
@@ -159,6 +158,8 @@ export class TwitchApi {
 					muted: false,
 					player: 'site',
 					user_id: this.authState.user_id,
+					game: stream.game_name || '',
+					game_id: stream.game_id || '',
 				},
 			}
 
@@ -210,4 +211,6 @@ export interface ActiveLiveChannel {
 	login: string
 	channel_id: string
 	broadcast_id: string
+	game_name?: string
+	game_id?: string
 }

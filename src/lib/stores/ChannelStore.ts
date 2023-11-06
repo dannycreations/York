@@ -21,7 +21,9 @@ export class ChannelStore extends Queue<ActiveLiveChannel> {
 		const login = helix.data[0].user_login
 		const channel_id = helix.data[0].user_id
 		const broadcast_id = helix.data[0].id
-		return { login, channel_id, broadcast_id }
+		const game_name = helix.data[0].game_name
+		const game_id = helix.data[0].game_id
+		return { login, channel_id, broadcast_id, game_name, game_id }
 	}
 
 	public async watch(): Promise<boolean> {

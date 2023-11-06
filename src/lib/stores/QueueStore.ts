@@ -4,7 +4,6 @@ export class QueueStore<T> extends Queue<T> {
 	private _isState: StateContext = 1
 	private _isTask: boolean = false
 	private _isSleeping: boolean = false
-	private _taskMap = new Map<string, boolean | null>()
 
 	public isState(state?: StateContext): number {
 		if (typeof state === 'number') {
@@ -25,16 +24,6 @@ export class QueueStore<T> extends Queue<T> {
 			this._isSleeping = bool
 		}
 		return this._isSleeping
-	}
-
-	public isDone(id: string, status?: boolean): boolean {
-		const isTask = this._taskMap.get(id)
-		this._taskMap.set(id, status)
-		if (isTask === true) {
-			this._taskMap.delete(id)
-			return true
-		}
-		return false
 	}
 }
 

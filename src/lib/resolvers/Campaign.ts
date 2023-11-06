@@ -162,7 +162,10 @@ export class Campaign {
 			activeCampaign.drops.enqueue(activeDrops[i])
 		}
 
-		activeCampaign.channels.enqueueMany(await this.getLive(detail.game.slug, detail.allow.channels))
+		if (detail.allow.isEnabled) {
+			const getLive = await this.getLive(detail.game.slug, detail.allow.channels)
+			activeCampaign.channels.enqueueMany(getLive)
+		}
 		return activeCampaign
 	}
 
