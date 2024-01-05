@@ -16,27 +16,27 @@
 		"url": "https://github.com/dannycreations/York/issues"
 	},
 	"dependencies": {
-		"@sapphire/pieces": "^3.7.0",
-		"@sapphire/utilities": "^3.13.0",
+		"@sapphire/pieces": "^4.2.0",
+		"@sapphire/utilities": "^3.15.1",
 		"chalk": "^4.1.2",
 		"dotenv": "^16.3.1",
 		"got": "^11.8.6",
 		"jsonc-parser": "^3.2.0",
 		"lodash": "^4.17.21",
-		"moment-timezone": "^0.5.43",
+		"moment-timezone": "^0.5.44",
 		"nanoid": "^3.3.6",
-		"pino": "^8.16.0",
-		"pino-pretty": "^10.2.3",
-		"user-agents": "^1.0.1444",
-		"ws": "^8.14.2"
+		"pino": "^8.17.2",
+		"pino-pretty": "^10.3.1",
+		"user-agents": "^1.1.74",
+		"ws": "^8.16.0"
 	},
 	"devDependencies": {
-		"@types/lodash": "^4.14.200",
-		"@types/node": "^16.18.36",
-		"@types/user-agents": "^1.0.3",
-		"@types/ws": "^8.5.8",
-		"nodemon": "^3.0.1",
-		"ts-node": "^10.9.1",
-		"typescript": "^5.2.2"
+		"@types/lodash": "^4.14.202",
+		"@types/node": "^18.16.1",
+		"@types/user-agents": "^1.0.4",
+		"@types/ws": "^8.5.10",
+		"nodemon": "^3.0.2",
+		"ts-node": "^10.9.2",
+		"typescript": "^5.3.3"
 	}
 }

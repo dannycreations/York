@@ -69,10 +69,11 @@ export class DropMainTask extends Task {
 						Object.assign(selectDrop, activeCampaign.drops)
 						if (selectDrop.dropInstanceID) break
 						if (!selectDrop.hasMinutesWatchedMet()) {
-							if (selectDrop && selectDrop.requiredMinutesWatched - selectDrop.currentMinutesWatched >= 10) {
+							if (selectDrop?.requiredMinutesWatched - selectDrop?.currentMinutesWatched >= 10) {
 								this.container.logger.info(chalk`{red ${selectDrop.name}} | Possible broken drops`)
 								this.queue.dequeue()
 							}
+
 							return this.run()
 						}
 
