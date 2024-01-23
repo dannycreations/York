@@ -1,7 +1,7 @@
-import ws from 'ws'
-import { Common } from './constants/Enum'
 import { container } from '@sapphire/pieces'
+import ws from 'ws'
 import { randomString } from '../utils/common.util'
+import { Common } from './constants/Enum'
 import { Message, Request, RequestType, Response, ResponseType } from './types/WebSocket'
 
 export class WebSocket {

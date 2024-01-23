@@ -1,14 +1,14 @@
 import { TwitchApi } from './TwitchApi'
-import { Inventory } from './types/Inventory'
-import { FFZStreamFetch } from './types/FFZStreamFetch'
 import { AdRequestHandling } from './types/AdRequestHandling'
+import { ChannelPointsContext } from './types/ChannelPointsContext'
+import { ClaimCommunityPointsMutation } from './types/ClaimCommunityPointsMutation'
+import { ClaimDropRewardsMutation } from './types/ClaimDropRewardsMutation'
 import { DirectoryPageGame } from './types/DirectoryPageGame'
 import { DropCampaignDetails } from './types/DropCampaignDetails'
-import { ChannelPointsContext } from './types/ChannelPointsContext'
-import { ViewerDropsDashboard } from './types/ViewerDropsDashboard'
-import { ClaimDropRewardsMutation } from './types/ClaimDropRewardsMutation'
 import { DropCurrentSessionContext } from './types/DropCurrentSessionContext'
-import { ClaimCommunityPointsMutation } from './types/ClaimCommunityPointsMutation'
+import { FFZStreamFetch } from './types/FFZStreamFetch'
+import { Inventory } from './types/Inventory'
+import { ViewerDropsDashboard } from './types/ViewerDropsDashboard'
 
 export class TwitchGql extends TwitchApi {
 	public constructor(access_token: string) {

@@ -1,11 +1,11 @@
 import chalk from 'chalk'
-import { DropMainTask } from './DropMain'
-import { Task } from '../lib/structures/Task'
 import { random, remove, sortBy } from 'lodash'
 import { setTimeout } from 'node:timers/promises'
 import { Tasks } from '../lib/api/constants/Enum'
-import { getTimezoneDate } from '../lib/utils/logger.util'
 import { DropCampaign } from '../lib/api/types/ViewerDropsDashboard'
+import { Task } from '../lib/structures/Task'
+import { getTimezoneDate } from '../lib/utils/logger.util'
+import { DropMainTask } from './DropMain'
 
 export class DropUpcomingTask extends Task {
 	private isSleeping?: boolean

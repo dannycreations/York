@@ -1,13 +1,13 @@
-import ws from 'ws'
-import { Logger } from 'pino'
-import { join } from 'node:path'
+import { StoreRegistry, container } from '@sapphire/pieces'
 import { parse } from 'jsonc-parser'
+import { existsSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { Logger } from 'pino'
+import ws from 'ws'
 import { TwitchGql } from './api/TwitchGql'
 import { WebSocket } from './api/WebSocket'
-import { existsSync, readFileSync } from 'node:fs'
-import { TaskStore } from './structures/TaskStore'
 import { ListenerStore } from './structures/ListenerStore'
-import { container, StoreRegistry } from '@sapphire/pieces'
+import { TaskStore } from './structures/TaskStore'
 
 export class YorkClient {
 	public constructor() {

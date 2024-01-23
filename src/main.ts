@@ -3,7 +3,7 @@ import 'dotenv/config'
 import { container } from '@sapphire/pieces'
 import { YorkClient } from './lib/YorkClient'
 import { logger } from './lib/utils/logger.util'
-import { isReplit, processRestart, keepAlive } from './lib/utils/replit.util'
+import { isReplit, keepAlive, processRestart } from './lib/utils/replit.util'
 
 async function bootstrap() {
 	container.logger = logger()

@@ -1,14 +1,13 @@
-import { cloneDeep, sortBy } from 'lodash'
 import { container } from '@sapphire/pieces'
-import { DropStore } from '../stores/DropStore'
-import { CampaignDetail } from '../api/TwitchGql'
-import { ActiveLiveChannel } from '../api/TwitchApi'
 import { RequiredExcept } from '@sapphire/utilities'
-import { ChannelStore } from '../stores/ChannelStore'
+import { cloneDeep, sortBy } from 'lodash'
+import { ActiveLiveChannel } from '../api/TwitchApi'
+import { CampaignDetail } from '../api/TwitchGql'
 import { Game } from '../api/types/DropCampaignDetails'
+import { DropCampaignsInProgress, GameEventDrop, TimeBasedDrop as InventoryDrop } from '../api/types/Inventory'
 import { DropCampaign } from '../api/types/ViewerDropsDashboard'
-import { TimeBasedDrop as InventoryDrop } from '../api/types/Inventory'
-import { DropCampaignsInProgress, GameEventDrop } from '../api/types/Inventory'
+import { ChannelStore } from '../stores/ChannelStore'
+import { DropStore } from '../stores/DropStore'
 
 export class Campaign {
 	private _gameList: string[] = []

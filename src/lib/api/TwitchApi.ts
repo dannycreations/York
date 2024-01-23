@@ -1,11 +1,11 @@
-import userAgent from 'user-agents'
-import { defaultsDeep } from 'lodash'
-import { Common } from './constants/Enum'
 import { container } from '@sapphire/pieces'
-import { setTimeout } from 'node:timers/promises'
-import { HelixStreams } from './types/HelixStreams'
-import { processRestart } from '../utils/replit.util'
 import got, { Options, RequestError, Response } from 'got'
+import { defaultsDeep } from 'lodash'
+import { setTimeout } from 'node:timers/promises'
+import userAgent from 'user-agents'
+import { processRestart } from '../utils/replit.util'
+import { Common } from './constants/Enum'
+import { HelixStreams } from './types/HelixStreams'
 
 export class TwitchApi {
 	private options: Options

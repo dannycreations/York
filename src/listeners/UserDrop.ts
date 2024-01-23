@@ -1,9 +1,9 @@
 import chalk from 'chalk'
-import { DropMainTask } from '../tasks/DropMain'
 import { Tasks } from '../lib/api/constants/Enum'
+import { DropClaim, DropProgress, MessageData } from '../lib/api/types/WebSocket'
 import { DropStore } from '../lib/stores/DropStore'
 import { Listener } from '../lib/structures/Listener'
-import { DropClaim, DropProgress, MessageData } from '../lib/api/types/WebSocket'
+import { DropMainTask } from '../tasks/DropMain'
 
 export class UserDropListener extends Listener {
 	public constructor(context: Listener.Context) {

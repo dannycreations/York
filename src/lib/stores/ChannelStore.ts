@@ -1,6 +1,6 @@
-import { Queue } from '../database/Queue'
 import { container } from '@sapphire/pieces'
 import { ActiveLiveChannel } from '../api/TwitchApi'
+import { Queue } from '../database/Queue'
 
 export class ChannelStore extends Queue<ActiveLiveChannel> {
 	public constructor(private gameID?: string) {

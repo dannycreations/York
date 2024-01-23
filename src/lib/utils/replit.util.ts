@@ -1,6 +1,6 @@
-import { createServer } from 'node:http'
 import { container } from '@sapphire/pieces'
 import { execSync } from 'node:child_process'
+import { createServer } from 'node:http'
 
 export function isReplit(): boolean {
 	return !!process.env.REPL_ID

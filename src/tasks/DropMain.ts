@@ -1,12 +1,12 @@
 import chalk from 'chalk'
 import { difference, remove } from 'lodash'
-import { Task } from '../lib/structures/Task'
 import { setTimeout } from 'node:timers/promises'
-import { DropUpcomingTask } from './DropUpcoming'
 import { Tasks } from '../lib/api/constants/Enum'
-import { QueueStore } from '../lib/stores/QueueStore'
 import { RequestType } from '../lib/api/types/WebSocket'
 import { ActiveCampaign, Campaign } from '../lib/resolvers/Campaign'
+import { QueueStore } from '../lib/stores/QueueStore'
+import { Task } from '../lib/structures/Task'
+import { DropUpcomingTask } from './DropUpcoming'
 
 export class DropMainTask extends Task {
 	public queue: QueueStore<ActiveCampaign>

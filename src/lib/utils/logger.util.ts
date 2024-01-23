@@ -1,6 +1,6 @@
-import PinoPretty from 'pino-pretty'
 import { Moment, tz } from 'moment-timezone'
 import pino, { Level, StreamEntry } from 'pino'
+import PinoPretty from 'pino-pretty'
 
 export function logger(level?: Level) {
 	level ||= process.env.NODE_ENV === 'development' ? 'debug' : 'info'
