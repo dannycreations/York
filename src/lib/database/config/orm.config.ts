@@ -1,9 +1,13 @@
+import { BetterSqliteDriver, Options } from '@mikro-orm/better-sqlite'
+import { TsMorphMetadataProvider } from '@mikro-orm/reflection'
+import { SqlHighlighter } from '@mikro-orm/sql-highlighter'
 import { join } from 'path'
-import { Options } from '@mikro-orm/core'
 
 export const ormConfig: Options = {
-	type: 'better-sqlite',
-	dbName: ':memory:',
+	driver: BetterSqliteDriver,
+	dbName: 'sqlite.db',
 	entities: [join(__dirname, '..', 'entities')],
+	highlighter: new SqlHighlighter(),
+	metadataProvider: TsMorphMetadataProvider,
 	allowGlobalContext: true,
 }

@@ -1,6 +1,6 @@
-import { DropEntity } from './drop.entity'
-import { ChannelEntity } from './channel.entity'
 import { Entity, OneToMany, PrimaryKey, Property } from '@mikro-orm/core'
+import { ChannelEntity } from './channel.entity'
+import { DropEntity } from './drop.entity'
 
 @Entity({ tableName: 'campaign' })
 export class CampaignEntity {
@@ -19,9 +19,9 @@ export class CampaignEntity {
 	@Property({ type: Date })
 	endAt: string
 
-	@OneToMany(() => DropEntity, (r) => r.campaign)
+	@OneToMany(() => DropEntity, (r) => r.campaignId)
 	drops: DropEntity[]
 
-	@OneToMany(() => ChannelEntity, (r) => r.campaign)
+	@OneToMany(() => ChannelEntity, (r) => r.campaignId)
 	channels: ChannelEntity[]
 }

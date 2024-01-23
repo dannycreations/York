@@ -1,4 +1,4 @@
 export abstract class AbstractResolver {
-	abstract fetch(): Promise<void>
-	abstract reset(): Promise<void>
+	public abstract fetch(): void | Promise<void>
+	public abstract reset(): void | Promise<void>
 }

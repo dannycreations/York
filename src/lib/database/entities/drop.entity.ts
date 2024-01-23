@@ -1,5 +1,5 @@
-import { CampaignEntity } from './campaign.entity'
 import { Entity, ManyToOne, PrimaryKey, Property } from '@mikro-orm/core'
+import { CampaignEntity } from './campaign.entity'
 
 @Entity({ tableName: 'drop' })
 export class DropEntity {
@@ -31,5 +31,5 @@ export class DropEntity {
 	endAt: string
 
 	@ManyToOne(() => CampaignEntity)
-	campaign: CampaignEntity
+	campaignId: CampaignEntity
 }

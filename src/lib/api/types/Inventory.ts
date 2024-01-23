@@ -1,4 +1,4 @@
-import { Status } from '../Enum'
+import { Status } from '../constants/Enum'
 
 export interface Inventory {
 	currentUser: CurrentUser
@@ -6,13 +6,13 @@ export interface Inventory {
 
 export interface CurrentUser {
 	id: string
-	inventory: UserInventory
+	inventory: InventoryClass
 }
 
-export interface UserInventory {
+export interface InventoryClass {
 	dropCampaignsInProgress: DropCampaignsInProgress[]
 	gameEventDrops: GameEventDrop[]
-	completedRewardCampaigns: unknown[]
+	completedRewardCampaigns: any[]
 }
 
 export interface DropCampaignsInProgress {
@@ -25,22 +25,22 @@ export interface DropCampaignsInProgress {
 	name: string
 	status: Status
 	self: DropCampaignsInProgressSelf
-	game: Omit<Game, 'url' | 'imageAssetURL'>
+	game: Game
 	allow: Allow
-	eventBasedDrops: unknown[]
+	eventBasedDrops: any[]
 	timeBasedDrops: TimeBasedDrop[]
 }
 
 export interface Allow {
-	channels: Omit<Game, 'boxArtURL' | 'imageAssetURL'>[] | null
+	channels: Game[] | null
 }
 
-interface Game {
+export interface Game {
 	id: string
 	name: string
-	url: string
-	boxArtURL: string
-	imageAssetURL: string
+	url?: string
+	boxArtURL?: string
+	imageAssetURL?: string
 }
 
 export interface DropCampaignsInProgressSelf {
@@ -60,7 +60,7 @@ export interface TimeBasedDrop {
 }
 
 export interface BenefitEdge {
-	benefit: Omit<Game, 'url' | 'boxArtURL'>
+	benefit: Game
 	entitlementLimit: number
 	claimCount: number
 }
@@ -80,11 +80,11 @@ export interface TimeBasedDropSelf {
 	hasPreconditionsMet: boolean
 	currentMinutesWatched: number
 	isClaimed: boolean
-	dropInstanceID: string | null
+	dropInstanceID: null
 }
 
 export interface GameEventDrop {
-	game: Pick<Game, 'id' | 'name'>
+	game: null
 	id: string
 	imageURL: string
 	isConnected: boolean

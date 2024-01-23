@@ -5,10 +5,10 @@
 	"author": "Danny Creations",
 	"license": "GPL-3.0",
 	"scripts": {
-		"build": "tsc --build",
+		"build": "rm -rf dist && tsc",
 		"start:pm2": "pm2 start . --stop-exit-codes 0",
 		"start:dev": "rm -rf dist && tsc-watch --onSuccess \"node .\"",
-		"dep:update": "npx npm-check-updates -u -x got,chalk,nanoid,@types/node"
+		"update:dep": "npx npm-check-updates -u -x got,chalk,nanoid,@types/node"
 	},
 	"repository": "github:dannycreations/York",
 	"homepage": "https://github.com/dannycreations/York#readme",
@@ -16,29 +16,32 @@
 		"url": "https://github.com/dannycreations/York/issues"
 	},
 	"dependencies": {
-		"@mikro-orm/better-sqlite": "^5.7.12",
-		"@mikro-orm/core": "^5.7.12",
+		"@mikro-orm/better-sqlite": "^6.0.5",
+		"@mikro-orm/core": "^6.0.5",
+		"@mikro-orm/reflection": "^6.0.5",
 		"@mikro-orm/sql-highlighter": "^1.0.1",
-		"@sapphire/pieces": "^3.6.3",
-		"@sapphire/utilities": "^3.12.0",
+		"@sapphire/pieces": "^4.2.2",
+		"@sapphire/utilities": "^3.15.3",
 		"chalk": "^4.1.2",
-		"dotenv": "^16.1.4",
+		"dotenv": "^16.3.2",
 		"got": "^11.8.6",
-		"jsonc-parser": "^3.2.0",
+		"jsonc-parser": "^3.2.1",
 		"lodash": "^4.17.21",
-		"moment-timezone": "^0.5.43",
-		"nanoid": "^3.3.6",
-		"pino": "^8.14.1",
-		"pino-pretty": "^10.0.0",
-		"user-agents": "^1.0.1407",
-		"ws": "^8.13.0"
+		"moment-timezone": "^0.5.44",
+		"nanoid": "^3.3.7",
+		"pino": "^8.17.2",
+		"pino-pretty": "^10.3.1",
+		"user-agents": "^1.1.93",
+		"ws": "^8.16.0"
 	},
 	"devDependencies": {
-		"@types/lodash": "^4.14.195",
-		"@types/node": "^16.18.35",
-		"@types/user-agents": "^1.0.2",
-		"@types/ws": "^8.5.5",
+		"@types/lodash": "^4.14.202",
+		"@types/node": "^20.11.0",
+		"@types/user-agents": "^1.0.4",
+		"@types/ws": "^8.5.10",
+		"nodemon": "^3.0.3",
+		"ts-node": "^10.9.2",
 		"tsc-watch": "^6.0.4",
-		"typescript": "^5.2.0-dev.20230530"
+		"typescript": "^5.3.3"
 	}
 }

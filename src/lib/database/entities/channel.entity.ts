@@ -1,5 +1,5 @@
-import { CampaignEntity } from './campaign.entity'
 import { Entity, ManyToOne, PrimaryKey, Property } from '@mikro-orm/core'
+import { CampaignEntity } from './campaign.entity'
 
 @Entity({ tableName: 'channel' })
 export class ChannelEntity {
@@ -10,11 +10,11 @@ export class ChannelEntity {
 	login: string
 
 	@Property()
-	channel_id: string
+	channelId: string
 
 	@Property()
-	broadcast_id: string
+	broadcastId: string
 
 	@ManyToOne(() => CampaignEntity)
-	campaign: CampaignEntity
+	campaignId: CampaignEntity
 }

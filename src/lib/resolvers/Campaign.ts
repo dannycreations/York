@@ -1,23 +1,21 @@
-import { sortBy } from 'lodash'
-import { Inventory } from './Inventory'
 import { container } from '@sapphire/pieces'
-import { CampaignDetail } from '../api/TwitchGql'
 import { RequiredExcept } from '@sapphire/utilities'
-import { hasMobileAuth } from '../utils/common.util'
-import { Game } from '../types/twitch/DropCampaignDetails'
-import { checkStatus } from '../helpers/check-status.helper'
+import { cloneDeep, sortBy } from 'lodash'
+import { CampaignDetail } from '../api/TwitchGql'
+import { Game } from '../api/types/DropCampaignDetails'
+import { TimeBasedDrop as InventoryDrop } from '../api/types/Inventory'
+import { checkStatus } from '../helpers/campaign.helper'
+import { Inventory } from './Inventory'
 import { AbstractResolver } from './types/abstract.resolver'
-import { TimeBasedDrop as InventoryDrop } from '../types/twitch/Inventory'
 
 export class Campaign implements AbstractResolver {
-	inventory = new Inventory()
-
-	async fetch(force?: boolean): Promise<void> {
-		if (force) await container.campaignRepository.nativeDelete({})
+	public async fetch(force?: boolean) {
+		if (force) await this.reset()
 		if (await container.campaignRepository.count()) return
 
-		const dropsDashboard = (await container.twitch.dropsDashboard()).at(0)
+		const dropsDashboard = await container.twitch.dropsDashboard()
 		const dropCampaigns = sortBy(dropsDashboard.data.currentUser.dropCampaigns, 'endAt')
+
 		for (let i = 0; i < dropCampaigns.length; i++) {
 			for (let j = i; j < dropCampaigns.length; j++) {
 				if (dropCampaigns[i].game.id !== dropCampaigns[j].game.id) continue
@@ -45,6 +43,7 @@ export class Campaign implements AbstractResolver {
 				startAt: campaign.startAt,
 				endAt: campaign.endAt,
 			}
+
 			if (container.config.isDropPriorityOnly) {
 				if (!!~container.config.priorityList.indexOf(campaign.game.displayName)) {
 					container.campaignRepository.create(campaignEntity)
@@ -56,36 +55,46 @@ export class Campaign implements AbstractResolver {
 		}
 	}
 
-	async checkCampaign(campaign: CampaignDetail) {
-		if (!this.inventory.isFetch) await this.inventory.fetch()
-		const campaignDetails = (await container.twitch.campaignDetails(campaign)).at(0)
+	public async reset() {
+		await Promise.all([
+			container.campaignRepository.nativeDelete({}),
+			container.dropRepository.nativeDelete({}),
+			container.channelRepository.nativeDelete({}),
+		])
+	}
 
-		const detail = campaignDetails.data.user.dropCampaign
-		const campaignProgress = this.inventory.dropsProgress.find((r) => r.id === detail.id)
-		const timeBasedDrops = (campaignProgress ? campaignProgress.timeBasedDrops : detail.timeBasedDrops) as TimeBasedDrop[]
+	public async checkCampaign(campaign: CampaignDetail) {
+		if (!this.inventory.isFetched()) await this.inventory.fetch()
 
-		for (const drop of timeBasedDrops) {
+		const campaignDetail = await container.twitch.campaignDetails(campaign)
+		const dropCampaign = campaignDetail.data.user.dropCampaign
+		if (!dropCampaign.allow.isEnabled) return
+
+		const campaignProgress = this.inventory.findProgress(dropCampaign)
+		const timeBasedDrops = cloneDeep(campaignProgress ? campaignProgress.timeBasedDrops : dropCampaign.timeBasedDrops) as TimeBasedDrop[]
+		const sortTimeBasedDrops = sortBy(timeBasedDrops, 'requiredMinutesWatched')
+
+		for (const drop of sortTimeBasedDrops) {
 			const isStatus = checkStatus(drop.startAt, drop.endAt)
 			if (isStatus.expired) continue
 			if (isStatus.upcoming) {
 				container.campaignRepository.create({
-					id: detail.id,
-					name: detail.name.trim(),
-					game: detail.game.displayName,
+					id: dropCampaign.id,
+					name: dropCampaign.name.trim(),
+					game: dropCampaign.game.displayName,
 					startAt: drop.startAt,
 					endAt: drop.endAt,
 				})
 				continue
 			}
 
-			const selectBenefit = drop.benefitEdges.at(0)
 			if (drop.self) {
 				if (drop.self.isClaimed) continue
 				if (drop.self.currentMinutesWatched >= drop.requiredMinutesWatched) {
-					if (!hasMobileAuth() || !container.config.isClaimDrops) continue
+					if (!container.config.isClaimDrops) continue
 				}
 			} else {
-				if (!!~this.inventory.dropsClaimed.findIndex((r) => r.id === selectBenefit.benefit.id)) continue
+				if (this.inventory.hasClaimed(drop.benefitEdges.at(0))) continue
 			}
 
 			drop.self = {
@@ -106,38 +115,45 @@ export class Campaign implements AbstractResolver {
 				requiredMinutesWatched: drop.requiredMinutesWatched,
 				startAt: drop.startAt,
 				endAt: drop.endAt,
-				campaign: detail.id,
+				campaignId: dropCampaign.id,
 			})
 		}
 
-		return this.getLive(detail.id, detail.game.displayName, detail.allow.channels)
+		const slug = dropCampaign.game.slug
+		const channels = dropCampaign.allow.channels
+		await this.getLive(slug, channels, dropCampaign.id)
 	}
 
-	private async getLive(campaign: string, gameName: string, whitelist: Game[] | null) {
-		if (!whitelist?.length) {
-			const gameDirectory = (await container.twitch.gameDirectory(gameName)).at(0)
+	private async getLive(slug: string, channels: Game[] | null, campaignId: string) {
+		if (channels?.length) {
+			const logins = channels.map((r) => r.name).slice(0, 30)
+			const streamFetch = await container.twitch.streamFetch(logins)
+			const filterSuspend = streamFetch.data.users.filter((r) => r?.stream)
+
+			for (const user of filterSuspend) {
+				container.channelRepository.create({
+					login: user.login,
+					channelId: user.id,
+					broadcastId: user.stream.id,
+					campaignId: campaignId,
+				})
+			}
+		} else {
+			const gameDirectory = await container.twitch.gameDirectory(slug)
 			if (!gameDirectory.data.game?.streams) return
 
 			for (const stream of gameDirectory.data.game.streams.edges) {
-				const broadcast_id = stream.node.id
-				const login = stream.node.broadcaster.login
-				const channel_id = stream.node.broadcaster.id
-				container.channelRepository.create({ login, channel_id, broadcast_id, campaign })
-			}
-		} else {
-			const logins = whitelist.map((r) => r.name).slice(0, 30)
-			const streamFetch = (await container.twitch.streamFetch(logins)).at(0)
-			const filterSuspend = streamFetch.data.users.filter(Boolean)
-			for (const user of filterSuspend) {
-				if (!user.stream) continue
-
-				const login = user.login
-				const channel_id = user.id
-				const broadcast_id = user.stream.id
-				container.channelRepository.create({ login, channel_id, broadcast_id, campaign })
+				container.channelRepository.create({
+					login: stream.node.broadcaster.login,
+					channelId: stream.node.broadcaster.id,
+					broadcastId: stream.node.id,
+					campaignId: campaignId,
+				})
 			}
 		}
 	}
+
+	private inventory = new Inventory()
 }
 
 export interface Offline {

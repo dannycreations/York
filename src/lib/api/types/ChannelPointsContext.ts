@@ -17,11 +17,11 @@ export interface Channel {
 }
 
 export interface CommunityPointsSettings {
-	name: string | null
-	image: Image | null
+	name: null
+	image: null
 	automaticRewards: AutomaticReward[]
 	customRewards: CustomReward[]
-	goals: unknown[]
+	goals: any[]
 	isEnabled: boolean
 	raidPointAmount: number
 	emoteVariants: EmoteVariant[]
@@ -30,21 +30,21 @@ export interface CommunityPointsSettings {
 
 export interface AutomaticReward {
 	id: string
-	backgroundColor: null | string
-	cost: number | null
+	backgroundColor: null
+	cost: null
 	defaultBackgroundColor: string
 	defaultCost: number
-	defaultImage: Image
-	image: Image | null
+	defaultImage: DefaultImage
+	image: null
 	isEnabled: boolean
 	isHiddenForSubs: boolean
 	minimumCost: number
 	type: string
-	updatedForIndicatorAt: null | string
+	updatedForIndicatorAt: string
 	globallyUpdatedForIndicatorAt: string
 }
 
-export interface Image {
+export interface DefaultImage {
 	url: string
 	url2x: string
 	url4x: string
@@ -53,10 +53,10 @@ export interface Image {
 export interface CustomReward {
 	id: string
 	backgroundColor: string
-	cooldownExpiresAt: null | string
+	cooldownExpiresAt: null
 	cost: number
-	defaultImage: Image
-	image: Image
+	defaultImage: DefaultImage
+	image: null
 	maxPerStreamSetting: MaxPerStreamSetting
 	maxPerUserPerStreamSetting: MaxPerUserPerStreamSetting
 	globalCooldownSetting: GlobalCooldownSetting
@@ -66,8 +66,8 @@ export interface CustomReward {
 	isSubOnly: boolean
 	isUserInputRequired: boolean
 	shouldRedemptionsSkipRequestQueue: boolean
-	redemptionsRedeemedCurrentStream: number
-	prompt: string
+	redemptionsRedeemedCurrentStream: null
+	prompt: null | string
 	title: string
 	updatedForIndicatorAt: string
 }
@@ -124,12 +124,20 @@ export interface Emote {
 export interface Modification {
 	id: string
 	emote: Emote
-	modifier: Reward
+	modifier: Modifier
 	globallyUpdatedForIndicatorAt: string
 }
 
-export interface Reward {
-	id: string
+export interface Modifier {
+	id: ID
+}
+
+export enum ID {
+	ModBW = 'MOD_BW',
+	ModHF = 'MOD_HF',
+	ModSg = 'MOD_SG',
+	ModSq = 'MOD_SQ',
+	ModTk = 'MOD_TK',
 }
 
 export interface ChannelSelf {
@@ -139,21 +147,20 @@ export interface ChannelSelf {
 export interface SelfCommunityPoints {
 	availableClaim: Reward | null
 	balance: number
-	activeMultipliers: unknown[]
+	activeMultipliers: any[]
 	canRedeemRewardsForFree: boolean
-	lastViewedContent: Omit<LastViewedContent, 'contentID'>[]
-	userRedemptions: UserRedemption[]
+	lastViewedContent: LastViewedContent[]
+	userRedemptions: any[]
+}
+
+export interface Reward {
+	id: string
 }
 
 export interface LastViewedContent {
 	contentType: string
 	lastViewedAt: string
-	contentID: string
-}
-
-export interface UserRedemption {
-	reward: Reward
-	userRedemptionsCurrentStream: number
+	contentID?: string
 }
 
 export interface CommunitySelf {

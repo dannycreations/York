@@ -1,12 +1,6 @@
 import { Piece } from '@sapphire/pieces'
 
 export abstract class Task<O extends Task.Options = Task.Options> extends Piece<O> {
-	private delay: number = 0
-	private isIdle: boolean = false
-	private isStop: boolean = false
-	private isRunning: boolean = false
-	private timeout?: NodeJS.Timeout
-
 	public constructor(context: Task.Context, options: O = {} as O) {
 		super(context, { ...options, name: (options.name ?? context.name).toUpperCase() })
 
@@ -17,7 +11,7 @@ export abstract class Task<O extends Task.Options = Task.Options> extends Piece<
 	public abstract run(...args: unknown[]): unknown
 
 	public override onLoad(): unknown {
-		this._run(true).then(() => this.loop())
+		this._run(true).then(() => this._loop())
 		return super.onLoad()
 	}
 
@@ -26,27 +20,11 @@ export abstract class Task<O extends Task.Options = Task.Options> extends Piece<
 		return super.onUnload()
 	}
 
-	private async _run(init?: boolean): Promise<void> {
-		this.container.logger.trace(`Task Run: ${this.options.name}`)
-		this.isRunning = true
-		try {
-			if (!init) {
-				await this.run()
-			} else if (this.runOnInit) {
-				await this.runOnInit()
-			}
-		} catch (error) {
-			this.container.logger.error(error, this.location.name)
-		}
-		this.isRunning = false
-		this.container.logger.trace(`Task End: ${this.options.name}`)
-	}
-
-	public isStatus() {
+	public get isStatus() {
 		return {
-			idle: this.isIdle,
-			stop: this.isStop,
-			running: this.isRunning,
+			idle: this._isIdle,
+			stop: this._isStop,
+			running: this._isRunning,
 		}
 	}
 
@@ -54,19 +32,19 @@ export abstract class Task<O extends Task.Options = Task.Options> extends Piece<
 		const maxDelay = 2147483647
 		if (delay > maxDelay) delay = maxDelay
 
-		this.delay = delay
+		this._delay = delay
 	}
 
 	public startTask(force?: boolean): void {
-		this.isStop = false
-		this.loop(force)
+		this._isStop = false
+		this._loop(force)
 	}
 
 	public stopTask(): void {
-		this.isStop = true
+		this._isStop = true
 	}
 
-	protected sleepUntil(f: () => boolean, ms: number = 20): Promise<void> {
+	public sleepUntil(f: () => boolean, ms: number = 20): Promise<void> {
 		return new Promise((resolve) => {
 			const wait = setInterval(() => {
 				if (f()) {
@@ -77,26 +55,53 @@ export abstract class Task<O extends Task.Options = Task.Options> extends Piece<
 		})
 	}
 
-	private async loop(force?: boolean): Promise<void> {
-		clearTimeout(this.timeout)
-		const operations = () => {
-			if (this.isRunning) return true
-			if (this.isStop) {
-				delete this.timeout
-				return true
+	private async _run(init?: boolean): Promise<void> {
+		this.container.logger.trace(`Task Run: ${this.options.name}`)
+		this._isRunning = true
+
+		try {
+			if (!init) {
+				await this.run()
+			} else if (this.runOnInit) {
+				await this.runOnInit()
 			}
+		} catch (error) {
+			this.container.logger.error(error, this.location.name)
 		}
-		if (operations()) return
+
+		this._isRunning = false
+		this.container.logger.trace(`Task End: ${this.options.name}`)
+	}
+
+	private get _status(): boolean {
+		if (this._isRunning) return true
+		if (this._isStop) {
+			delete this._timeout
+			this._isStop = false
+			return true
+		}
+	}
+
+	private async _loop(force?: boolean): Promise<void> {
+		clearTimeout(this._timeout)
+
+		if (this._status) return
 		if (force) await this._run()
 
-		this.isIdle = true
-		this.timeout = setTimeout(() => {
-			this.isIdle = false
-			if (operations()) return
+		this._isIdle = true
+		this._timeout = setTimeout(() => {
+			this._isIdle = false
+			if (this._status) return
 
-			this._run().then(() => this.loop())
-		}, this.delay)
+			this._run().then(() => this._loop())
+		}, this._delay)
 	}
+
+	private _delay: number = 0
+	private _isIdle: boolean = false
+	private _isStop: boolean = false
+	private _isRunning: boolean = false
+	private _timeout?: NodeJS.Timeout
 }
 
 export interface TaskOptions extends Piece.Options {

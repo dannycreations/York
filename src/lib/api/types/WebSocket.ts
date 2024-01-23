@@ -1,7 +1,7 @@
 export enum RequestType {
 	Ping = 'PING',
 	Listen = 'LISTEN',
-	Unlisten = 'UNLISTEN'
+	Unlisten = 'UNLISTEN',
 }
 
 export interface Request {
@@ -17,7 +17,7 @@ export enum ResponseType {
 	Pong = 'PONG',
 	Response = 'RESPONSE',
 	Reconnect = 'RECONNECT',
-	Message = 'MESSAGE'
+	Message = 'MESSAGE',
 }
 
 export interface Response {

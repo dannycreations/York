@@ -1,20 +1,19 @@
-import ws, { WebSocket } from 'ws'
-import { Logger } from 'pino'
-import { join } from 'node:path'
+import { EntityManager, EntityRepository, MikroORM } from '@mikro-orm/core'
+import { StoreRegistry, container } from '@sapphire/pieces'
 import { parse } from 'jsonc-parser'
-import { TwitchGql } from './api/TwitchGql'
-// import { WebSocket } from './api/WebSocket'
 import { existsSync, readFileSync } from 'node:fs'
-import { TaskStore } from './structures/TaskStore'
+import { join } from 'node:path'
+import { Logger } from 'pino'
+import ws from 'ws'
+import { TwitchGql } from './api/TwitchGql'
+import { CampaignEntity } from './database/entities/campaign.entity'
+import { ChannelEntity } from './database/entities/channel.entity'
 import { DropEntity } from './database/entities/drop.entity'
 import { ListenerStore } from './structures/ListenerStore'
-import { container, StoreRegistry } from '@sapphire/pieces'
-import { ChannelEntity } from './database/entities/channel.entity'
-import { CampaignEntity } from './database/entities/campaign.entity'
-import { MikroORM, EntityManager, EntityRepository } from '@mikro-orm/core'
+import { TaskStore } from './structures/TaskStore'
 
 export class YorkClient {
-	constructor() {
+	public constructor() {
 		container.config = {
 			isClaimDrops: false,
 			isClaimPoints: false,
@@ -25,15 +24,14 @@ export class YorkClient {
 		}
 
 		container.client = this
-		// container.ws = new WebSocket()
-		container.twitch = new TwitchGql(process.env.AUTH_TOKEN)
+		container.twitch = new TwitchGql(process.env.AUTH_TOKEN_MOBILE)
 
 		container.stores = new StoreRegistry()
 		container.stores.register(new TaskStore().registerPath(join(__dirname, '..', 'tasks')))
 		container.stores.register(new ListenerStore().registerPath(join(__dirname, '..', 'listeners')))
 	}
 
-	async start(): Promise<void> {
+	public async start() {
 		try {
 			const pathSettings = `${process.cwd()}/settings.json`
 			if (existsSync(pathSettings)) {
@@ -42,7 +40,6 @@ export class YorkClient {
 				Object.freeze(container.config)
 			}
 
-			// await container.ws.connect()
 			await Promise.all([...container.stores.values()].map((store) => store.loadAll()))
 		} catch (error) {
 			container.logger.fatal(error)
@@ -54,10 +51,10 @@ export class YorkClient {
 declare module '@sapphire/pieces' {
 	interface Container {
 		ev: ws
-		ws: WebSocket
 		client: YorkClient
 		logger: Logger
 		twitch: TwitchGql
+
 		config: {
 			isClaimDrops: boolean
 			isClaimPoints: boolean
