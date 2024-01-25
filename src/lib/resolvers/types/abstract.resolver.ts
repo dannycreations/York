@@ -1,4 +1,6 @@
+import { Awaitable } from '@sapphire/utilities'
+
 export abstract class AbstractResolver {
-	public abstract fetch(): void | Promise<void>
-	public abstract reset(): void | Promise<void>
+	public abstract fetch(): Awaitable<void>
+	public abstract reset(): Awaitable<void>
 }

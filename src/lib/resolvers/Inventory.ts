@@ -1,35 +1,57 @@
 import { container } from '@sapphire/pieces'
-import { DropCampaign } from '../api/types/DropCampaignDetails'
-import { BenefitEdge, DropCampaignsInProgress, GameEventDrop } from '../api/types/Inventory'
+import { TwitchGql } from '../api/TwitchGql'
 import { AbstractResolver } from './types/abstract.resolver'
 
 export class Inventory implements AbstractResolver {
+	public static readonly Instance = new Inventory()
+
 	public async fetch() {
-		const inventory = await container.twitch.inventory()
-		this.dropsClaimed = inventory.data.currentUser.inventory.gameEventDrops
-		this.dropsProgress = inventory.data.currentUser.inventory.dropCampaignsInProgress
+		const inventory = await TwitchGql.Instance.inventory()
+		for (const drop of inventory.data.currentUser.inventory.gameEventDrops) {
+			container.dropRepository.create({
+				id: drop.id,
+				name: drop.name,
+				status: 'claimed',
+			})
+		}
+
+		for (const campaign of inventory.data.currentUser.inventory.dropCampaignsInProgress) {
+			for (const drop of campaign.timeBasedDrops) {
+				container.dropRepository.create({
+					id: drop.id,
+					name: drop.benefitEdges.at(0).benefit.name,
+					status: 'progress',
+					dropInstanceId: drop.self.dropInstanceID,
+					preconditionId: drop.preconditionDrops?.at(0).id,
+					hasPreconditionsMet: drop.self.hasPreconditionsMet,
+					currentMinutesWatched: drop.self.currentMinutesWatched,
+					requiredMinutesWatched: drop.requiredMinutesWatched,
+					startAt: drop.startAt,
+					endAt: drop.endAt,
+					campaignId: campaign.id,
+				})
+			}
+		}
+
 		this.isFetch = true
 	}
 
-	public reset() {
+	public async reset() {
 		this.isFetch = false
-		this.dropsClaimed = []
-		this.dropsProgress = []
+		await container.dropRepository.nativeDelete({ status: { $ne: 'new' } })
 	}
 
 	public isFetched() {
 		return this.isFetch
 	}
 
-	public hasClaimed(query: BenefitEdge) {
-		return !!~this.dropsClaimed.findIndex((r) => r.id === query.benefit.id)
+	public async hasClaimed(id: string) {
+		return !!(await container.dropRepository.count({ id, status: 'claimed' }))
 	}
 
-	public findProgress(query: DropCampaign) {
-		return this.dropsProgress.find((r) => r.id === query.id)
+	public async hasProgress(id: string) {
+		return !!(await container.dropRepository.count({ id, status: 'progress' }))
 	}
 
 	private isFetch: boolean
-	private dropsClaimed: GameEventDrop[] = []
-	private dropsProgress: DropCampaignsInProgress[] = []
 }

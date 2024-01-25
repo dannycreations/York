@@ -1,7 +1,7 @@
 import { container } from '@sapphire/pieces'
 import { RequiredExcept } from '@sapphire/utilities'
-import { cloneDeep, sortBy } from 'lodash'
-import { CampaignDetail } from '../api/TwitchGql'
+import { sortBy } from 'lodash'
+import { CampaignDetail, TwitchGql } from '../api/TwitchGql'
 import { Game } from '../api/types/DropCampaignDetails'
 import { TimeBasedDrop as InventoryDrop } from '../api/types/Inventory'
 import { checkStatus } from '../helpers/campaign.helper'
@@ -9,11 +9,13 @@ import { Inventory } from './Inventory'
 import { AbstractResolver } from './types/abstract.resolver'
 
 export class Campaign implements AbstractResolver {
+	public static readonly Instance = new Campaign()
+
 	public async fetch(force?: boolean) {
 		if (force) await this.reset()
 		if (await container.campaignRepository.count()) return
 
-		const dropsDashboard = await container.twitch.dropsDashboard()
+		const dropsDashboard = await TwitchGql.Instance.dropsDashboard()
 		const dropCampaigns = sortBy(dropsDashboard.data.currentUser.dropCampaigns, 'endAt')
 
 		for (let i = 0; i < dropCampaigns.length; i++) {
@@ -64,14 +66,15 @@ export class Campaign implements AbstractResolver {
 	}
 
 	public async checkCampaign(campaign: CampaignDetail) {
-		if (!this.inventory.isFetched()) await this.inventory.fetch()
+		if (!Inventory.Instance.isFetched()) {
+			await Inventory.Instance.fetch()
+		}
 
-		const campaignDetail = await container.twitch.campaignDetails(campaign)
+		const campaignDetail = await TwitchGql.Instance.campaignDetails(campaign)
 		const dropCampaign = campaignDetail.data.user.dropCampaign
 		if (!dropCampaign.allow.isEnabled) return
 
-		const campaignProgress = this.inventory.findProgress(dropCampaign)
-		const timeBasedDrops = cloneDeep(campaignProgress ? campaignProgress.timeBasedDrops : dropCampaign.timeBasedDrops) as TimeBasedDrop[]
+		const timeBasedDrops = dropCampaign.timeBasedDrops as unknown as TimeBasedDrop[]
 		const sortTimeBasedDrops = sortBy(timeBasedDrops, 'requiredMinutesWatched')
 
 		for (const drop of sortTimeBasedDrops) {
@@ -88,26 +91,20 @@ export class Campaign implements AbstractResolver {
 				continue
 			}
 
+			const game = drop.benefitEdges.at(0).benefit
 			if (drop.self) {
 				if (drop.self.isClaimed) continue
 				if (drop.self.currentMinutesWatched >= drop.requiredMinutesWatched) {
 					if (!container.config.isClaimDrops) continue
 				}
 			} else {
-				if (this.inventory.hasClaimed(drop.benefitEdges.at(0))) continue
-			}
-
-			drop.self = {
-				isClaimed: false,
-				dropInstanceID: null,
-				currentMinutesWatched: 0,
-				hasPreconditionsMet: true,
-				...(drop.self as {}),
+				if (Inventory.Instance.hasClaimed(game.id)) continue
+				if (Inventory.Instance.hasProgress(game.id)) continue
 			}
 
 			container.dropRepository.create({
 				id: drop.id,
-				name: drop.benefitEdges.at(0).benefit.name,
+				name: game.name,
 				dropInstanceId: drop.self.dropInstanceID,
 				preconditionId: drop.preconditionDrops?.at(0).id,
 				hasPreconditionsMet: drop.self.hasPreconditionsMet,
@@ -127,7 +124,7 @@ export class Campaign implements AbstractResolver {
 	private async getLive(slug: string, channels: Game[] | null, campaignId: string) {
 		if (channels?.length) {
 			const logins = channels.map((r) => r.name).slice(0, 30)
-			const streamFetch = await container.twitch.streamFetch(logins)
+			const streamFetch = await TwitchGql.Instance.streamFetch(logins)
 			const filterSuspend = streamFetch.data.users.filter((r) => r?.stream)
 
 			for (const user of filterSuspend) {
@@ -139,7 +136,7 @@ export class Campaign implements AbstractResolver {
 				})
 			}
 		} else {
-			const gameDirectory = await container.twitch.gameDirectory(slug)
+			const gameDirectory = await TwitchGql.Instance.gameDirectory(slug)
 			if (!gameDirectory.data.game?.streams) return
 
 			for (const stream of gameDirectory.data.game.streams.edges) {
@@ -152,8 +149,6 @@ export class Campaign implements AbstractResolver {
 			}
 		}
 	}
-
-	private inventory = new Inventory()
 }
 
 export interface Offline {

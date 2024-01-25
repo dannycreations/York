@@ -13,8 +13,13 @@ export async function MikroORM() {
 	container.channelRepository = container.em.getRepository(ChannelEntity)
 
 	const generator = container.orm.getSchemaGenerator()
-	await generator.ensureDatabase()
-	await generator.updateSchema()
+	if (process.env.NODE_ENV === 'development') {
+		await generator.dropSchema()
+		await generator.createSchema()
+	} else {
+		await generator.ensureDatabase()
+		await generator.updateSchema()
+	}
 
 	container.logger.info('MikroORM successfully connected.')
 }

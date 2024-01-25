@@ -9,6 +9,9 @@ export class DropEntity {
 	@Property()
 	name: string
 
+	@Property()
+	status: 'new' | 'progress' | 'claimed'
+
 	@Property({ nullable: true })
 	dropInstanceId?: string
 

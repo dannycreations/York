@@ -7,8 +7,6 @@ import { Common } from './constants/Enum'
 import { HelixStreams } from './types/HelixStreams'
 
 export class TwitchApi {
-	private options: Options
-	private isStateInit?: boolean
 	protected authState: {
 		spade?: string
 		setting?: string
@@ -191,6 +189,9 @@ export class TwitchApi {
 			return false
 		}
 	}
+
+	private options: Options
+	private isStateInit?: boolean
 }
 
 export interface Graphql<T = {}> {

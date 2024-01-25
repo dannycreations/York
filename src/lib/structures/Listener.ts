@@ -1,15 +1,13 @@
 import { Piece } from '@sapphire/pieces'
 import { EventEmitter } from 'node:events'
-import { ListenerStore } from './ListenerStore'
 
-export abstract class Listener<O extends Listener.Options = Listener.Options> extends Piece<O> {
-	public declare store: ListenerStore
+export abstract class Listener<Options extends Listener.Options = Listener.Options> extends Piece<Options, 'listeners'> {
 	public readonly emitter: EventEmitter | null
 	public readonly event: string | symbol
 	public readonly once: boolean
 	private _listener: ((...args: any[]) => void) | null
 
-	public constructor(context: Listener.Context, options: O = {} as O) {
+	public constructor(context: Listener.LoaderContext, options: Options = {} as Options) {
 		super(context, options)
 
 		this.emitter =
@@ -23,43 +21,25 @@ export abstract class Listener<O extends Listener.Options = Listener.Options> ex
 
 		this._listener = this.emitter && this.event ? (this.once ? this._runOnce.bind(this) : this._run.bind(this)) : null
 
+		// If there's no emitter or no listener, disable:
 		if (this.emitter === null || this._listener === null) this.enabled = false
 	}
 
 	public abstract run(...args: unknown[]): unknown
 
-	public override onLoad(): unknown {
-		if (this._listener) {
-			const emitter = this.emitter!
-			const maxListeners = emitter.getMaxListeners()
-			if (maxListeners !== 0) emitter.setMaxListeners(maxListeners + 1)
-			emitter[this.once ? 'once' : 'on'](this.event, this._listener)
-		}
-		return super.onLoad()
-	}
-
-	public override onUnload(): unknown {
-		if (!this.once && this._listener) {
-			const emitter = this.emitter!
-			const maxListeners = emitter.getMaxListeners()
-			if (maxListeners !== 0) emitter.setMaxListeners(maxListeners - 1)
-			emitter.off(this.event, this._listener)
-			this._listener = null
-		}
-		return super.onUnload()
-	}
-
-	private async _run(...args: unknown[]): Promise<void> {
+	private async _run(...args: unknown[]) {
 		this.container.logger.trace(`Listener Run: ${this.options.event!.toString()}`)
+
 		try {
 			await this.run(...args)
 		} catch (error) {
 			this.container.logger.error(error, this.location.name)
 		}
+
 		this.container.logger.trace(`Listener End: ${this.options.event!.toString()}`)
 	}
 
-	private async _runOnce(...args: unknown[]): Promise<void> {
+	private async _runOnce(...args: unknown[]) {
 		await this._run(...args)
 		await this.unload()
 	}
@@ -73,5 +53,5 @@ export interface ListenerOptions extends Piece.Options {
 
 export namespace Listener {
 	export type Options = ListenerOptions
-	export type Context = Piece.Context
+	export type LoaderContext = Piece.LoaderContext<'listeners'>
 }

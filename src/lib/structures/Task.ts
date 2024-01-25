@@ -1,7 +1,7 @@
 import { Piece } from '@sapphire/pieces'
 
-export abstract class Task<O extends Task.Options = Task.Options> extends Piece<O> {
-	public constructor(context: Task.Context, options: O = {} as O) {
+export abstract class Task<Options extends Task.Options = Task.Options> extends Piece<Options, 'tasks'> {
+	public constructor(context: Task.LoaderContext, options: Options = {} as Options) {
 		super(context, { ...options, name: (options.name ?? context.name).toUpperCase() })
 
 		this.setDelay(options.delay)
@@ -9,16 +9,6 @@ export abstract class Task<O extends Task.Options = Task.Options> extends Piece<
 
 	public runOnInit?(): unknown
 	public abstract run(...args: unknown[]): unknown
-
-	public override onLoad(): unknown {
-		this._run(true).then(() => this._loop())
-		return super.onLoad()
-	}
-
-	public override onUnload(): unknown {
-		this.stopTask()
-		return super.onUnload()
-	}
 
 	public get isStatus() {
 		return {
@@ -28,34 +18,34 @@ export abstract class Task<O extends Task.Options = Task.Options> extends Piece<
 		}
 	}
 
-	public setDelay(delay: number): void {
+	public setDelay(delay: number) {
 		const maxDelay = 2147483647
 		if (delay > maxDelay) delay = maxDelay
 
 		this._delay = delay
 	}
 
-	public startTask(force?: boolean): void {
+	public startTask(force?: boolean) {
 		this._isStop = false
 		this._loop(force)
 	}
 
-	public stopTask(): void {
+	public stopTask() {
 		this._isStop = true
 	}
 
-	public sleepUntil(f: () => boolean, ms: number = 20): Promise<void> {
+	public sleepUntil(f: () => boolean, ms: number = 20) {
 		return new Promise((resolve) => {
 			const wait = setInterval(() => {
 				if (f()) {
 					clearInterval(wait)
-					resolve()
+					resolve(true)
 				}
 			}, ms)
 		})
 	}
 
-	private async _run(init?: boolean): Promise<void> {
+	private async _run(init?: boolean) {
 		this.container.logger.trace(`Task Run: ${this.options.name}`)
 		this._isRunning = true
 
@@ -73,7 +63,7 @@ export abstract class Task<O extends Task.Options = Task.Options> extends Piece<
 		this.container.logger.trace(`Task End: ${this.options.name}`)
 	}
 
-	private get _status(): boolean {
+	private get _status() {
 		if (this._isRunning) return true
 		if (this._isStop) {
 			delete this._timeout
@@ -82,7 +72,7 @@ export abstract class Task<O extends Task.Options = Task.Options> extends Piece<
 		}
 	}
 
-	private async _loop(force?: boolean): Promise<void> {
+	private async _loop(force?: boolean) {
 		clearTimeout(this._timeout)
 
 		if (this._status) return
@@ -110,5 +100,5 @@ export interface TaskOptions extends Piece.Options {
 
 export namespace Task {
 	export type Options = TaskOptions
-	export type Context = Piece.Context
+	export type LoaderContext = Piece.LoaderContext<'tasks'>
 }

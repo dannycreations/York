@@ -5,14 +5,9 @@ import { Common } from './constants/Enum'
 import { Message, Request, RequestType, Response, ResponseType } from './types/WebSocket'
 
 export class WebSocket {
-	private _resList: Map<string, Request> = new Map()
-	private _reqList: Map<string, Request> = new Map()
-	private _timeout: {
-		ping?: NodeJS.Timeout
-		reconnect?: NodeJS.Timeout
-	} = {}
+	public static Instance = new WebSocket()
 
-	public async connect(): Promise<void> {
+	public async connect() {
 		return new Promise(async (resolve) => {
 			try {
 				container.logger.trace('WS Connecting')
@@ -31,7 +26,7 @@ export class WebSocket {
 
 				setInterval(() => {
 					if (container.ev?.readyState === 1) {
-						resolve()
+						resolve(true)
 					}
 				}, 100)
 			} catch (error) {
@@ -40,7 +35,7 @@ export class WebSocket {
 		})
 	}
 
-	public async send(type: RequestType, topic: string): Promise<void> {
+	public async send(type: RequestType, topic: string) {
 		if (this._resList.has(topic) || this._reqList.has(topic)) return
 
 		container.logger.trace(`WS Send: ${type} ${topic}`)
@@ -54,7 +49,7 @@ export class WebSocket {
 		await this.sendPromise(payload)
 	}
 
-	private async onOpen(): Promise<void> {
+	private async onOpen() {
 		container.logger.trace('WS Connected')
 		clearTimeout(this._timeout.reconnect)
 		await this.ping()
@@ -66,7 +61,7 @@ export class WebSocket {
 		await Promise.all(eventList.map((r) => this.send(r.type, r.data.topics[0])))
 	}
 
-	private onMessage(buffer: Buffer): void {
+	private onMessage(buffer: Buffer) {
 		const response = JSON.parse(buffer.toString()) as Response
 		switch (response.type) {
 			case ResponseType.Pong:
@@ -101,7 +96,7 @@ export class WebSocket {
 		}
 	}
 
-	private async ping(): Promise<void> {
+	private async ping() {
 		// Ping every 4 minutes
 		clearTimeout(this._timeout.ping)
 		this._timeout.ping = setTimeout(() => this.ping(), 240_000)
@@ -109,20 +104,27 @@ export class WebSocket {
 		await this.sendPromise({ type: RequestType.Ping } as Request)
 	}
 
-	private reconnect(): void {
+	private reconnect() {
 		container.logger.trace('WS Reconnect')
 		clearTimeout(this._timeout.reconnect)
 		this._timeout.reconnect = setTimeout(() => this.connect(), 10_000)
 	}
 
-	private async sendPromise(request: Request): Promise<void> {
+	private async sendPromise(request: Request) {
 		return new Promise((resolve) => {
 			try {
 				const payload = JSON.stringify(request)
-				container.ev.send(payload, () => resolve())
+				container.ev.send(payload, () => resolve(true))
 			} catch {
-				resolve()
+				resolve(false)
 			}
 		})
 	}
+
+	private _resList: Map<string, Request> = new Map()
+	private _reqList: Map<string, Request> = new Map()
+	private _timeout: {
+		ping?: NodeJS.Timeout
+		reconnect?: NodeJS.Timeout
+	} = {}
 }

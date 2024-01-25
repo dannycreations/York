@@ -11,9 +11,7 @@ import { Inventory } from './types/Inventory'
 import { ViewerDropsDashboard } from './types/ViewerDropsDashboard'
 
 export class TwitchGql extends TwitchApi {
-	public constructor(access_token: string) {
-		super(access_token)
-	}
+	public static Instance = new TwitchGql(process.env.AUTH_TOKEN_MOBILE)
 
 	public async dropsDashboard() {
 		return super.graphql<ViewerDropsDashboard>({

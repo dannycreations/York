@@ -5,7 +5,6 @@ import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { Logger } from 'pino'
 import ws from 'ws'
-import { TwitchGql } from './api/TwitchGql'
 import { CampaignEntity } from './database/entities/campaign.entity'
 import { ChannelEntity } from './database/entities/channel.entity'
 import { DropEntity } from './database/entities/drop.entity'
@@ -22,9 +21,6 @@ export class YorkClient {
 			priorityList: [],
 			exclusionList: [],
 		}
-
-		container.client = this
-		container.twitch = new TwitchGql(process.env.AUTH_TOKEN_MOBILE)
 
 		container.stores = new StoreRegistry()
 		container.stores.register(new TaskStore().registerPath(join(__dirname, '..', 'tasks')))
@@ -51,9 +47,7 @@ export class YorkClient {
 declare module '@sapphire/pieces' {
 	interface Container {
 		ev: ws
-		client: YorkClient
 		logger: Logger
-		twitch: TwitchGql
 
 		config: {
 			isClaimDrops: boolean
