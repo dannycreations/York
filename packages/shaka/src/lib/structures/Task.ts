@@ -1,4 +1,5 @@
 import { Piece } from '@sapphire/pieces'
+import { Result } from '@sapphire/result'
 
 export abstract class Task<Options extends Task.Options = Task.Options> extends Piece<Options, 'tasks'> {
 	public constructor(context: Task.LoaderContext, options: Options = {} as Options) {
@@ -34,30 +35,18 @@ export abstract class Task<Options extends Task.Options = Task.Options> extends 
 		this._isStop = true
 	}
 
-	public sleepUntil(f: () => boolean, ms: number = 20) {
-		return new Promise((resolve) => {
-			const wait = setInterval(() => {
-				if (f()) {
-					clearInterval(wait)
-					resolve(true)
-				}
-			}, ms)
-		})
-	}
-
 	private async _run(init?: boolean) {
 		this.container.logger.trace(`Task Run: ${this.options.name}`)
 		this._isRunning = true
 
-		try {
+		const result = await Result.fromAsync(async () => {
 			if (!init) {
 				await this.run()
 			} else if (this.runOnInit) {
 				await this.runOnInit()
 			}
-		} catch (error) {
-			this.container.logger.error(error, this.location.name)
-		}
+		})
+		result.inspectErr((error) => this.container.logger.error(error, this.location.name))
 
 		this._isRunning = false
 		this.container.logger.trace(`Task End: ${this.options.name}`)

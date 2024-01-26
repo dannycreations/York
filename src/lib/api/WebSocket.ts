@@ -1,6 +1,6 @@
-import { container } from '@sapphire/pieces'
+import { container } from '@dnycts/shaka'
+import { randomString } from '@dnycts/utilities'
 import ws from 'ws'
-import { randomString } from '../utils/common.util'
 import { Common } from './constants/Enum'
 import { Message, Request, RequestType, Response, ResponseType } from './types/WebSocket'
 
@@ -11,21 +11,21 @@ export class WebSocket {
 		return new Promise(async (resolve) => {
 			try {
 				container.logger.trace('WS Connecting')
-				container.ev = new ws(Common.WssUrl)
+				this._ev = new ws(Common.WssUrl)
 				if (container.stores) {
 					const getListeners = container.stores.get('listeners').values()
 					await Promise.all([...getListeners].map((store) => store.reload()))
 				}
 
-				container.ev.removeAllListeners()
-				container.ev.once('open', () => this.onOpen())
-				container.ev.once('close', () => this.reconnect())
-				container.ev.on('message', (buffer: Buffer) => this.onMessage(buffer))
-				container.ev.on('error', (error: Error) => container.logger.error(error, 'at WS onError'))
+				this._ev.removeAllListeners()
+				this._ev.once('open', () => this.onOpen())
+				this._ev.once('close', () => this.reconnect())
+				this._ev.on('message', (buffer: Buffer) => this.onMessage(buffer))
+				this._ev.on('error', (error: Error) => container.logger.error(error, 'at WS onError'))
 				this._timeout.reconnect = setTimeout(() => this.reconnect(), 10_000)
 
 				setInterval(() => {
-					if (container.ev?.readyState === 1) {
+					if (this._ev?.readyState === 1) {
 						resolve(true)
 					}
 				}, 100)
@@ -89,7 +89,7 @@ export class WebSocket {
 				const message = response as unknown as Message
 				const resEventTopic = message.data.topic.split('.')[0]
 				const resEventMessage = JSON.parse(message.data.message)
-				container.ev.emit(resEventTopic, resEventMessage)
+				container.client.emit(resEventTopic, resEventMessage)
 				break
 			default:
 				container.logger.warn(response, 'Unknown websocket message 2')
@@ -114,13 +114,14 @@ export class WebSocket {
 		return new Promise((resolve) => {
 			try {
 				const payload = JSON.stringify(request)
-				container.ev.send(payload, () => resolve(true))
+				this._ev.send(payload, () => resolve(true))
 			} catch {
 				resolve(false)
 			}
 		})
 	}
 
+	private _ev: ws
 	private _resList: Map<string, Request> = new Map()
 	private _reqList: Map<string, Request> = new Map()
 	private _timeout: {

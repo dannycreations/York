@@ -1,4 +1,4 @@
-import { container } from '@sapphire/pieces'
+import { container } from '@dnycts/shaka'
 import got, { Options, RequestError, Response } from 'got'
 import { defaultsDeep } from 'lodash'
 import { setTimeout } from 'node:timers/promises'

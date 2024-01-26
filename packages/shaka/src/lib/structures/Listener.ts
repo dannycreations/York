@@ -1,20 +1,20 @@
 import { Piece } from '@sapphire/pieces'
+import { Result } from '@sapphire/result'
 import { EventEmitter } from 'node:events'
 
 export abstract class Listener<Options extends Listener.Options = Listener.Options> extends Piece<Options, 'listeners'> {
 	public readonly emitter: EventEmitter | null
 	public readonly event: string | symbol
 	public readonly once: boolean
-	private _listener: ((...args: any[]) => void) | null
 
 	public constructor(context: Listener.LoaderContext, options: Options = {} as Options) {
 		super(context, options)
 
 		this.emitter =
 			typeof options.emitter === 'undefined'
-				? this.container.ev
+				? this.container.client
 				: (typeof options.emitter === 'string'
-						? (Reflect.get(this.container.ev, options.emitter) as EventEmitter)
+						? (Reflect.get(this.container.client, options.emitter) as EventEmitter)
 						: (options.emitter as EventEmitter)) ?? null
 		this.event = options.event ?? this.name
 		this.once = options.once ?? false
@@ -30,11 +30,8 @@ export abstract class Listener<Options extends Listener.Options = Listener.Optio
 	private async _run(...args: unknown[]) {
 		this.container.logger.trace(`Listener Run: ${this.options.event!.toString()}`)
 
-		try {
-			await this.run(...args)
-		} catch (error) {
-			this.container.logger.error(error, this.location.name)
-		}
+		const result = await Result.fromAsync(() => this.run(...args))
+		result.inspectErr((error) => this.container.logger.error(error, this.location.name))
 
 		this.container.logger.trace(`Listener End: ${this.options.event!.toString()}`)
 	}
@@ -43,6 +40,8 @@ export abstract class Listener<Options extends Listener.Options = Listener.Optio
 		await this._run(...args)
 		await this.unload()
 	}
+
+	private _listener: ((...args: any[]) => void) | null
 }
 
 export interface ListenerOptions extends Piece.Options {

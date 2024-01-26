@@ -1,9 +1,9 @@
 import 'dotenv/config'
 
-import { container } from '@sapphire/pieces'
+import { logger } from '@dnycts/logger'
+import { MikroORM, configBetterSqlite } from '@dnycts/mikro-orm'
+import { container } from '@dnycts/shaka'
 import { YorkClient } from './lib/YorkClient'
-import { MikroORM } from './lib/database/MikroORM'
-import { logger } from './lib/utils/logger.util'
 
 if (process.env.NODE_INSPECT === 'true' && process.env.NODE_ENV === 'development') {
 	globalThis.container = container
@@ -12,7 +12,7 @@ if (process.env.NODE_INSPECT === 'true' && process.env.NODE_ENV === 'development
 async function bootstrap() {
 	container.logger = logger()
 
-	await MikroORM()
+	await MikroORM(configBetterSqlite())
 	new YorkClient().start()
 }
 bootstrap()

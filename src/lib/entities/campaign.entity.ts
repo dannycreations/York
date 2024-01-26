@@ -1,4 +1,4 @@
-import { Entity, OneToMany, PrimaryKey, Property } from '@mikro-orm/core'
+import { Entity, OneToMany, PrimaryKey, Property } from '@mikro-orm/better-sqlite'
 import { ChannelEntity } from './channel.entity'
 import { DropEntity } from './drop.entity'
 

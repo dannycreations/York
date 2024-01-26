@@ -1,72 +1,48 @@
-import { EntityManager, EntityRepository, MikroORM } from '@mikro-orm/core'
-import { StoreRegistry, container } from '@sapphire/pieces'
-import { parse } from 'jsonc-parser'
+import { ListenerStore, ShakaClient, TaskStore, container } from '@dnycts/shaka'
+import { parseJson } from '@dnycts/utilities'
+import { EntityRepository } from '@mikro-orm/better-sqlite'
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { Logger } from 'pino'
-import ws from 'ws'
-import { CampaignEntity } from './database/entities/campaign.entity'
-import { ChannelEntity } from './database/entities/channel.entity'
-import { DropEntity } from './database/entities/drop.entity'
-import { ListenerStore } from './structures/ListenerStore'
-import { TaskStore } from './structures/TaskStore'
+import { CampaignEntity } from './entities/campaign.entity'
+import { ChannelEntity } from './entities/channel.entity'
+import { DropEntity } from './entities/drop.entity'
 
-export class YorkClient {
+export class YorkClient extends ShakaClient {
+	public readonly config = {
+		isClaimDrops: false,
+		isClaimPoints: false,
+		isDropPriorityOnly: true,
+		usePriorityConnected: true,
+		priorityList: [],
+		exclusionList: [],
+	}
+
 	public constructor() {
-		container.config = {
-			isClaimDrops: false,
-			isClaimPoints: false,
-			isDropPriorityOnly: true,
-			usePriorityConnected: true,
-			priorityList: [],
-			exclusionList: [],
-		}
+		super()
+		container.campaignRepository = container.em.getRepository(CampaignEntity)
+		container.dropRepository = container.em.getRepository(DropEntity)
+		container.channelRepository = container.em.getRepository(ChannelEntity)
 
-		container.stores = new StoreRegistry()
-		container.stores.register(new TaskStore().registerPath(join(__dirname, '..', 'tasks')))
-		container.stores.register(new ListenerStore().registerPath(join(__dirname, '..', 'listeners')))
+		this.stores.register(new TaskStore().registerPath(join(__dirname, '..', 'tasks')))
+		this.stores.register(new ListenerStore().registerPath(join(__dirname, '..', 'listeners')))
 	}
 
 	public async start() {
-		try {
-			const pathSettings = `${process.cwd()}/settings.json`
-			if (existsSync(pathSettings)) {
-				const config = parse(readFileSync(pathSettings, 'utf8'))
-				Object.assign(container.config, config)
-				Object.freeze(container.config)
-			}
-
-			await Promise.all([...container.stores.values()].map((store) => store.loadAll()))
-		} catch (error) {
-			container.logger.fatal(error)
-			process.exit()
+		const pathSettings = join(process.cwd(), 'settings.json')
+		if (existsSync(pathSettings)) {
+			const config = parseJson(readFileSync(pathSettings, 'utf8'))
+			Object.assign(this.config, config)
+			Object.freeze(this.config)
 		}
+
+		await super.start()
 	}
 }
 
 declare module '@sapphire/pieces' {
 	interface Container {
-		ev: ws
-		logger: Logger
-
-		config: {
-			isClaimDrops: boolean
-			isClaimPoints: boolean
-			isDropPriorityOnly: boolean
-			usePriorityConnected: boolean
-			priorityList: string[]
-			exclusionList: string[]
-		}
-
-		orm: MikroORM
-		em: EntityManager
 		campaignRepository: EntityRepository<CampaignEntity>
 		dropRepository: EntityRepository<DropEntity>
 		channelRepository: EntityRepository<ChannelEntity>
-	}
-
-	interface StoreRegistryEntries {
-		tasks: TaskStore
-		listeners: ListenerStore
 	}
 }

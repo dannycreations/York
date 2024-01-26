@@ -1,4 +1,3 @@
-import { customAlphabet } from 'nanoid'
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 
 export function writeDebugFile(data: string | object, name?: string): void {
@@ -12,12 +11,4 @@ export function writeDebugFile(data: string | object, name?: string): void {
 
 export function hasMobileAuth(): boolean {
 	return !!process.env.AUTH_TOKEN_MOBILE
-}
-
-export function randomString(length: number = 30, str?: string): string {
-	const asciiDigits = '0123456789'
-	const asciiLowers = 'abcdefghijklmnopqrstuvwxyz'
-	const asciiUppers = asciiLowers.toUpperCase()
-	str ||= asciiLowers + asciiUppers + asciiDigits
-	return customAlphabet(str, length)()
 }

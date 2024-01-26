@@ -1,0 +1,18 @@
+{
+	"name": "@dnycts/logger",
+	"version": "0.0.1",
+	"description": "",
+	"main": "dist/main.js",
+	"types": "dist/main.d.ts",
+	"author": "Danny Creations",
+	"license": "GPL-3.0",
+	"private": true,
+	"scripts": {
+		"build": "rm -rf dist tsconfig.tsbuildinfo && tsc"
+	},
+	"dependencies": {
+		"moment-timezone": "^0.5.44",
+		"pino": "^8.17.2",
+		"pino-pretty": "^10.3.1"
+	}
+}

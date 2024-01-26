@@ -1,4 +1,4 @@
-import { container } from '@sapphire/pieces'
+import { container } from '@dnycts/shaka'
 import { TwitchGql } from '../api/TwitchGql'
 import { AbstractResolver } from './types/abstract.resolver'
 

@@ -131,6 +131,5 @@ dist
 
 debug
 temp
-
-*.db
 settings.json
+sqlite.db

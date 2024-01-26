@@ -1,6 +1,7 @@
 import { container } from '@sapphire/pieces'
 import { RequiredExcept } from '@sapphire/utilities'
 import { sortBy } from 'lodash'
+import { YorkClient } from '../YorkClient'
 import { CampaignDetail, TwitchGql } from '../api/TwitchGql'
 import { Game } from '../api/types/DropCampaignDetails'
 import { TimeBasedDrop as InventoryDrop } from '../api/types/Inventory'
@@ -28,13 +29,15 @@ export class Campaign implements AbstractResolver {
 			}
 		}
 
+		const config = (container.client as YorkClient).config
+
 		for (const campaign of dropCampaigns) {
 			const isStatus = checkStatus(campaign.startAt, campaign.endAt)
 			if (isStatus.expired) continue
-			if (!!~container.config.exclusionList.indexOf(campaign.game.displayName)) continue
-			if (container.config.usePriorityConnected && campaign.self.isAccountConnected) {
-				if (!~container.config.priorityList.indexOf(campaign.game.displayName)) {
-					container.config.priorityList.push(campaign.game.displayName)
+			if (!!~config.exclusionList.indexOf(campaign.game.displayName)) continue
+			if (config.usePriorityConnected && campaign.self.isAccountConnected) {
+				if (!~config.priorityList.indexOf(campaign.game.displayName)) {
+					config.priorityList.push(campaign.game.displayName)
 				}
 			}
 
@@ -46,8 +49,8 @@ export class Campaign implements AbstractResolver {
 				endAt: campaign.endAt,
 			}
 
-			if (container.config.isDropPriorityOnly) {
-				if (!!~container.config.priorityList.indexOf(campaign.game.displayName)) {
+			if (config.isDropPriorityOnly) {
+				if (!!~config.priorityList.indexOf(campaign.game.displayName)) {
 					container.campaignRepository.create(campaignEntity)
 				}
 				continue
@@ -77,6 +80,8 @@ export class Campaign implements AbstractResolver {
 		const timeBasedDrops = dropCampaign.timeBasedDrops as unknown as TimeBasedDrop[]
 		const sortTimeBasedDrops = sortBy(timeBasedDrops, 'requiredMinutesWatched')
 
+		const config = (container.client as YorkClient).config
+
 		for (const drop of sortTimeBasedDrops) {
 			const isStatus = checkStatus(drop.startAt, drop.endAt)
 			if (isStatus.expired) continue
@@ -95,7 +100,7 @@ export class Campaign implements AbstractResolver {
 			if (drop.self) {
 				if (drop.self.isClaimed) continue
 				if (drop.self.currentMinutesWatched >= drop.requiredMinutesWatched) {
-					if (!container.config.isClaimDrops) continue
+					if (!config.isClaimDrops) continue
 				}
 			} else {
 				if (Inventory.Instance.hasClaimed(game.id)) continue
@@ -149,26 +154,6 @@ export class Campaign implements AbstractResolver {
 			}
 		}
 	}
-}
-
-export interface Offline {
-	id: string
-	game: string
-}
-
-export interface Upcoming extends Omit<ActiveCampaign, 'drops' | 'channels'> {
-	startAt: string
-	endAt: string
-}
-
-export interface ActiveCampaign {
-	id: string
-	name: string
-	game: {
-		displayName: string
-	}
-	// drops: DropStore
-	// channels: ChannelStore
 }
 
 export interface TimeBasedDrop extends RequiredExcept<InventoryDrop, 'self' | 'campaign'> {}

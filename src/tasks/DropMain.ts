@@ -1,5 +1,5 @@
+import { Task } from '@dnycts/shaka'
 import { Campaign } from '../lib/resolvers/Campaign'
-import { Task } from '../lib/structures/Task'
 
 export class DropMainTask extends Task {
 	public constructor(context: Task.LoaderContext) {
