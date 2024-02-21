@@ -39,6 +39,19 @@ export class YorkClient extends ShakaClient {
 	}
 }
 
+declare module '@dnycts/shaka' {
+	interface ShakaClient {
+		config: {
+			isClaimDrops: boolean
+			isClaimPoints: boolean
+			isDropPriorityOnly: boolean
+			usePriorityConnected: boolean
+			priorityList: string[]
+			exclusionList: string[]
+		}
+	}
+}
+
 declare module '@sapphire/pieces' {
 	interface Container {
 		campaignRepository: EntityRepository<CampaignEntity>
