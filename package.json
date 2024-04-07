@@ -14,29 +14,29 @@
 		"start:dev": "npm run build && tsc-watch --onSuccess \"node .\"",
 		"update:dep": "npx npm-check-updates -u -x chalk,@types/node"
 	},
-	"repository": "github:dannycreations/core",
-	"homepage": "https://github.com/dannycreations/core#readme",
+	"repository": "github:dannycreations/York",
+	"homepage": "https://github.com/dannycreations/York",
 	"dependencies": {
-		"@mikro-orm/better-sqlite": "^6.0.5",
+		"@mikro-orm/better-sqlite": "^6.1.12",
 		"@sapphire/utilities": "^3.15.3",
 		"@vegapunk/core": "^1.0.1",
 		"@vegapunk/logger": "^1.0.0",
 		"@vegapunk/mikro-orm": "^1.0.1",
 		"@vegapunk/utilities": "^1.0.2",
 		"chalk": "4.1.2",
-		"dotenv": "^16.4.1",
+		"dotenv": "^16.4.5",
 		"lodash": "^4.17.21",
-		"user-agents": "^1.1.96",
+		"user-agents": "^1.1.167",
 		"ws": "^8.16.0"
 	},
 	"devDependencies": {
-		"@types/lodash": "^4.14.202",
+		"@types/lodash": "^4.17.0",
 		"@types/node": "20.11.30",
 		"@types/user-agents": "^1.0.4",
 		"@types/ws": "^8.5.10",
-		"nodemon": "^3.0.3",
+		"nodemon": "^3.1.0",
 		"ts-node": "^10.9.2",
-		"tsc-watch": "^6.0.4",
-		"typescript": "^5.3.3"
+		"tsc-watch": "^6.2.0",
+		"typescript": "^5.4.4"
 	}
 }
