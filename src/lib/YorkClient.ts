@@ -1,13 +1,13 @@
-import { ListenerStore, ShakaClient, TaskStore, container } from '@dnycts/shaka'
-import { parseJson } from '@dnycts/utilities'
 import { EntityRepository } from '@mikro-orm/better-sqlite'
+import { ListenerStore, TaskStore, Vegapunk, container } from '@vegapunk/core'
+import { parseJsonc } from '@vegapunk/utilities'
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { CampaignEntity } from './entities/campaign.entity'
 import { ChannelEntity } from './entities/channel.entity'
 import { DropEntity } from './entities/drop.entity'
 
-export class YorkClient extends ShakaClient {
+export class YorkClient extends Vegapunk {
 	public readonly config = {
 		isClaimDrops: false,
 		isClaimPoints: false,
@@ -30,7 +30,7 @@ export class YorkClient extends ShakaClient {
 	public async start() {
 		const pathSettings = join(process.cwd(), 'settings.json')
 		if (existsSync(pathSettings)) {
-			const config = parseJson(readFileSync(pathSettings, 'utf8'))
+			const config = parseJsonc(readFileSync(pathSettings, 'utf8'))
 			Object.assign(this.config, config)
 			Object.freeze(this.config)
 		}
@@ -39,8 +39,8 @@ export class YorkClient extends ShakaClient {
 	}
 }
 
-declare module '@dnycts/shaka' {
-	interface ShakaClient {
+declare module '@vegapunk/core' {
+	interface Vegapunk {
 		config: {
 			isClaimDrops: boolean
 			isClaimPoints: boolean
@@ -52,7 +52,7 @@ declare module '@dnycts/shaka' {
 	}
 }
 
-declare module '@sapphire/pieces' {
+declare module '@vegapunk/core' {
 	interface Container {
 		campaignRepository: EntityRepository<CampaignEntity>
 		dropRepository: EntityRepository<DropEntity>

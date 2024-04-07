@@ -1,5 +1,5 @@
-import { container } from '@sapphire/pieces'
 import { RequiredExcept } from '@sapphire/utilities'
+import { container } from '@vegapunk/core'
 import { sortBy } from 'lodash'
 import { CampaignDetail, TwitchGql } from '../api/TwitchGql'
 import { Game } from '../api/types/DropCampaignDetails'

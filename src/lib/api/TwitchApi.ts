@@ -1,5 +1,5 @@
-import { container } from '@dnycts/shaka'
-import got, { Options, RequestError, Response } from 'got'
+import { container } from '@vegapunk/core'
+import { Options, RequestError, Response, requestTimeout } from '@vegapunk/utilities'
 import { defaultsDeep } from 'lodash'
 import { setTimeout } from 'node:timers/promises'
 import userAgent from 'user-agents'
@@ -23,8 +23,6 @@ export class TwitchApi {
 				'User-Agent': ua.toString(),
 				Authorization: `OAuth ${access_token}`,
 			},
-			retry: 0,
-			timeout: 10_000,
 			responseType: 'json',
 		}
 	}
@@ -35,8 +33,8 @@ export class TwitchApi {
 
 	private async request<T>(options: Options): Promise<Response<T> | never> {
 		try {
-			const res = await got(defaultsDeep({}, options, this.options))
-			return res as Response<T>
+			const res = await requestTimeout<T>(defaultsDeep({}, options, this.options))
+			return res
 		} catch (error) {
 			//! TODO: Better error handling
 			if (error instanceof RequestError) {

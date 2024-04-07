@@ -1,17 +1,23 @@
 {
-	"extends": "./tsconfig.base.json",
-	"references": [
-		{
-			"path": "./packages/logger"
-		},
-		{
-			"path": "./packages/mikro-orm"
-		},
-		{
-			"path": "./packages/shaka"
-		},
-		{
-			"path": "./packages/utilities"
-		}
-	]
+	"compilerOptions": {
+		"module": "commonjs",
+		"target": "es2017",
+		"outDir": "./dist",
+		"baseUrl": "./",
+		"sourceMap": true,
+		"declaration": true,
+		"removeComments": true,
+		"emitDecoratorMetadata": true,
+		"experimentalDecorators": true,
+		"allowSyntheticDefaultImports": true,
+		"incremental": true,
+		"skipLibCheck": true,
+		"noImplicitAny": false,
+		"strictNullChecks": false,
+		"strictBindCallApply": false,
+		"forceConsistentCasingInFileNames": true,
+		"noFallthroughCasesInSwitch": false,
+		"esModuleInterop": true
+	},
+	"include": ["./src"]
 }

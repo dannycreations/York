@@ -1,4 +1,4 @@
-import { container } from '@dnycts/shaka'
+import { container } from '@vegapunk/core'
 import { TwitchGql } from '../api/TwitchGql'
 import { AbstractResolver } from './types/abstract.resolver'
 

@@ -1,4 +1,4 @@
-import { Task } from '@dnycts/shaka'
+import { Task } from '@vegapunk/core'
 import { Campaign } from '../lib/resolvers/Campaign'
 
 export class DropMainTask extends Task {

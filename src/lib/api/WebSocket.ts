@@ -1,5 +1,5 @@
-import { container } from '@dnycts/shaka'
-import { randomString } from '@dnycts/utilities'
+import { container } from '@vegapunk/core'
+import { randomString } from '@vegapunk/utilities'
 import ws from 'ws'
 import { Common } from './constants/Enum'
 import { Message, Request, RequestType, Response, ResponseType } from './types/WebSocket'
