@@ -1,22 +1,12 @@
-import { container } from '@sapphire/pieces'
-import got, { Options, RequestError, Response } from 'got'
+import { container } from '@vegapunk/core'
+import { Options, RequestError, Response, TimeoutError, request, sleep } from '@vegapunk/utilities'
 import { defaultsDeep } from 'lodash'
-import { setTimeout } from 'node:timers/promises'
 import userAgent from 'user-agents'
-import { processRestart } from '../utils/replit.util'
-import { Common } from './constants/Enum'
+import { Common, ERROR_CODES } from './constants/Enum'
 import { HelixStreams } from './types/HelixStreams'
+import { PlaybackAccessToken } from './types/PlaybackAccessToken'
 
 export class TwitchApi {
-	private options: Options
-	private isStateInit?: boolean
-	protected authState: {
-		spade?: string
-		setting?: string
-		user_id?: string
-		integrity_expires?: number
-	} = {}
-
 	public constructor(access_token: string) {
 		const ua = new userAgent({ deviceCategory: 'desktop' })
 		this.options = {
@@ -38,19 +28,19 @@ export class TwitchApi {
 
 	private async request<T>(options: Options): Promise<Response<T> | never> {
 		try {
-			const res = await got(defaultsDeep({}, options, this.options))
+			const res = await request(defaultsDeep({}, options, this.options))
 			return res as Response<T>
 		} catch (error) {
 			//! TODO: Better error handling
-			if (error instanceof RequestError) {
+			if (error instanceof TimeoutError) {
+				await sleep(1_000)
+				return this.request(options)
+			} else if (error instanceof RequestError) {
 				if (error.response?.statusCode === 401) {
 					container.logger.fatal(error.response.body, error.message)
 					process.exit()
-				} else if (error.code === 'ENOTFOUND') {
-					await setTimeout(1_000)
-					return this.request(options)
-				} else if (error.code === 'EAI_AGAIN') {
-					await setTimeout(10_000)
+				} else if (ERROR_CODES.includes(error.code)) {
+					await sleep(1_000)
 					return this.request(options)
 				}
 			}
@@ -60,9 +50,22 @@ export class TwitchApi {
 	}
 
 	public async graphql<T>(options?: Options): Promise<Graphql<T>> {
-		if ((await this.stateInit()) === null) processRestart()
+		if ((await this.stateInit()) === null) process.exit(1)
+
 		const response = await this.request<Graphql<T>>({ url: 'gql', ...options })
-		if (response.body.errors?.length) throw response.body
+		if (response.body.errors?.length) {
+			const errorState = ['service error', 'service timeout']
+			for (const error of response.body.errors) {
+				if (!errorState.includes(error.message)) continue
+
+				container.logger.warn(`${error.path[0]} ${error.message}`)
+				await sleep(10_000)
+				return this.graphql(options)
+			}
+
+			throw response.body
+		}
+
 		return response.body
 	}
 
@@ -82,7 +85,7 @@ export class TwitchApi {
 			const res = await this.request<Validate>({ method: 'GET', prefixUrl, url: 'oauth2/validate' })
 
 			this.authState.user_id = res.body.user_id
-			this.options.headers['Client-Id'] = 'kd1unb4b3q4t58fwlpcbzcbnm76a8fp'
+			this.options.headers['Client-Id'] = 'ue6666qo983tsx6so1t0vnawi233wa'
 
 			return true
 		} catch (error) {
@@ -124,52 +127,67 @@ export class TwitchApi {
 		}
 	}
 
-	public async watch(stream: ActiveLiveChannel) {
+	public async watch(channel: ActiveLiveChannel) {
 		try {
-			if (!this.authState.setting) {
-				const twitchHome = await this.home()
-				const settingsReg = new RegExp(Common.SettingReg)
-				const settingsUrl = settingsReg.exec(twitchHome.body)![0]
-				if (!settingsUrl) throw 'Could not parsing Settings Url'
-				this.authState.setting = settingsUrl
-			}
-
 			const prefixUrl = ''
 			const responseType = 'text'
 
-			if (!this.authState.spade) {
-				const getSettings = await this.request<string>({ method: 'GET', prefixUrl, url: this.authState.setting, responseType })
-				const spadeReg = new RegExp(Common.SpadeReg)
-				const spadeUrl = spadeReg.exec(getSettings.body)![0]
-				if (!spadeUrl) throw 'Could not parsing Spade Url'
-				this.authState.spade = spadeUrl
+			if (typeof channel.broadcast_url !== 'string') {
+				const getPlayback = await this.graphql<PlaybackAccessToken>({
+					body: JSON.stringify({
+						operationName: 'PlaybackAccessToken',
+						variables: {
+							isLive: true,
+							login: channel.login,
+							isVod: false,
+							vodID: '',
+							playerType: 'site',
+						},
+						extensions: {
+							persistedQuery: {
+								version: 1,
+								sha256Hash: '3093517e37e4f4cb48906155bcd894150aef92617939236d2508f3375ab732ce',
+							},
+						},
+					}),
+				})
+
+				const getBroadcast = await this.request<string>({
+					method: 'GET',
+					prefixUrl: 'https://usher.ttvnw.net',
+					url: `api/channel/hls/${channel.login}.m3u8`,
+					searchParams: {
+						sig: getPlayback.data.streamPlaybackAccessToken.signature,
+						token: getPlayback.data.streamPlaybackAccessToken.value,
+					},
+					responseType,
+				})
+				channel.broadcast_url = getBroadcast.body.split('\n').filter(Boolean).at(-1)
 			}
 
-			const payload = {
-				event: 'minute-watched',
-				properties: {
-					broadcast_id: stream.broadcast_id,
-					channel_id: stream.channel_id,
-					channel: stream.login,
-					hidden: false,
-					live: true,
-					location: 'channel',
-					logged_in: true,
-					muted: false,
-					player: 'site',
-					user_id: this.authState.user_id,
-					game: stream.game_name || '',
-					game_id: stream.game_id || '',
-				},
-			}
+			const getStream = await this.request<string>({
+				method: 'GET',
+				prefixUrl,
+				url: channel.broadcast_url,
+				headers: { Connection: 'close' },
+				responseType,
+			})
+			const streamFilter = getStream.body.split('\n').filter(Boolean)
 
-			const json_event = JSON.stringify([payload])
-			const base64_event = Buffer.from(json_event).toString('base64')
-			await this.request({ prefixUrl, url: this.authState.spade, body: base64_event, responseType })
+			let parseSLQUrl = streamFilter.at(-1)
+			if (!!~parseSLQUrl.indexOf('#')) parseSLQUrl = streamFilter.at(-2)
 
-			return true
+			const tryStream = await this.request({ method: 'HEAD', prefixUrl, url: parseSLQUrl, responseType })
+			return tryStream.statusCode === 200
 		} catch (error) {
-			container.logger.error(error)
+			if (error instanceof RequestError) {
+				if (error.response?.statusCode === 404) {
+					channel.broadcast_url = null
+					return this.watch(channel)
+				}
+			}
+
+			container.logger.error(error, 'Could not watch stream')
 			return false
 		}
 	}
@@ -186,14 +204,22 @@ export class TwitchApi {
 			})
 			return res.body
 		} catch (error) {
-			container.logger.error(error)
+			container.logger.error(error, 'Could not fetch your helix')
 			return false
 		}
 	}
+
+	protected authState: { user_id?: string } = {}
+
+	private options: Options
+	private isStateInit?: boolean
 }
 
 export interface Graphql<T = {}> {
-	errors?: Error[]
+	errors?: Array<{
+		message: string
+		path: string[]
+	}>
 	data: T
 	extensions: {
 		durationMilliseconds: number
@@ -202,15 +228,8 @@ export interface Graphql<T = {}> {
 	}
 }
 
-interface Error {
-	message: string
-	path: string[]
-}
-
 export interface ActiveLiveChannel {
 	login: string
 	channel_id: string
-	broadcast_id: string
-	game_name?: string
-	game_id?: string
+	broadcast_url?: string
 }

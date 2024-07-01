@@ -11,10 +11,6 @@ import { Inventory } from './types/Inventory'
 import { ViewerDropsDashboard } from './types/ViewerDropsDashboard'
 
 export class TwitchGql extends TwitchApi {
-	public constructor(access_token: string) {
-		super(access_token)
-	}
-
 	public async dropsDashboard() {
 		return super.graphql<ViewerDropsDashboard>({
 			body: JSON.stringify({
@@ -25,7 +21,7 @@ export class TwitchGql extends TwitchApi {
 				extensions: {
 					persistedQuery: {
 						version: 1,
-						sha256Hash: '821f91c947ab6e5a07d89ea1e1f9d0c834d354d636936bc3b43d77d4cff4fed8',
+						sha256Hash: '5a4da2ab3d5b47c9f9ce864e727b2cb346af1e3ea8b897fe8f704a97ff017619',
 					},
 				},
 			}),
@@ -41,7 +37,7 @@ export class TwitchGql extends TwitchApi {
 				extensions: {
 					persistedQuery: {
 						version: 1,
-						sha256Hash: 'e5916665a37150808f8ad053ed6394b225d5504d175c7c0b01b9a89634c57136',
+						sha256Hash: 'e7acdecb05429a62f5984bdcb27ee938ae20543579bf73c3ae44e7c822bc4f54',
 					},
 				},
 			}),
@@ -73,7 +69,7 @@ export class TwitchGql extends TwitchApi {
 				extensions: {
 					persistedQuery: {
 						version: 1,
-						sha256Hash: '3c9a94ee095c735e43ed3ad6ce6d4cbd03c4c6f754b31de54993e0d48fd54e30',
+						sha256Hash: 'e303f59d4836d19e66cb0f5a1efe15fbe2a1c02d314ad4f09982e825950b293d',
 					},
 				},
 			}),
@@ -90,7 +86,7 @@ export class TwitchGql extends TwitchApi {
 				extensions: {
 					persistedQuery: {
 						version: 1,
-						sha256Hash: '24de3977e178c431095279b6a95eaa01bf6a2203c97819b852f12702b817c0d8',
+						sha256Hash: 'a16feb991626027918d26488d4e8a4a4110beb76a09062255280abdac6740dd4',
 					},
 				},
 			}),

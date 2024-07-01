@@ -1,19 +1,12 @@
 import 'dotenv/config'
 
-import { container } from '@sapphire/pieces'
+import { container } from '@vegapunk/core'
+import { logger } from '@vegapunk/logger'
 import { YorkClient } from './lib/YorkClient'
-import { logger } from './lib/utils/logger.util'
-import { isReplit, keepAlive, processRestart } from './lib/utils/replit.util'
 
 async function bootstrap() {
 	container.logger = logger()
 
-	if (isReplit()) {
-		// Restart process every 6 hours
-		setTimeout(() => processRestart(), 2.16e7)
-	}
-
-	await keepAlive()
 	new YorkClient().start()
 }
 bootstrap()

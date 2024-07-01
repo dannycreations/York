@@ -1,24 +1,19 @@
 export class Queue<V> {
-	private _elements: Element<V> = {}
-	private _head = 0
-	private _tail = 0
-	private _last: V
-
 	public get length(): number {
-		return this._tail - this._head
+		return this.tailIdx - this.headIdx
 	}
 
 	public peek(i: number = 0): V | undefined {
-		return this._elements[this._head + i]
+		return this.elements[this.headIdx + i]
 	}
 
 	public last(): V {
-		return this._last
+		return this.lastState
 	}
 
 	public enqueue(element: V): this {
-		this._elements[this._tail] = element
-		this._tail++
+		this.elements[this.tailIdx] = element
+		this.tailIdx++
 		return this
 	}
 
@@ -30,10 +25,10 @@ export class Queue<V> {
 	}
 
 	public dequeue(i: number = 0): V | undefined {
-		const item = this._elements[this._head + i]
-		this._last = item
-		delete this._elements[this._head + i]
-		this._head++
+		const item = this.elements[this.headIdx + i]
+		this.lastState = item
+		delete this.elements[this.headIdx + i]
+		this.headIdx++
 		return item
 	}
 
@@ -42,8 +37,13 @@ export class Queue<V> {
 	}
 
 	public values(): V[] {
-		return Object.values(this._elements)
+		return Object.values(this.elements)
 	}
+
+	private headIdx = 0
+	private tailIdx = 0
+	private lastState: V
+	private elements: Element<V> = {}
 }
 
 interface Element<V = {}> {

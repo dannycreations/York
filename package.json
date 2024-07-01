@@ -4,6 +4,7 @@
 	"main": "dist/main.js",
 	"author": "Danny Creations",
 	"license": "GPL-3.0",
+	"private": true,
 	"scripts": {
 		"build": "rm -rf dist && tsc",
 		"start:pm2": "pm2 start . --stop-exit-codes 0",
@@ -16,27 +17,22 @@
 		"url": "https://github.com/dannycreations/York/issues"
 	},
 	"dependencies": {
-		"@sapphire/pieces": "^4.2.2",
-		"@sapphire/utilities": "^3.15.3",
-		"chalk": "^4.1.2",
-		"dotenv": "^16.3.2",
-		"got": "^11.8.6",
-		"jsonc-parser": "^3.2.1",
+		"@sapphire/utilities": "^3.16.2",
+		"@vegapunk/core": "^1.0.3",
+		"@vegapunk/logger": "^1.0.1",
+		"@vegapunk/utilities": "^1.0.3",
+		"chalk": "4.1.2",
+		"dotenv": "^16.4.5",
 		"lodash": "^4.17.21",
-		"moment-timezone": "^0.5.44",
-		"nanoid": "^3.3.7",
-		"pino": "^8.17.2",
-		"pino-pretty": "^10.3.1",
-		"user-agents": "^1.1.93",
-		"ws": "^8.16.0"
+		"user-agents": "^1.1.251",
+		"ws": "^8.17.1"
 	},
 	"devDependencies": {
-		"@types/lodash": "^4.14.202",
-		"@types/node": "^20.11.0",
+		"@types/lodash": "^4.17.6",
+		"@types/node": "20.14.0",
 		"@types/user-agents": "^1.0.4",
 		"@types/ws": "^8.5.10",
-		"nodemon": "^3.0.3",
-		"ts-node": "^10.9.2",
-		"typescript": "^5.3.3"
+		"tsc-watch": "^6.2.0",
+		"typescript": "^5.5.2"
 	}
 }

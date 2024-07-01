@@ -1,18 +1,19 @@
+import { Listener } from '@vegapunk/core'
 import chalk from 'chalk'
 import { Tasks } from '../lib/api/constants/Enum'
 import { DropClaim, DropProgress, MessageData } from '../lib/api/types/WebSocket'
 import { DropStore } from '../lib/stores/DropStore'
-import { Listener } from '../lib/structures/Listener'
 import { DropMainTask } from '../tasks/DropMain'
 
 export class UserDropListener extends Listener {
-	public constructor(context: Listener.Context) {
+	public constructor(context: Listener.LoaderContext) {
 		super(context, { event: 'user-drop-events' })
 	}
 
 	public async run(message: MessageData): Promise<void> {
-		const main = this.container.stores.get('tasks').get(Tasks.DropMain) as DropMainTask
-		const selectDrop = main.queue.peek()?.drops
+		const getTasks = this.container.stores.get('tasks')
+		const mainTask = getTasks.get(Tasks.DropMain) as DropMainTask
+		const selectDrop = mainTask.queue.peek()?.drops
 		if (!selectDrop?.peek()) return
 
 		switch (message.type) {
@@ -26,7 +27,7 @@ export class UserDropListener extends Listener {
 	}
 
 	private async dropClaim(message: DropClaim): Promise<void> {
-		if (!this.container.config.isClaimDrops) return
+		if (!this.container.client.config.isClaimDrops) return
 		await this.container.twitch.claimDrops(message.data.drop_instance_id)
 	}
 

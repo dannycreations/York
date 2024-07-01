@@ -1,5 +1,5 @@
-import { container } from '@sapphire/pieces'
 import { RequiredExcept } from '@sapphire/utilities'
+import { container } from '@vegapunk/core'
 import { cloneDeep, sortBy } from 'lodash'
 import { ActiveLiveChannel } from '../api/TwitchApi'
 import { CampaignDetail } from '../api/TwitchGql'
@@ -10,52 +10,43 @@ import { ChannelStore } from '../stores/ChannelStore'
 import { DropStore } from '../stores/DropStore'
 
 export class Campaign {
-	private _gameList: string[] = []
-	private _offlineList: Offline[] = []
-	private _upcomingList: Upcoming[] = []
-	private _campaignList: DropCampaign[] = []
-
-	private _isInventory?: boolean
-	private _dropsClaimed: GameEventDrop[] = []
-	private _dropsProgress: DropCampaignsInProgress[] = []
-
-	public gameList(gameList?: string[]): string[] {
-		if (Array.isArray(gameList)) {
-			this._gameList = gameList
+	public games(games?: string[]): string[] {
+		if (Array.isArray(games)) {
+			this.gameList = games
 		}
-		return this._gameList
+		return this.gameList
 	}
 
-	public campaignList(campaign?: DropCampaign[]): DropCampaign[] {
+	public campaign(campaign?: DropCampaign[]): DropCampaign[] {
 		if (Array.isArray(campaign)) {
-			this._campaignList = campaign
+			this.campaignList = campaign
 		}
-		return this._campaignList
+		return this.campaignList
 	}
 
-	public offlineList(offline?: Offline[]): Offline[] {
+	public offline(offline?: Offline[]): Offline[] {
 		if (Array.isArray(offline)) {
-			this._offlineList = offline
+			this.offlineList = offline
 		}
-		return this._offlineList
+		return this.offlineList
 	}
 
-	public upcomingList(upcoming?: Upcoming[]): Upcoming[] {
+	public upcoming(upcoming?: Upcoming[]): Upcoming[] {
 		if (Array.isArray(upcoming)) {
-			this._upcomingList = upcoming
+			this.upcomingList = upcoming
 		}
-		return this._upcomingList
+		return this.upcomingList
 	}
 
 	public resetInventory(): void {
-		delete this._isInventory
-		this._dropsClaimed = []
-		this._dropsProgress = []
+		delete this.isInventory
+		this.dropsClaimed = []
+		this.dropsProgress = []
 	}
 
 	public async fetchCampaign(force?: boolean): Promise<void> {
-		if (force) this._campaignList = []
-		if (this._campaignList.length) return
+		if (force) this.campaignList = []
+		if (this.campaignList.length) return
 
 		const dropsDashboard = await container.twitch.dropsDashboard()
 		const dropCampaigns = sortBy(dropsDashboard.data.currentUser.dropCampaigns, 'endAt')
@@ -72,44 +63,44 @@ export class Campaign {
 		for (const campaign of dropCampaigns) {
 			const isStatus = checkStatus(campaign.startAt, campaign.endAt)
 			if (isStatus.expired) continue
-			if (!!~container.config.exclusionList.indexOf(campaign.game.displayName)) continue
-			if (container.config.usePriorityConnected && campaign.self.isAccountConnected) {
-				if (!~container.config.priorityList.indexOf(campaign.game.displayName)) {
-					container.config.priorityList.push(campaign.game.displayName)
+			if (!!~container.client.config.exclusionList.indexOf(campaign.game.displayName)) continue
+			if (container.client.config.usePriorityConnected && campaign.self.isAccountConnected) {
+				if (!~container.client.config.priorityList.indexOf(campaign.game.displayName)) {
+					container.client.config.priorityList.push(campaign.game.displayName)
 				}
 			}
 
 			campaign.name = campaign.name.trim()
 			if (isStatus.upcoming) {
-				if (!~this._upcomingList.findIndex((r) => r.id === campaign.id)) {
-					this._upcomingList.push(campaign)
+				if (!~this.upcomingList.findIndex((r) => r.id === campaign.id)) {
+					this.upcomingList.push(campaign)
 				}
 				continue
 			}
-			if (container.config.isDropPriorityOnly) {
-				if (!!~container.config.priorityList.indexOf(campaign.game.displayName)) {
-					this._campaignList.push(campaign)
+			if (container.client.config.isDropPriorityOnly) {
+				if (!!~container.client.config.priorityList.indexOf(campaign.game.displayName)) {
+					this.campaignList.push(campaign)
 				}
 				continue
 			}
 
-			this._campaignList.push(campaign)
+			this.campaignList.push(campaign)
 		}
 	}
 
 	public async fetchInventory(): Promise<void> {
 		const inventory = await container.twitch.inventory()
-		this._dropsClaimed = inventory.data.currentUser.inventory.gameEventDrops
-		this._dropsProgress = inventory.data.currentUser.inventory.dropCampaignsInProgress
-		this._isInventory = true
+		this.dropsClaimed = inventory.data.currentUser.inventory.gameEventDrops
+		this.dropsProgress = inventory.data.currentUser.inventory.dropCampaignsInProgress
+		this.isInventory = true
 	}
 
 	public async checkCampaign(campaign: CampaignDetail): Promise<ActiveCampaign> {
-		if (!this._isInventory) await this.fetchInventory()
+		if (!this.isInventory) await this.fetchInventory()
 		const campaignDetails = await container.twitch.campaignDetails(campaign)
 
 		const detail = campaignDetails.data.user.dropCampaign
-		const campaignProgress = this._dropsProgress.find((r) => r.id === detail.id)
+		const campaignProgress = this.dropsProgress.find((r) => r.id === detail.id)
 		const timeBasedDrops = cloneDeep(campaignProgress ? campaignProgress.timeBasedDrops : detail.timeBasedDrops) as TimeBasedDrop[]
 		const sortTimeBasedDrops = sortBy(timeBasedDrops, 'requiredMinutesWatched')
 
@@ -126,8 +117,8 @@ export class Campaign {
 			const isStatus = checkStatus(drop.startAt, drop.endAt)
 			if (isStatus.expired) continue
 			if (isStatus.upcoming) {
-				if (!~this._upcomingList.findIndex((r) => r.id === detail.id)) {
-					this._upcomingList.push({ ...detail, startAt: drop.startAt, endAt: drop.endAt })
+				if (!~this.upcomingList.findIndex((r) => r.id === detail.id)) {
+					this.upcomingList.push({ ...detail, startAt: drop.startAt, endAt: drop.endAt })
 				}
 
 				continue
@@ -137,10 +128,10 @@ export class Campaign {
 			if (drop.self) {
 				if (drop.self.isClaimed) continue
 				if (drop.self.currentMinutesWatched >= drop.requiredMinutesWatched) {
-					if (!container.config.isClaimDrops) continue
+					if (!container.client.config.isClaimDrops) continue
 				}
 			} else {
-				if (!!~this._dropsClaimed.findIndex((r) => r.id === selectBenefit.benefit.id)) continue
+				if (!!~this.dropsClaimed.findIndex((r) => r.id === selectBenefit.benefit.id)) continue
 			}
 
 			drop.self = {
@@ -175,10 +166,9 @@ export class Campaign {
 			if (!gameDirectory.data.game?.streams) return foundLives
 
 			for (const stream of gameDirectory.data.game.streams.edges) {
-				const broadcast_id = stream.node.id
 				const login = stream.node.broadcaster.login
 				const channel_id = stream.node.broadcaster.id
-				foundLives.push({ login, channel_id, broadcast_id })
+				foundLives.push({ login, channel_id })
 			}
 		} else {
 			const logins = channels.map((r) => r.name).slice(0, 30)
@@ -189,12 +179,20 @@ export class Campaign {
 
 				const login = user.login
 				const channel_id = user.id
-				const broadcast_id = user.stream.id
-				foundLives.push({ login, channel_id, broadcast_id })
+				foundLives.push({ login, channel_id })
 			}
 		}
 		return foundLives
 	}
+
+	private gameList: string[] = []
+	private offlineList: Offline[] = []
+	private upcomingList: Upcoming[] = []
+	private campaignList: DropCampaign[] = []
+
+	private isInventory?: boolean
+	private dropsClaimed: GameEventDrop[] = []
+	private dropsProgress: DropCampaignsInProgress[] = []
 }
 
 export function checkStatus(startAt: string, endAt: string): Status {

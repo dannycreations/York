@@ -1,8 +1,6 @@
 export enum Common {
 	ApiUrl = 'https://gql.twitch.tv',
 	WssUrl = 'wss://pubsub-edge.twitch.tv/v1',
-	SpadeReg = `https://video-edge-[.\\w\\-/]+\\.ts`,
-	SettingReg = `https://static\.twitchcdn\.net/config/settings\.[0-9a-f]{32}\.js`,
 }
 
 export enum Status {
@@ -16,3 +14,5 @@ export enum Tasks {
 	DropOffline = 'DROPOFFLINE',
 	DropUpcoming = 'DROPUPCOMING',
 }
+
+export const ERROR_CODES = ['ETIMEDOUT', 'ECONNRESET', 'EADDRINUSE', 'ECONNREFUSED', 'EPIPE', 'ENOTFOUND', 'ENETUNREACH', 'EAI_AGAIN', 'ECONNABORTED']

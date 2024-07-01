@@ -1,30 +1,30 @@
 import { Queue } from '../database/Queue'
 
 export class QueueStore<T> extends Queue<T> {
-	private _isState: StateContext = 1
-	private _isTask: boolean = false
-	private _isSleeping: boolean = false
-
 	public isState(state?: StateContext): number {
 		if (typeof state === 'number') {
-			this._isState = state
+			this.queueState = state
 		}
-		return this._isState
+		return this.queueState
 	}
 
-	public isTask(bool?: boolean): boolean {
+	public hasTask(bool?: boolean): boolean {
 		if (typeof bool === 'boolean') {
-			this._isTask = bool
+			this.taskState = bool
 		}
-		return this._isTask
+		return this.taskState
 	}
 
 	public isSleeping(bool?: boolean): boolean {
 		if (typeof bool === 'boolean') {
-			this._isSleeping = bool
+			this.sleepingState = bool
 		}
-		return this._isSleeping
+		return this.sleepingState
 	}
+
+	private queueState: StateContext = 1
+	private taskState: boolean = false
+	private sleepingState: boolean = false
 }
 
 type StateContext = 1 | 2 | 3

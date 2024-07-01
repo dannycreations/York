@@ -1,52 +1,53 @@
+import { Task } from '@vegapunk/core'
+import { sleep, sleepUntil } from '@vegapunk/utilities'
 import chalk from 'chalk'
-import { random, remove } from 'lodash'
-import { setTimeout } from 'node:timers/promises'
+import { random, remove, sortBy } from 'lodash'
 import { Tasks } from '../lib/api/constants/Enum'
 import { DropCampaign } from '../lib/api/types/ViewerDropsDashboard'
-import { Task } from '../lib/structures/Task'
 import { DropMainTask } from './DropMain'
 
 export class DropOfflineTask extends Task {
-	public constructor(context: Task.Context) {
-		super(context, { name: Tasks.DropOffline, delay: 600_000 })
+	public constructor(context: Task.LoaderContext) {
+		super(context, { name: Tasks.DropOffline, delay: 60_000 * 5 })
 	}
 
 	public async run(): Promise<void> {
-		const main = this.container.stores.get('tasks').get(Tasks.DropMain) as DropMainTask
-		if (!main.campaign.offlineList().length) return
+		const taskStores = this.container.stores.get('tasks')
+		const mainTask = taskStores.get(Tasks.DropMain) as DropMainTask
+		if (!mainTask.campaign.offline().length) return
 
-		const hasPriority = main.campaign.offlineList().filter((r) => !!~this.container.config.priorityList.indexOf(r.game))
-		const offlineList = hasPriority.length ? hasPriority : main.campaign.offlineList()
+		const priorityList = this.container.client.config.priorityList
+		const offlineList = sortBy(mainTask.campaign.offline(), (r) => !~priorityList.indexOf(r.game))
 		for (const offline of offlineList) {
-			const activeCampaign = await main.campaign.checkCampaign({ dropID: offline.id })
+			const activeCampaign = await mainTask.campaign.checkCampaign({ dropID: offline.id })
 			const selectDrop = activeCampaign.drops.peek()
 			if (!selectDrop || !activeCampaign.drops.isStatus().active) {
-				remove(main.campaign.offlineList(), { id: offline.id })
+				remove(mainTask.campaign.offline(), { id: offline.id })
 				continue
 			}
 			if (!(await activeCampaign.channels.watch())) continue
 
-			remove(main.campaign.offlineList(), { id: offline.id })
+			remove(mainTask.campaign.offline(), { id: offline.id })
 			this.container.logger.info(chalk`{bold.yellow ${activeCampaign.name}} | {strikethrough Offline}`)
 
-			main.stopTask()
-			await super.sleepUntil(() => !main.isStatus().running)
+			mainTask.stopTask()
+			await sleepUntil(() => !mainTask.isStatus.running)
 
-			const mainDrop = main.queue.peek()?.drops.peek()
-			const isGame = main.queue.peek()?.game.displayName === activeCampaign.game.displayName
+			const mainDrop = mainTask.queue.peek()?.drops.peek()
+			const isGame = mainTask.queue.peek()?.game.displayName === activeCampaign.game.displayName
 			if (mainDrop && mainDrop.endAt > selectDrop.endAt && (!isGame || mainDrop.startAt > selectDrop.startAt)) {
-				main.queue.clear()
-				main.queue.isTask(false)
-				main.campaign.gameList([activeCampaign.game.displayName, ...main.campaign.gameList()])
-				main.campaign.campaignList([activeCampaign as unknown as DropCampaign, ...main.campaign.campaignList()])
+				mainTask.queue.clear()
+				mainTask.queue.hasTask(false)
+				mainTask.campaign.games([activeCampaign.game.displayName, ...mainTask.campaign.games()])
+				mainTask.campaign.campaign([activeCampaign as unknown as DropCampaign, ...mainTask.campaign.campaign()])
 			} else {
-				main.campaign.gameList().push(activeCampaign.game.displayName)
-				main.campaign.campaignList().push(activeCampaign as unknown as DropCampaign)
+				mainTask.campaign.games().push(activeCampaign.game.displayName)
+				mainTask.campaign.campaign().push(activeCampaign as unknown as DropCampaign)
 			}
 
-			main.campaign.resetInventory()
-			await setTimeout(random(0, 5_000))
-			return main.startTask(true)
+			mainTask.campaign.resetInventory()
+			await sleep(random(0, 5_000))
+			return mainTask.startTask(true)
 		}
 	}
 }

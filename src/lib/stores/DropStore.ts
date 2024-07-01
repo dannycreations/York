@@ -1,4 +1,4 @@
-import { container } from '@sapphire/pieces'
+import { container } from '@vegapunk/core'
 import { Queue } from '../database/Queue'
 import { ActiveTimeBasedDrop, checkStatus, Status } from '../resolvers/Campaign'
 

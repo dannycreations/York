@@ -1,18 +1,19 @@
+import { Task } from '@vegapunk/core'
+import { sleep } from '@vegapunk/utilities'
 import chalk from 'chalk'
 import { difference, remove } from 'lodash'
-import { setTimeout } from 'node:timers/promises'
 import { Tasks } from '../lib/api/constants/Enum'
+import { DropCampaign } from '../lib/api/types/ViewerDropsDashboard'
 import { RequestType } from '../lib/api/types/WebSocket'
 import { ActiveCampaign, Campaign } from '../lib/resolvers/Campaign'
 import { QueueStore } from '../lib/stores/QueueStore'
-import { Task } from '../lib/structures/Task'
 import { DropUpcomingTask } from './DropUpcoming'
 
 export class DropMainTask extends Task {
 	public queue: QueueStore<ActiveCampaign>
 	public campaign: Campaign
 
-	public constructor(context: Task.Context) {
+	public constructor(context: Task.LoaderContext) {
 		super(context, { name: Tasks.DropMain, delay: 60_000 })
 		this.queue = new QueueStore()
 		this.campaign = new Campaign()
@@ -36,10 +37,10 @@ export class DropMainTask extends Task {
 
 		const selectCampaign = this.queue.peek()
 		if (!selectCampaign) {
-			this.campaign.gameList().shift()
+			this.campaign.games().shift()
 			const id = this.queue.last().id
-			remove(this.campaign.campaignList(), { id })
-			this.queue.isTask(false)
+			remove(this.campaign.campaign(), { id })
+			this.queue.hasTask(false)
 			return this.run()
 		}
 
@@ -60,7 +61,7 @@ export class DropMainTask extends Task {
 			this.queue.dequeue()
 			return this.run()
 		} else if (selectDrop.hasMinutesWatchedMet()) {
-			if (this.container.config.isClaimDrops) {
+			if (this.container.client.config.isClaimDrops) {
 				if (!selectDrop.dropInstanceID) {
 					const countLimit = 5
 					for (let i = 0; i < countLimit; i++) {
@@ -71,6 +72,8 @@ export class DropMainTask extends Task {
 						if (!selectDrop.hasMinutesWatchedMet()) {
 							if (selectDrop?.requiredMinutesWatched - selectDrop?.currentMinutesWatched >= 10) {
 								this.container.logger.info(chalk`{red ${selectDrop.name}} | Possible broken drops`)
+								this.campaign.games().push(activeCampaign.game.displayName)
+								this.campaign.campaign().push(activeCampaign as unknown as DropCampaign)
 								this.queue.dequeue()
 							}
 
@@ -79,7 +82,7 @@ export class DropMainTask extends Task {
 
 						if (!i) this.container.logger.info(chalk`{red ${selectDrop.name}} | DropID not found`)
 						this.container.logger.info(chalk`{yellow Waiting for ${i + 1}/${countLimit} minutes}`)
-						await setTimeout(this.options.delay)
+						await sleep(this.options.delay)
 					}
 				}
 				if (await selectDrop.claimDrops()) {
@@ -99,16 +102,16 @@ export class DropMainTask extends Task {
 			const currentMinutes = `${selectDrop.currentMinutesWatched}/${selectDrop.requiredMinutesWatched}`
 			this.container.logger.info(chalk`{green ${selectDrop.name}} | ${selectStream.login} | ${currentMinutes}`)
 
-			if (this.container.config.isClaimPoints) {
+			if (this.container.client.config.isClaimPoints) {
 				if (await selectStream.claimPoints()) {
 					this.container.logger.info(chalk`{green ${selectStream.login}} | Points claimed`)
 				}
 			}
 		} else {
 			const id = selectCampaign.id
-			if (!~this.campaign.offlineList().findIndex((r) => r.id === id)) {
+			if (!~this.campaign.offline().findIndex((r) => r.id === id)) {
 				const game = selectCampaign.game.displayName
-				this.campaign.offlineList().push({ id, game })
+				this.campaign.offline().push({ id, game })
 			}
 
 			this.container.logger.info(chalk`{red ${selectCampaign.name}} | Offline`)
@@ -119,71 +122,72 @@ export class DropMainTask extends Task {
 
 	async createTask(): Promise<void> {
 		this.queue.isSleeping(false)
-		if (this.queue.isTask()) return
+		if (this.queue.hasTask()) return
 
-		if (this.queue.isState() === 3 && !this.campaign.gameList().length) {
+		if (this.queue.isState() === 3 && !this.campaign.games().length) {
+			super.stopTask()
 			this.queue.isState(1)
 			this.queue.isSleeping(true)
 			this.campaign.resetInventory()
 
-			const stores = this.container.stores.get('tasks')
-			;(stores.get(Tasks.DropUpcoming) as DropUpcomingTask).run()
-			return super.stopTask()
+			const taskStores = this.container.stores.get('tasks')
+			const upcomingTask = taskStores.get(Tasks.DropUpcoming) as DropUpcomingTask
+			return upcomingTask.run()
 		}
 
 		await this.campaign.fetchCampaign()
 
 		let isNewFetch = false
-		if (this.queue.isState() === 1 && !this.campaign.gameList().length) {
+		if (this.queue.isState() === 1 && !this.campaign.games().length) {
 			isNewFetch = true
 			this.queue.isState(2)
 
-			const priorityList = [...new Set(this.container.config.priorityList)]
+			const priorityList = [...new Set(this.container.client.config.priorityList)]
 			const gameList = this.campaign
-				.campaignList()
+				.campaign()
 				.map((r) => r.game.displayName)
 				.filter((r) => !!~priorityList.indexOf(r))
-			this.campaign.gameList([...gameList, ...difference(priorityList, gameList)])
+			this.campaign.games([...gameList, ...difference(priorityList, gameList)])
 		}
 
-		if (this.queue.isState() === 2 && !this.campaign.gameList().length) {
+		if (this.queue.isState() === 2 && !this.campaign.games().length) {
 			isNewFetch = true
 			this.queue.isState(3)
 
-			if (this.container.config.isDropPriorityOnly) return this.createTask()
+			if (this.container.client.config.isDropPriorityOnly) return this.createTask()
 
-			const gameList = this.campaign.campaignList().map((r) => r.game.displayName)
-			this.campaign.gameList(difference(gameList, this.container.config.priorityList))
+			const gameList = this.campaign.campaign().map((r) => r.game.displayName)
+			this.campaign.games(difference(gameList, this.container.client.config.priorityList))
 		}
 
 		if (isNewFetch) {
 			const isPriority = this.queue.isState() === 2 ? '' : 'Non-'
-			this.container.logger.info(chalk`{bold.yellow Checking ${[...new Set(this.campaign.gameList())].length} ${isPriority}Priority game!}`)
+			this.container.logger.info(chalk`{bold.yellow Checking ${[...new Set(this.campaign.games())].length} ${isPriority}Priority game!}`)
 		}
 
-		loopGameList: while (this.campaign.gameList().length) {
+		loopGameList: while (this.campaign.games().length) {
 			let isActiveCampaign = false
-			for (const campaign of this.campaign.campaignList()) {
-				if (this.campaign.gameList()[0] !== campaign.game.displayName) continue
+			for (const campaign of this.campaign.campaign()) {
+				if (this.campaign.games()[0] !== campaign.game.displayName) continue
 
 				const activeCampaign = await this.campaign.checkCampaign({ dropID: campaign.id })
 				if (!activeCampaign.drops.peek()) {
 					isActiveCampaign = true
-					this.campaign.gameList()[0] = campaign.name
-					remove(this.campaign.campaignList(), { id: campaign.id })
+					this.campaign.games()[0] = campaign.name
+					remove(this.campaign.campaign(), { id: campaign.id })
 					break
 				}
 
-				this.queue.isTask(true)
+				this.queue.hasTask(true)
 				this.queue.enqueue(activeCampaign)
 				this.container.logger.info(chalk`{green ${activeCampaign.name}} | Found ${activeCampaign.drops.length} drops`)
 				break loopGameList
 			}
 
-			this.container.logger.info(chalk`{red ${this.campaign.gameList()[0]}} | No active ${isActiveCampaign ? 'drops' : 'campaigns'}`)
-			this.campaign.gameList().shift()
+			this.container.logger.info(chalk`{red ${this.campaign.games()[0]}} | No active ${isActiveCampaign ? 'drops' : 'campaigns'}`)
+			this.campaign.games().shift()
 		}
 
-		if (!this.queue.isTask()) return this.createTask()
+		if (!this.queue.hasTask()) return this.createTask()
 	}
 }
