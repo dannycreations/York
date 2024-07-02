@@ -56,6 +56,7 @@ export class DropMainTask extends Task {
 			}
 		}
 
+		const selectStream = selectCampaign.channels
 		if (!selectDrop.hasPreconditionsMet()) {
 			this.container.logger.info(chalk`{red ${selectDrop.name}} | Preconditions drops`)
 			this.queue.dequeue()
@@ -75,8 +76,9 @@ export class DropMainTask extends Task {
 								this.campaign.games().push(activeCampaign.game.displayName)
 								this.campaign.campaign().push(activeCampaign as unknown as DropCampaign)
 								this.queue.dequeue()
+							} else {
+								selectStream.dequeue()
 							}
-
 							return this.run()
 						}
 
@@ -96,7 +98,6 @@ export class DropMainTask extends Task {
 			return this.run()
 		}
 
-		const selectStream = selectCampaign.channels
 		if (await selectStream.watch()) {
 			selectDrop.setMinutesWatched()
 			const currentMinutes = `${selectDrop.currentMinutesWatched}/${selectDrop.requiredMinutesWatched}`

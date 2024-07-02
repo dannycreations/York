@@ -21,7 +21,7 @@ export class DropUpcomingTask extends Task {
 
 		if (!mainTask.campaign.upcoming().length) {
 			if (isSleeping) {
-				const sleepTime = 3_600_000 // 1 hours
+				const sleepTime = 3_600_000 * 2 // 2 hours
 				const sleepUntil = getTimezoneDate(new Date(Date.now() + sleepTime)).format('lll')
 				this.container.logger.info(chalk`{bold.yellow No upcoming campaigns, Finally i can rest}`)
 				this.container.logger.info(chalk`{bold.yellow Sleeping until ${sleepUntil}}`)
