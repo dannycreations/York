@@ -8,7 +8,3 @@ export function writeDebugFile(data: string | object, name?: string): void {
 
 	writeFileSync(`${dirDebug}/${name || Date.now()}.json`, data)
 }
-
-export function hasMobileAuth(): boolean {
-	return !!process.env.AUTH_TOKEN_MOBILE
-}

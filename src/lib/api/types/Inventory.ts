@@ -6,10 +6,10 @@ export interface Inventory {
 
 export interface CurrentUser {
 	id: string
-	inventory: InventoryClass
+	inventory: InventoryData
 }
 
-export interface InventoryClass {
+export interface InventoryData {
 	dropCampaignsInProgress: DropCampaignsInProgress[]
 	gameEventDrops: GameEventDrop[]
 	completedRewardCampaigns: any[]
@@ -54,6 +54,7 @@ export interface TimeBasedDrop {
 	endAt: string
 	preconditionDrops: PreconditionDrop[] | null
 	requiredMinutesWatched: number
+	requiredSubs: number
 	benefitEdges: BenefitEdge[]
 	self: TimeBasedDropSelf
 	campaign: Campaign
@@ -79,8 +80,9 @@ export interface PreconditionDrop {
 export interface TimeBasedDropSelf {
 	hasPreconditionsMet: boolean
 	currentMinutesWatched: number
+	currentSubs: number
 	isClaimed: boolean
-	dropInstanceID: null
+	dropInstanceID: string | null
 }
 
 export interface GameEventDrop {

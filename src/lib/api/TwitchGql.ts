@@ -1,5 +1,4 @@
 import { TwitchApi } from './TwitchApi'
-import { AdRequestHandling } from './types/AdRequestHandling'
 import { ChannelPointsContext } from './types/ChannelPointsContext'
 import { ClaimCommunityPointsMutation } from './types/ClaimCommunityPointsMutation'
 import { ClaimDropRewardsMutation } from './types/ClaimDropRewardsMutation'
@@ -11,7 +10,7 @@ import { Inventory } from './types/Inventory'
 import { ViewerDropsDashboard } from './types/ViewerDropsDashboard'
 
 export class TwitchGql extends TwitchApi {
-	public static Instance = new TwitchGql(process.env.AUTH_TOKEN_MOBILE)
+	public static readonly Instance = new TwitchGql(process.env.AUTH_TOKEN)
 
 	public async dropsDashboard() {
 		return super.graphql<ViewerDropsDashboard>({
@@ -23,7 +22,7 @@ export class TwitchGql extends TwitchApi {
 				extensions: {
 					persistedQuery: {
 						version: 1,
-						sha256Hash: '821f91c947ab6e5a07d89ea1e1f9d0c834d354d636936bc3b43d77d4cff4fed8',
+						sha256Hash: '5a4da2ab3d5b47c9f9ce864e727b2cb346af1e3ea8b897fe8f704a97ff017619',
 					},
 				},
 			}),
@@ -39,7 +38,7 @@ export class TwitchGql extends TwitchApi {
 				extensions: {
 					persistedQuery: {
 						version: 1,
-						sha256Hash: 'e5916665a37150808f8ad053ed6394b225d5504d175c7c0b01b9a89634c57136',
+						sha256Hash: 'e7acdecb05429a62f5984bdcb27ee938ae20543579bf73c3ae44e7c822bc4f54',
 					},
 				},
 			}),
@@ -67,11 +66,12 @@ export class TwitchGql extends TwitchApi {
 					},
 					sortTypeIsRecency: false,
 					limit: 30,
+					includeIsDJ: false,
 				},
 				extensions: {
 					persistedQuery: {
 						version: 1,
-						sha256Hash: '3c9a94ee095c735e43ed3ad6ce6d4cbd03c4c6f754b31de54993e0d48fd54e30',
+						sha256Hash: 'c7c9d5aad09155c4161d2382092dc44610367f3536aac39019ec2582ae5065f9',
 					},
 				},
 			}),
@@ -88,7 +88,7 @@ export class TwitchGql extends TwitchApi {
 				extensions: {
 					persistedQuery: {
 						version: 1,
-						sha256Hash: '24de3977e178c431095279b6a95eaa01bf6a2203c97819b852f12702b817c0d8',
+						sha256Hash: 'a16feb991626027918d26488d4e8a4a4110beb76a09062255280abdac6740dd4',
 					},
 				},
 			}),
@@ -133,7 +133,7 @@ export class TwitchGql extends TwitchApi {
 				extensions: {
 					persistedQuery: {
 						version: 1,
-						sha256Hash: '2e4b3630b91552eb05b76a94b6850eb25fe42263b7cf6d06bee6d156dd247c1c',
+						sha256Hash: '4d06b702d25d652afb9ef835d2a550031f1cf762b193523a92166f40ea3d142b',
 					},
 				},
 			}),
@@ -155,30 +155,7 @@ export class TwitchGql extends TwitchApi {
 		})
 	}
 
-	public async adRequest(login: string) {
-		return super.graphql<AdRequestHandling>({
-			body: JSON.stringify({
-				operationName: 'AdRequestHandling',
-				variables: {
-					isLive: true,
-					login,
-					isVOD: false,
-					vodID: '',
-					isCollection: false,
-					collectionID: '',
-				},
-				extensions: {
-					persistedQuery: {
-						version: 1,
-						sha256Hash: '61a5ecca6da3d924efa9dbde811e051b8a10cb6bd0fe22c372c2f4401f3e88d1',
-					},
-				},
-			}),
-		})
-	}
-
 	public async streamFetch(logins: string[]) {
-		if (!Array.isArray(logins)) throw 'Data must be array string!'
 		return super.graphql<FFZStreamFetch>({
 			body: JSON.stringify({
 				operationName: 'FFZ_StreamFetch',

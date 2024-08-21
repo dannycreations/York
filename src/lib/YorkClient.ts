@@ -1,5 +1,5 @@
 import { EntityRepository } from '@mikro-orm/better-sqlite'
-import { ListenerStore, TaskStore, Vegapunk, container } from '@vegapunk/core'
+import { Vegapunk, container } from '@vegapunk/core'
 import { parseJsonc } from '@vegapunk/utilities'
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -8,7 +8,7 @@ import { ChannelEntity } from './entities/channel.entity'
 import { DropEntity } from './entities/drop.entity'
 
 export class YorkClient extends Vegapunk {
-	public readonly config = {
+	public override config = {
 		isClaimDrops: false,
 		isClaimPoints: false,
 		isDropPriorityOnly: true,
@@ -22,12 +22,9 @@ export class YorkClient extends Vegapunk {
 		container.campaignRepository = container.em.getRepository(CampaignEntity)
 		container.dropRepository = container.em.getRepository(DropEntity)
 		container.channelRepository = container.em.getRepository(ChannelEntity)
-
-		this.stores.register(new TaskStore().registerPath(join(__dirname, '..', 'tasks')))
-		this.stores.register(new ListenerStore().registerPath(join(__dirname, '..', 'listeners')))
 	}
 
-	public async start() {
+	public override async start() {
 		const pathSettings = join(process.cwd(), 'settings.json')
 		if (existsSync(pathSettings)) {
 			const config = parseJsonc(readFileSync(pathSettings, 'utf8'))
@@ -40,8 +37,14 @@ export class YorkClient extends Vegapunk {
 }
 
 declare module '@vegapunk/core' {
+	interface Container {
+		campaignRepository: EntityRepository<CampaignEntity>
+		dropRepository: EntityRepository<DropEntity>
+		channelRepository: EntityRepository<ChannelEntity>
+	}
+
 	interface Vegapunk {
-		config: {
+		readonly config: {
 			isClaimDrops: boolean
 			isClaimPoints: boolean
 			isDropPriorityOnly: boolean
@@ -49,13 +52,5 @@ declare module '@vegapunk/core' {
 			priorityList: string[]
 			exclusionList: string[]
 		}
-	}
-}
-
-declare module '@vegapunk/core' {
-	interface Container {
-		campaignRepository: EntityRepository<CampaignEntity>
-		dropRepository: EntityRepository<DropEntity>
-		channelRepository: EntityRepository<ChannelEntity>
 	}
 }

@@ -2,7 +2,7 @@ import { Status } from '../constants/Enum'
 
 export interface ViewerDropsDashboard {
 	currentUser: CurrentUser
-	rewardCampaignsAvailableToUser: any[]
+	rewardCampaignsAvailableToUser: RewardCampaignsAvailableToUser[]
 }
 
 export interface CurrentUser {
@@ -27,7 +27,7 @@ export interface DropCampaign {
 export interface Game {
 	id: string
 	displayName: string
-	boxArtURL: string
+	boxArtURL?: string
 }
 
 export interface Owner {
@@ -37,4 +37,42 @@ export interface Owner {
 
 export interface Self {
 	isAccountConnected: boolean
+}
+
+export interface RewardCampaignsAvailableToUser {
+	id: string
+	name: string
+	brand: string
+	startsAt: string
+	endsAt: string
+	status: string
+	summary: string
+	instructions: string
+	externalURL: string
+	rewardValueURLParam: string
+	aboutURL: string
+	isSitewide: boolean
+	game: Game | null
+	unlockRequirements: UnlockRequirements
+	image: Image
+	rewards: Reward[]
+}
+
+export interface Image {
+	image1xURL: string
+}
+
+export interface Reward {
+	id: string
+	name: string
+	bannerImage: Image
+	thumbnailImage: Image
+	earnableUntil: string
+	redemptionInstructions: string
+	redemptionURL: string
+}
+
+export interface UnlockRequirements {
+	subsGoal: number
+	minuteWatchedGoal: number
 }

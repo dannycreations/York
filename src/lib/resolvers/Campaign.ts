@@ -1,6 +1,5 @@
-import { RequiredExcept } from '@sapphire/utilities'
 import { container } from '@vegapunk/core'
-import { sortBy } from 'lodash'
+import { _, RequiredExcept } from '@vegapunk/utilities'
 import { CampaignDetail, TwitchGql } from '../api/TwitchGql'
 import { Game } from '../api/types/DropCampaignDetails'
 import { TimeBasedDrop as InventoryDrop } from '../api/types/Inventory'
@@ -16,14 +15,14 @@ export class Campaign implements AbstractResolver {
 		if (await container.campaignRepository.count()) return
 
 		const dropsDashboard = await TwitchGql.Instance.dropsDashboard()
-		const dropCampaigns = sortBy(dropsDashboard.data.currentUser.dropCampaigns, 'endAt')
+		const dropCampaigns = _.sortBy(dropsDashboard.data.currentUser.dropCampaigns, 'endAt')
 
 		for (let i = 0; i < dropCampaigns.length; i++) {
 			for (let j = i; j < dropCampaigns.length; j++) {
 				if (dropCampaigns[i].game.id !== dropCampaigns[j].game.id) continue
 				if (dropCampaigns[i].startAt <= dropCampaigns[j].startAt) continue
 
-				const element = dropCampaigns.splice(j, 1).at(0)
+				const element = dropCampaigns.splice(j, 1)[0]
 				dropCampaigns.splice(i, 0, element)
 			}
 		}
@@ -75,7 +74,7 @@ export class Campaign implements AbstractResolver {
 		if (!dropCampaign.allow.isEnabled) return
 
 		const timeBasedDrops = dropCampaign.timeBasedDrops as unknown as TimeBasedDrop[]
-		const sortTimeBasedDrops = sortBy(timeBasedDrops, 'requiredMinutesWatched')
+		const sortTimeBasedDrops = _.sortBy(timeBasedDrops, 'requiredMinutesWatched')
 
 		for (const drop of sortTimeBasedDrops) {
 			const isStatus = checkStatus(drop.startAt, drop.endAt)
@@ -91,7 +90,7 @@ export class Campaign implements AbstractResolver {
 				continue
 			}
 
-			const game = drop.benefitEdges.at(0).benefit
+			const game = drop.benefitEdges[0].benefit
 			if (drop.self) {
 				if (drop.self.isClaimed) continue
 				if (drop.self.currentMinutesWatched >= drop.requiredMinutesWatched) {
@@ -106,7 +105,7 @@ export class Campaign implements AbstractResolver {
 				id: drop.id,
 				name: game.name,
 				dropInstanceId: drop.self.dropInstanceID,
-				preconditionId: drop.preconditionDrops?.at(0).id,
+				preconditionId: drop.preconditionDrops[0]?.id,
 				hasPreconditionsMet: drop.self.hasPreconditionsMet,
 				currentMinutesWatched: drop.self.currentMinutesWatched,
 				requiredMinutesWatched: drop.requiredMinutesWatched,

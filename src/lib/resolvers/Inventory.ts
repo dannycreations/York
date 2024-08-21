@@ -19,10 +19,10 @@ export class Inventory implements AbstractResolver {
 			for (const drop of campaign.timeBasedDrops) {
 				container.dropRepository.create({
 					id: drop.id,
-					name: drop.benefitEdges.at(0).benefit.name,
+					name: drop.benefitEdges[0].benefit.name,
 					status: 'progress',
 					dropInstanceId: drop.self.dropInstanceID,
-					preconditionId: drop.preconditionDrops?.at(0).id,
+					preconditionId: drop.preconditionDrops[0]?.id,
 					hasPreconditionsMet: drop.self.hasPreconditionsMet,
 					currentMinutesWatched: drop.self.currentMinutesWatched,
 					requiredMinutesWatched: drop.requiredMinutesWatched,

@@ -19,14 +19,14 @@ export interface DropCampaign {
 	game: Game
 	imageURL: string
 	name: string
-	owner: Owner
+	owner: Game
 	startAt: string
 	status: string
 	timeBasedDrops: TimeBasedDrop[]
 }
 
 export interface Allow {
-	channels: null
+	channels: Game[] | null
 	isEnabled: boolean
 }
 
@@ -37,17 +37,13 @@ export interface Game {
 	slug?: string
 }
 
-export interface Owner {
-	id: string
-	name: string
-}
-
 export interface Self {
 	isAccountConnected: boolean
 }
 
 export interface TimeBasedDrop {
 	id: string
+	requiredSubs: number
 	benefitEdges: BenefitEdge[]
 	endAt: string
 	name: string
@@ -65,9 +61,9 @@ export interface Benefit {
 	id: string
 	createdAt: string
 	entitlementLimit: number
-	game: Owner
+	game: Game
 	imageAssetURL: string
 	isIosAvailable: boolean
 	name: string
-	ownerOrganization: Owner
+	ownerOrganization: Game
 }

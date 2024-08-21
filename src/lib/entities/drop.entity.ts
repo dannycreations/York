@@ -12,6 +12,9 @@ export class DropEntity {
 	@Property()
 	status: 'new' | 'progress' | 'claimed'
 
+	@Property()
+	state: 'active' | 'expired' | 'upcoming' | 'offline'
+
 	@Property({ nullable: true })
 	dropInstanceId?: string
 

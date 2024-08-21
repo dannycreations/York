@@ -1,23 +1,12 @@
 {
+	"extends": ["@sapphire/ts-config", "@sapphire/ts-config/extra-strict", "@sapphire/ts-config/decorators"],
 	"compilerOptions": {
-		"module": "commonjs",
-		"target": "es2017",
-		"outDir": "./dist",
-		"baseUrl": "./",
-		"sourceMap": true,
-		"declaration": true,
-		"removeComments": true,
-		"emitDecoratorMetadata": true,
-		"experimentalDecorators": true,
-		"allowSyntheticDefaultImports": true,
-		"incremental": true,
+		"outDir": "dist",
 		"skipLibCheck": true,
+		"removeComments": true,
 		"noImplicitAny": false,
 		"strictNullChecks": false,
-		"strictBindCallApply": false,
-		"forceConsistentCasingInFileNames": true,
-		"noFallthroughCasesInSwitch": false,
-		"esModuleInterop": true
+		"useUnknownInCatchVariables": false
 	},
-	"include": ["./src"]
+	"include": ["src"]
 }
