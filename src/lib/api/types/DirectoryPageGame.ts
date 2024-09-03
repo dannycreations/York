@@ -1,8 +1,8 @@
 export interface DirectoryPageGame {
-	game: DirectoryPageGameGame
+	game: GameData
 }
 
-export interface DirectoryPageGameGame {
+export interface GameData {
 	id: string
 	name: string
 	displayName: string
@@ -10,6 +10,7 @@ export interface DirectoryPageGameGame {
 }
 
 export interface Streams {
+	banners: null
 	edges: Edge[]
 	pageInfo: PageInfo
 }
@@ -17,7 +18,7 @@ export interface Streams {
 export interface Edge {
 	cursor: string
 	node: Node
-	trackingID: string
+	trackingID: string | null
 }
 
 export interface Node {
@@ -29,6 +30,7 @@ export interface Node {
 	freeformTags: FreeformTag[]
 	type: string
 	game: NodeGame
+	previewThumbnailProperties: PreviewThumbnailProperties
 }
 
 export interface Broadcaster {
@@ -42,6 +44,7 @@ export interface Broadcaster {
 
 export interface Roles {
 	isPartner: boolean
+	isParticipatingDJ: boolean
 }
 
 export interface FreeformTag {
@@ -55,6 +58,10 @@ export interface NodeGame {
 	name: string
 	displayName: string
 	slug: string
+}
+
+export interface PreviewThumbnailProperties {
+	blurReason: string
 }
 
 export interface PageInfo {

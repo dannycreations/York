@@ -1,12 +1,11 @@
-export interface ClaimDropRewardsMutation {
-	claimDropRewards: ClaimDropRewards
+export interface ClaimDropRewards {
+	claimDropRewards: ClaimDropRewardsClass
 }
 
-export interface ClaimDropRewards {
-	dropInstanceID: string
+export interface ClaimDropRewardsClass {
 	status: string
-	dropType: DropType
 	isUserAccountConnected: boolean
+	dropType: DropType
 }
 
 export interface DropType {
@@ -16,4 +15,5 @@ export interface DropType {
 
 export interface Campaign {
 	id: string
+	detailsURL: string
 }

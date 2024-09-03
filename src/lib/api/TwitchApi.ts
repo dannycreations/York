@@ -1,52 +1,23 @@
 import { container } from '@vegapunk/core'
-import { Options, RequestError, Response, TimeoutError, request, sleep } from '@vegapunk/utilities'
-import { defaultsDeep } from 'lodash'
-import userAgent from 'user-agents'
-import { Common, ERROR_CODES } from './constants/Enum'
+import { Options, RequestError, Response, requestDefault } from '@vegapunk/request'
+import { _, sleep } from '@vegapunk/utilities'
+import { Common } from './constants/Enum'
 import { HelixStreams } from './types/HelixStreams'
 import { PlaybackAccessToken } from './types/PlaybackAccessToken'
 
 export class TwitchApi {
 	public constructor(access_token: string) {
-		const ua = new userAgent({ deviceCategory: 'desktop' })
 		this.options = {
 			method: 'POST',
 			prefixUrl: Common.ApiUrl,
-			headers: {
-				'User-Agent': ua.toString(),
-				Authorization: `OAuth ${access_token}`,
-			},
-			retry: 0,
-			timeout: 10_000,
+			headers: { authorization: `OAuth ${access_token}` },
+			retry: -1,
 			responseType: 'json',
 		}
 	}
 
 	public get userID(): string | undefined {
 		return this.authState.user_id
-	}
-
-	private async request<T>(options: Options): Promise<Response<T> | never> {
-		try {
-			const res = await request(defaultsDeep({}, options, this.options))
-			return res as Response<T>
-		} catch (error) {
-			//! TODO: Better error handling
-			if (error instanceof TimeoutError) {
-				await sleep(1_000)
-				return this.request(options)
-			} else if (error instanceof RequestError) {
-				if (error.response?.statusCode === 401) {
-					container.logger.fatal(error.response.body, error.message)
-					process.exit()
-				} else if (ERROR_CODES.includes(error.code)) {
-					await sleep(1_000)
-					return this.request(options)
-				}
-			}
-
-			throw error
-		}
 	}
 
 	public async graphql<T>(options?: Options): Promise<Graphql<T>> {
@@ -63,71 +34,14 @@ export class TwitchApi {
 				return this.graphql(options)
 			}
 
+			response.body.data = null
 			throw response.body
 		}
 
 		return response.body
 	}
 
-	private async home() {
-		const prefixUrl = 'https://twitch.tv'
-		return this.request<string>({ method: 'GET', prefixUrl, responseType: 'text' })
-	}
-
-	private async validate(): Promise<boolean> {
-		try {
-			interface Validate {
-				user_id: string
-				client_id: string
-			}
-
-			const prefixUrl = 'https://id.twitch.tv'
-			const res = await this.request<Validate>({ method: 'GET', prefixUrl, url: 'oauth2/validate' })
-
-			this.authState.user_id = res.body.user_id
-			this.options.headers['Client-Id'] = 'ue6666qo983tsx6so1t0vnawi233wa'
-
-			return true
-		} catch (error) {
-			container.logger.error(error, 'Could not validate your auth token')
-			return false
-		}
-	}
-
-	private async stateInit(): Promise<boolean | null> {
-		if (this.isStateInit) return false
-
-		if (!(await this.validate())) return null
-
-		const twitchHome = await this.home()
-		if (!this.unique(twitchHome)) return null
-
-		this.isStateInit = true
-		return true
-	}
-
-	private unique(res: Response<string>) {
-		try {
-			for (const cookie of res.headers['set-cookie']!) {
-				const clean = cookie.match(/(?<=\=)\w+(?=\;)/g)
-				if (cookie.startsWith('server_session_id')) {
-					this.options.headers['Client-Session-Id'] = clean![0]
-				} else if (cookie.startsWith('unique_id') && !cookie.startsWith('unique_id_durable')) {
-					this.options.headers['X-Device-Id'] = clean![0]
-				}
-			}
-
-			const htmlReg = new RegExp('twilightBuildID="([-a-z0-9]+)"')
-			this.options.headers['Client-Version'] = htmlReg.exec(res.body)![1]
-
-			return true
-		} catch (error) {
-			container.logger.error(error, 'Could not fetch your unique')
-			return false
-		}
-	}
-
-	public async watch(channel: ActiveLiveChannel) {
+	public async watch(channel: ActiveLiveChannel): Promise<boolean> {
 		try {
 			const prefixUrl = ''
 			const responseType = 'text'
@@ -142,6 +56,7 @@ export class TwitchApi {
 							isVod: false,
 							vodID: '',
 							playerType: 'site',
+							platform: 'web',
 						},
 						extensions: {
 							persistedQuery: {
@@ -169,7 +84,7 @@ export class TwitchApi {
 				method: 'GET',
 				prefixUrl,
 				url: channel.broadcast_url,
-				headers: { Connection: 'close' },
+				headers: { connection: 'close' },
 				responseType,
 			})
 			const streamFilter = getStream.body.split('\n').filter(Boolean)
@@ -177,11 +92,11 @@ export class TwitchApi {
 			let parseSLQUrl = streamFilter.at(-1)
 			if (!!~parseSLQUrl.indexOf('#')) parseSLQUrl = streamFilter.at(-2)
 
-			const tryStream = await this.request({ method: 'HEAD', prefixUrl, url: parseSLQUrl, responseType })
-			return tryStream.statusCode === 200
+			const tryWatch = await this.request({ method: 'HEAD', prefixUrl, url: parseSLQUrl, responseType })
+			return tryWatch.statusCode === 200
 		} catch (error) {
 			if (error instanceof RequestError) {
-				if (error.response?.statusCode === 404) {
+				if (error.response.statusCode === 404) {
 					channel.broadcast_url = null
 					return this.watch(channel)
 				}
@@ -192,20 +107,89 @@ export class TwitchApi {
 		}
 	}
 
-	public async helix(user_id: string) {
+	public async stream(user_id: string) {
 		try {
 			const prefixUrl = 'https://api.twitch.tv'
 			const res = await this.request<HelixStreams>({
 				method: 'GET',
 				prefixUrl,
 				url: 'helix/streams',
-				headers: { 'Client-Id': 'uaw3vx1k0ttq74u9b2zfvt768eebh1' },
+				headers: { 'client-id': 'uaw3vx1k0ttq74u9b2zfvt768eebh1' },
 				searchParams: { user_id },
 			})
 			return res.body
 		} catch (error) {
-			container.logger.error(error, 'Could not fetch your helix')
+			container.logger.error(error, 'Could not fetch stream')
 			return false
+		}
+	}
+
+	private async stateInit(): Promise<boolean | null> {
+		if (this.isStateInit) return false
+
+		if (!(await this.validate())) return null
+		if (!(await this.unique())) return null
+
+		this.isStateInit = true
+		return true
+	}
+
+	private async validate() {
+		try {
+			interface Validate {
+				user_id: string
+				client_id: string
+			}
+
+			const prefixUrl = 'https://id.twitch.tv'
+			const res = await this.request<Validate>({ method: 'GET', prefixUrl, url: 'oauth2/validate' })
+
+			this.authState.user_id = res.body.user_id
+			this.options.headers['client-id'] = 'ue6666qo983tsx6so1t0vnawi233wa'
+
+			return true
+		} catch (error) {
+			container.logger.error(error, 'Could not validate your auth token')
+			return false
+		}
+	}
+
+	private async unique() {
+		try {
+			const prefixUrl = 'https://twitch.tv'
+			const res = await this.request<string>({ method: 'GET', prefixUrl, responseType: 'text' })
+
+			for (const cookie of res.headers['set-cookie']!) {
+				const clean = cookie.match(/(?<=\=)\w+(?=\;)/g)
+				if (cookie.startsWith('server_session_id')) {
+					this.options.headers['client-session-id'] = clean![0]
+				} else if (cookie.startsWith('unique_id') && !cookie.startsWith('unique_id_durable')) {
+					this.options.headers['x-device-id'] = clean![0]
+				}
+			}
+
+			const htmlReg = new RegExp('twilightBuildID="([-a-z0-9]+)"')
+			this.options.headers['client-version'] = htmlReg.exec(res.body)[1]
+
+			return true
+		} catch (error) {
+			container.logger.error(error, 'Could not fetch your unique')
+			return false
+		}
+	}
+
+	private async request<T>(options: Options): Promise<Response<T> | never> {
+		try {
+			return await requestDefault(_.defaultsDeep({}, options, this.options))
+		} catch (error) {
+			if (error instanceof RequestError) {
+				if (error.response.statusCode === 401) {
+					container.logger.fatal(error.response.body, error.message)
+					process.exit()
+				}
+			}
+
+			throw error
 		}
 	}
 

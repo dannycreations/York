@@ -1,8 +1,7 @@
 import { TwitchApi } from './TwitchApi'
-import { AdRequestHandling } from './types/AdRequestHandling'
 import { ChannelPointsContext } from './types/ChannelPointsContext'
-import { ClaimCommunityPointsMutation } from './types/ClaimCommunityPointsMutation'
-import { ClaimDropRewardsMutation } from './types/ClaimDropRewardsMutation'
+import { ClaimCommunityPoints } from './types/ClaimCommunityPoints'
+import { ClaimDropRewards } from './types/ClaimDropRewards'
 import { DirectoryPageGame } from './types/DirectoryPageGame'
 import { DropCampaignDetails } from './types/DropCampaignDetails'
 import { DropCurrentSessionContext } from './types/DropCurrentSessionContext'
@@ -65,11 +64,12 @@ export class TwitchGql extends TwitchApi {
 					},
 					sortTypeIsRecency: false,
 					limit: 30,
+					includeIsDJ: false,
 				},
 				extensions: {
 					persistedQuery: {
 						version: 1,
-						sha256Hash: 'e303f59d4836d19e66cb0f5a1efe15fbe2a1c02d314ad4f09982e825950b293d',
+						sha256Hash: 'c7c9d5aad09155c4161d2382092dc44610367f3536aac39019ec2582ae5065f9',
 					},
 				},
 			}),
@@ -109,14 +109,14 @@ export class TwitchGql extends TwitchApi {
 	}
 
 	public async claimPoints({ channelID, claimID }: ClaimPoint) {
-		return super.graphql<ClaimCommunityPointsMutation>({
+		return super.graphql<ClaimCommunityPoints>({
 			body: JSON.stringify({
-				operationName: 'ClaimCommunityPointsMutation',
+				operationName: 'ClaimCommunityPoints',
 				variables: { input: { channelID, claimID } },
 				extensions: {
 					persistedQuery: {
 						version: 1,
-						sha256Hash: '3ee69ceb3cfa8c952d572968fc2571cbdf76760bca52c643772eb61c09281915',
+						sha256Hash: '46aaeebe02c99afdf4fc97c7c0cba964124bf6b0af229395f1f6d1feed05b3d0',
 					},
 				},
 			}),
@@ -131,44 +131,22 @@ export class TwitchGql extends TwitchApi {
 				extensions: {
 					persistedQuery: {
 						version: 1,
-						sha256Hash: '2e4b3630b91552eb05b76a94b6850eb25fe42263b7cf6d06bee6d156dd247c1c',
+						sha256Hash: '4d06b702d25d652afb9ef835d2a550031f1cf762b193523a92166f40ea3d142b',
 					},
 				},
 			}),
 		})
 	}
 
-	public async claimDrops(dropInstanceId: string) {
-		return super.graphql<ClaimDropRewardsMutation>({
+	public async claimDrops(dropInstanceID: string) {
+		return super.graphql<ClaimDropRewards>({
 			body: JSON.stringify({
-				operationName: 'ClaimDropRewardsMutation',
-				variables: { dropInstanceId },
+				operationName: 'DropsPage_ClaimDropRewards',
+				variables: { input: { dropInstanceID } },
 				extensions: {
 					persistedQuery: {
 						version: 1,
-						sha256Hash: '8beae4d57187980eb9a3db758dfb7c839adf01dae778a6599edbfbe2b2a00fe9',
-					},
-				},
-			}),
-		})
-	}
-
-	public async adRequest(login: string) {
-		return super.graphql<AdRequestHandling>({
-			body: JSON.stringify({
-				operationName: 'AdRequestHandling',
-				variables: {
-					isLive: true,
-					login,
-					isVOD: false,
-					vodID: '',
-					isCollection: false,
-					collectionID: '',
-				},
-				extensions: {
-					persistedQuery: {
-						version: 1,
-						sha256Hash: '61a5ecca6da3d924efa9dbde811e051b8a10cb6bd0fe22c372c2f4401f3e88d1',
+						sha256Hash: 'a455deea71bdc9015b78eb49f4acfbce8baa7ccbedd28e549bb025bd0f751930',
 					},
 				},
 			}),
@@ -176,7 +154,6 @@ export class TwitchGql extends TwitchApi {
 	}
 
 	public async streamFetch(logins: string[]) {
-		if (!Array.isArray(logins)) throw 'Data must be array string!'
 		return super.graphql<FFZStreamFetch>({
 			body: JSON.stringify({
 				operationName: 'FFZ_StreamFetch',

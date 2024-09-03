@@ -1,21 +1,21 @@
 import { Queue } from '../database/Queue'
 
 export class QueueStore<T> extends Queue<T> {
-	public isState(state?: StateContext): number {
+	public isState(state?: StateContext) {
 		if (typeof state === 'number') {
 			this.queueState = state
 		}
 		return this.queueState
 	}
 
-	public hasTask(bool?: boolean): boolean {
+	public hasTask(bool?: boolean) {
 		if (typeof bool === 'boolean') {
 			this.taskState = bool
 		}
 		return this.taskState
 	}
 
-	public isSleeping(bool?: boolean): boolean {
+	public isSleeping(bool?: boolean) {
 		if (typeof bool === 'boolean') {
 			this.sleepingState = bool
 		}

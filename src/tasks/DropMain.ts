@@ -1,7 +1,5 @@
 import { Task } from '@vegapunk/core'
-import { sleep } from '@vegapunk/utilities'
-import chalk from 'chalk'
-import { difference, remove } from 'lodash'
+import { _, chalk, sleep } from '@vegapunk/utilities'
 import { Tasks } from '../lib/api/constants/Enum'
 import { DropCampaign } from '../lib/api/types/ViewerDropsDashboard'
 import { RequestType } from '../lib/api/types/WebSocket'
@@ -19,7 +17,7 @@ export class DropMainTask extends Task {
 		this.campaign = new Campaign()
 	}
 
-	public async runOnInit(): Promise<void> {
+	public override async runOnInit() {
 		await this.run()
 
 		const dropTopic = `user-drop-events.${this.container.twitch.userID}`
@@ -39,7 +37,7 @@ export class DropMainTask extends Task {
 		if (!selectCampaign) {
 			this.campaign.games().shift()
 			const id = this.queue.last().id
-			remove(this.campaign.campaign(), { id })
+			_.remove(this.campaign.campaign(), { id })
 			this.queue.hasTask(false)
 			return this.run()
 		}
@@ -71,7 +69,7 @@ export class DropMainTask extends Task {
 						Object.assign(selectDrop, activeCampaign.drops)
 						if (selectDrop.dropInstanceID) break
 						if (!selectDrop.hasMinutesWatchedMet()) {
-							if (selectDrop?.requiredMinutesWatched - selectDrop?.currentMinutesWatched >= 10) {
+							if (selectDrop.requiredMinutesWatched - selectDrop.currentMinutesWatched >= 10) {
 								this.container.logger.info(chalk`{red ${selectDrop.name}} | Possible broken drops`)
 								this.campaign.games().push(activeCampaign.game.displayName)
 								this.campaign.campaign().push(activeCampaign as unknown as DropCampaign)
@@ -148,7 +146,7 @@ export class DropMainTask extends Task {
 				.campaign()
 				.map((r) => r.game.displayName)
 				.filter((r) => !!~priorityList.indexOf(r))
-			this.campaign.games([...gameList, ...difference(priorityList, gameList)])
+			this.campaign.games([...gameList, ..._.difference(priorityList, gameList)])
 		}
 
 		if (this.queue.isState() === 2 && !this.campaign.games().length) {
@@ -158,7 +156,7 @@ export class DropMainTask extends Task {
 			if (this.container.client.config.isDropPriorityOnly) return this.createTask()
 
 			const gameList = this.campaign.campaign().map((r) => r.game.displayName)
-			this.campaign.games(difference(gameList, this.container.client.config.priorityList))
+			this.campaign.games(_.difference(gameList, this.container.client.config.priorityList))
 		}
 
 		if (isNewFetch) {
@@ -175,7 +173,7 @@ export class DropMainTask extends Task {
 				if (!activeCampaign.drops.peek()) {
 					isActiveCampaign = true
 					this.campaign.games()[0] = campaign.name
-					remove(this.campaign.campaign(), { id: campaign.id })
+					_.remove(this.campaign.campaign(), { id: campaign.id })
 					break
 				}
 

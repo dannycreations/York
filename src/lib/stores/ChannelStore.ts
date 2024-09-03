@@ -7,19 +7,19 @@ export class ChannelStore extends Queue<ActiveLiveChannel> {
 		super()
 	}
 
-	public get login(): string {
-		return super.peek()!.login
+	public get login() {
+		return super.peek().login
 	}
 
 	public async isLive(id: string): Promise<ActiveLiveChannel | null> {
-		const helix = await container.twitch.helix(id)
-		if (!helix || !helix.data.length) return null
+		const stream = await container.twitch.stream(id)
+		if (!stream || !stream.data.length) return null
 
-		const isGame = helix.data[0].game_id === this.gameID
+		const isGame = stream.data[0].game_id === this.gameID
 		if (this.gameID && !isGame) return null
 
-		const login = helix.data[0].user_login
-		const channel_id = helix.data[0].user_id
+		const login = stream.data[0].user_login
+		const channel_id = stream.data[0].user_id
 		return { login, channel_id }
 	}
 
@@ -37,7 +37,7 @@ export class ChannelStore extends Queue<ActiveLiveChannel> {
 		return container.twitch.watch(selectStream)
 	}
 
-	public async claimPoints(): Promise<boolean> {
+	public async claimPoints() {
 		const selectStream = super.peek()
 		if (!selectStream) return false
 

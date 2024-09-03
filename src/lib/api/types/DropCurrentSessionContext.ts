@@ -8,8 +8,8 @@ export interface CurrentUser {
 }
 
 export interface DropCurrentSession {
-	channel: Channel
-	game: Omit<Channel, 'name'>
+	channel: Channel | null
+	game: Omit<Channel, 'name'> | null
 	currentMinutesWatched: number
 	requiredMinutesWatched: number
 	dropID: string

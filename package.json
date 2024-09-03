@@ -2,37 +2,31 @@
 	"name": "york",
 	"version": "1.0.0",
 	"main": "dist/main.js",
-	"author": "Danny Creations",
+	"author": "dannycreations",
 	"license": "GPL-3.0",
 	"private": true,
 	"scripts": {
-		"build": "rm -rf dist && tsc",
 		"start:pm2": "pm2 start . --stop-exit-codes 0",
-		"start:dev": "rm -rf dist && tsc-watch --onSuccess \"node .\"",
-		"update:dep": "npx npm-check-updates -u -x got,chalk,nanoid,@types/node"
-	},
-	"repository": "github:dannycreations/York",
-	"homepage": "https://github.com/dannycreations/York#readme",
-	"bugs": {
-		"url": "https://github.com/dannycreations/York/issues"
+		"start:dev": "npm run clean && tsc-watch --onSuccess \"node .\"",
+		"start:debug": "tsx src/main.ts",
+		"build": "npm run clean && tsc",
+		"clean": "npm run clean:distfiles",
+		"clean:distfiles": "npx rimraf --glob \"dist\" \"*.tsbuildinfo\"",
+		"update": "npx npm-check-updates -u"
 	},
 	"dependencies": {
-		"@sapphire/utilities": "^3.16.2",
-		"@vegapunk/core": "^1.0.3",
-		"@vegapunk/logger": "^1.0.1",
-		"@vegapunk/utilities": "^1.0.3",
-		"chalk": "4.1.2",
+		"@vegapunk/core": "^1.0.13",
+		"@vegapunk/logger": "^1.0.6",
+		"@vegapunk/request": "^1.0.9",
+		"@vegapunk/utilities": "^1.0.12",
 		"dotenv": "^16.4.5",
-		"lodash": "^4.17.21",
-		"user-agents": "^1.1.251",
-		"ws": "^8.17.1"
+		"ws": "^8.18.0"
 	},
 	"devDependencies": {
-		"@types/lodash": "^4.17.6",
-		"@types/node": "20.14.0",
-		"@types/user-agents": "^1.0.4",
-		"@types/ws": "^8.5.10",
+		"@sapphire/ts-config": "^5.0.1",
+		"@types/ws": "^8.5.12",
 		"tsc-watch": "^6.2.0",
-		"typescript": "^5.5.2"
+		"tsx": "^4.17.0",
+		"typescript": "^5.5.4"
 	}
 }

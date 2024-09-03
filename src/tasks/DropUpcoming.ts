@@ -1,8 +1,6 @@
 import { Task } from '@vegapunk/core'
 import { getTimezoneDate } from '@vegapunk/logger'
-import { sleep, sleepUntil } from '@vegapunk/utilities'
-import chalk from 'chalk'
-import { random, remove, sortBy } from 'lodash'
+import { _, chalk, sleep, sleepUntil } from '@vegapunk/utilities'
 import { Tasks } from '../lib/api/constants/Enum'
 import { DropCampaign } from '../lib/api/types/ViewerDropsDashboard'
 import { DropMainTask } from './DropMain'
@@ -12,7 +10,7 @@ export class DropUpcomingTask extends Task {
 		super(context, { name: Tasks.DropUpcoming, delay: 60_000 * 5 })
 	}
 
-	public async run(): Promise<void> {
+	public async run() {
 		super.setDelay(this.options.delay)
 
 		const taskStores = this.container.stores.get('tasks')
@@ -32,14 +30,14 @@ export class DropUpcomingTask extends Task {
 			return
 		}
 
-		const upcomingList = sortBy(mainTask.campaign.upcoming(), 'startAt')
+		const upcomingList = _.sortBy(mainTask.campaign.upcoming(), 'startAt')
 		const selectCampaign = upcomingList[0]
 
 		const currentDate = new Date()
 		const upcomingDate = new Date(selectCampaign.startAt)
 		const sleepTime = Math.max(0, +upcomingDate - +currentDate)
 		if (!sleepTime) {
-			remove(mainTask.campaign.upcoming(), { id: selectCampaign.id })
+			_.remove(mainTask.campaign.upcoming(), { id: selectCampaign.id })
 			if (this.container.client.config.isDropPriorityOnly) {
 				if (!~this.container.client.config.priorityList.indexOf(selectCampaign.game.displayName)) {
 					return
@@ -72,7 +70,7 @@ export class DropUpcomingTask extends Task {
 			}
 
 			mainTask.campaign.resetInventory()
-			await sleep(random(0, 5_000))
+			await sleep(_.random(0, 5_000))
 			return mainTask.startTask(true)
 		}
 

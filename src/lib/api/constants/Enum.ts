@@ -10,9 +10,7 @@ export enum Status {
 }
 
 export enum Tasks {
-	DropMain = 'DROPMAIN',
-	DropOffline = 'DROPOFFLINE',
-	DropUpcoming = 'DROPUPCOMING',
+	DropMain = 'dropMain',
+	DropOffline = 'dropOffline',
+	DropUpcoming = 'dropUpcoming',
 }
-
-export const ERROR_CODES = ['ETIMEDOUT', 'ECONNRESET', 'EADDRINUSE', 'ECONNREFUSED', 'EPIPE', 'ENOTFOUND', 'ENETUNREACH', 'EAI_AGAIN', 'ECONNABORTED']

@@ -1,12 +1,16 @@
 import 'dotenv/config'
 
 import { container } from '@vegapunk/core'
-import { logger } from '@vegapunk/logger'
 import { YorkClient } from './lib/YorkClient'
 
-async function bootstrap() {
-	container.logger = logger()
+const client = new YorkClient()
 
-	new YorkClient().start()
+async function main() {
+	try {
+		await client.start()
+	} catch (error) {
+		container.logger.error(error)
+		process.exit(1)
+	}
 }
-bootstrap()
+main().catch(container.logger.error.bind(container.logger))

@@ -1,40 +1,39 @@
 import { container } from '@vegapunk/core'
+import { ERROR_CODES } from '@vegapunk/request'
 import { randomString } from '@vegapunk/utilities'
 import ws from 'ws'
-import { Common, ERROR_CODES } from './constants/Enum'
+import { Common } from './constants/Enum'
 import { Message, Request, RequestType, Response, ResponseType } from './types/WebSocket'
 
 export class WebSocket {
+	public ev?: ws
+
 	public async connect(): Promise<void> {
 		return new Promise(async (resolve) => {
 			try {
 				container.logger.trace('WS Connecting')
-				container.ev = new ws(Common.WssUrl)
-				if (container.stores) {
-					const listenerStores = container.stores.get('listeners').values()
-					await Promise.all([...listenerStores].map((store) => store.reload()))
-				}
+				if (this.ev) this.ev.removeAllListeners()
 
-				container.ev.removeAllListeners()
-				container.ev.once('open', () => this.onOpen())
-				container.ev.once('close', () => this.reconnect())
-				container.ev.on('message', (buffer: Buffer) => this.onMessage(buffer))
-				container.ev.on('error', (error: ErrorCode) => this.onError(error))
+				this.ev = new ws(Common.WssUrl)
+				this.ev.once('open', () => this.onOpen())
+				this.ev.once('close', () => this.reconnect())
+				this.ev.on('message', (buffer: Buffer) => this.onMessage(buffer))
+				this.ev.on('error', (error: ErrorCode) => this.onError(error))
 				this.timeoutState.reconnect = setTimeout(() => this.reconnect(), 10_000)
 
 				const wait = setInterval(() => {
-					if (container.ev?.readyState === 1) {
+					if (this.ev?.readyState === 1) {
 						clearInterval(wait)
 						resolve()
 					}
 				}, 100)
 			} catch (error) {
-				container.logger.error(error, 'at WS onConnect')
+				container.logger.error(error, 'at WS connect')
 			}
 		})
 	}
 
-	public async send(type: RequestType, topic: string): Promise<void> {
+	public async send(type: RequestType, topic: string) {
 		if (this.resPool.has(topic) || this.reqPool.has(topic)) return
 
 		container.logger.trace(`WS Send: ${type} ${topic}`)
@@ -48,7 +47,7 @@ export class WebSocket {
 		await this.sendPromise(payload)
 	}
 
-	private async onOpen(): Promise<void> {
+	private async onOpen() {
 		container.logger.trace('WS Connected')
 		clearTimeout(this.timeoutState.reconnect)
 		await this.ping()
@@ -60,7 +59,7 @@ export class WebSocket {
 		await Promise.all(eventList.map((r) => this.send(r.type, r.data.topics[0])))
 	}
 
-	private onMessage(buffer: Buffer): void {
+	private onMessage(buffer: Buffer) {
 		const response = JSON.parse(buffer.toString()) as Response
 		const message = response as unknown as Message
 
@@ -71,7 +70,7 @@ export class WebSocket {
 			case ResponseType.Reconnect:
 				break
 			case ResponseType.Response:
-				if (typeof message.data === 'undefined') break
+				if (message.data === undefined) break
 
 				const reqList = [...this.reqPool.values()].find((r) => r.nonce === response.nonce)
 				if (!reqList) {
@@ -91,27 +90,27 @@ export class WebSocket {
 			case ResponseType.Message:
 				const resEventTopic = message.data.topic.split('.')[0]
 				const resEventMessage = JSON.parse(message.data.message)
-				container.ev.emit(resEventTopic, resEventMessage)
+				container.client.emit(resEventTopic, resEventMessage)
 				break
 			default:
 				container.logger.warn(response, 'Unknown websocket message 2')
 		}
 	}
 
-	private onError(error: ErrorCode): void {
+	private onError(error: ErrorCode) {
 		if (ERROR_CODES.includes(error.code)) return
 
 		container.logger.error(error, 'at WS onError')
 	}
 
-	private async ping(): Promise<void> {
+	private async ping() {
 		clearTimeout(this.timeoutState.ping)
 		this.timeoutState.ping = setTimeout(() => this.ping(), 60_000 * 4)
 		this.timeoutState.reconnect = setTimeout(() => this.reconnect(), 10_000)
 		await this.sendPromise({ type: RequestType.Ping } as Request)
 	}
 
-	private reconnect(): void {
+	private reconnect() {
 		container.logger.trace('WS Reconnect')
 		clearTimeout(this.timeoutState.reconnect)
 		this.timeoutState.reconnect = setTimeout(() => this.connect(), 10_000)
@@ -121,7 +120,7 @@ export class WebSocket {
 		return new Promise((resolve) => {
 			try {
 				const payload = JSON.stringify(request)
-				container.ev.send(payload, () => resolve())
+				this.ev.send(payload, () => resolve())
 			} catch {
 				resolve()
 			}

@@ -1,6 +1,5 @@
-import { RequiredExcept } from '@sapphire/utilities'
 import { container } from '@vegapunk/core'
-import { cloneDeep, sortBy } from 'lodash'
+import { _, RequiredExcept } from '@vegapunk/utilities'
 import { ActiveLiveChannel } from '../api/TwitchApi'
 import { CampaignDetail } from '../api/TwitchGql'
 import { Game } from '../api/types/DropCampaignDetails'
@@ -10,46 +9,46 @@ import { ChannelStore } from '../stores/ChannelStore'
 import { DropStore } from '../stores/DropStore'
 
 export class Campaign {
-	public games(games?: string[]): string[] {
+	public games(games?: string[]) {
 		if (Array.isArray(games)) {
 			this.gameList = games
 		}
 		return this.gameList
 	}
 
-	public campaign(campaign?: DropCampaign[]): DropCampaign[] {
+	public campaign(campaign?: DropCampaign[]) {
 		if (Array.isArray(campaign)) {
 			this.campaignList = campaign
 		}
 		return this.campaignList
 	}
 
-	public offline(offline?: Offline[]): Offline[] {
+	public offline(offline?: Offline[]) {
 		if (Array.isArray(offline)) {
 			this.offlineList = offline
 		}
 		return this.offlineList
 	}
 
-	public upcoming(upcoming?: Upcoming[]): Upcoming[] {
+	public upcoming(upcoming?: Upcoming[]) {
 		if (Array.isArray(upcoming)) {
 			this.upcomingList = upcoming
 		}
 		return this.upcomingList
 	}
 
-	public resetInventory(): void {
+	public resetInventory() {
 		delete this.isInventory
 		this.dropsClaimed = []
 		this.dropsProgress = []
 	}
 
-	public async fetchCampaign(force?: boolean): Promise<void> {
+	public async fetchCampaign(force?: boolean) {
 		if (force) this.campaignList = []
 		if (this.campaignList.length) return
 
 		const dropsDashboard = await container.twitch.dropsDashboard()
-		const dropCampaigns = sortBy(dropsDashboard.data.currentUser.dropCampaigns, 'endAt')
+		const dropCampaigns = _.sortBy(dropsDashboard.data.currentUser.dropCampaigns, 'endAt')
 		for (let i = 0; i < dropCampaigns.length; i++) {
 			for (let j = i; j < dropCampaigns.length; j++) {
 				if (dropCampaigns[i].game.id !== dropCampaigns[j].game.id) continue
@@ -88,7 +87,7 @@ export class Campaign {
 		}
 	}
 
-	public async fetchInventory(): Promise<void> {
+	public async fetchInventory() {
 		const inventory = await container.twitch.inventory()
 		this.dropsClaimed = inventory.data.currentUser.inventory.gameEventDrops
 		this.dropsProgress = inventory.data.currentUser.inventory.dropCampaignsInProgress
@@ -101,8 +100,8 @@ export class Campaign {
 
 		const detail = campaignDetails.data.user.dropCampaign
 		const campaignProgress = this.dropsProgress.find((r) => r.id === detail.id)
-		const timeBasedDrops = cloneDeep(campaignProgress ? campaignProgress.timeBasedDrops : detail.timeBasedDrops) as TimeBasedDrop[]
-		const sortTimeBasedDrops = sortBy(timeBasedDrops, 'requiredMinutesWatched')
+		const timeBasedDrops = _.cloneDeep(campaignProgress ? campaignProgress.timeBasedDrops : detail.timeBasedDrops) as TimeBasedDrop[]
+		const sortTimeBasedDrops = _.sortBy(timeBasedDrops, 'requiredMinutesWatched')
 
 		const activeCampaign = {
 			id: detail.id,
@@ -114,7 +113,18 @@ export class Campaign {
 
 		const activeDrops: ActiveTimeBasedDrop[] = []
 		for (const drop of sortTimeBasedDrops) {
-			const isStatus = checkStatus(drop.startAt, drop.endAt)
+			if (drop.requiredSubs > 0) continue
+
+			drop.self = {
+				isClaimed: false,
+				dropInstanceID: null,
+				currentMinutesWatched: 0,
+				hasPreconditionsMet: true,
+				...drop.self,
+			}
+
+			const minutesLeft = drop.requiredMinutesWatched - drop.self.currentMinutesWatched
+			const isStatus = checkStatus(drop.startAt, drop.endAt, minutesLeft)
 			if (isStatus.expired) continue
 			if (isStatus.upcoming) {
 				if (!~this.upcomingList.findIndex((r) => r.id === detail.id)) {
@@ -134,14 +144,6 @@ export class Campaign {
 				if (!!~this.dropsClaimed.findIndex((r) => r.id === selectBenefit.benefit.id)) continue
 			}
 
-			drop.self = {
-				isClaimed: false,
-				dropInstanceID: null,
-				currentMinutesWatched: 0,
-				hasPreconditionsMet: true,
-				...(drop.self as {}),
-			}
-
 			activeDrops.push(drop as ActiveTimeBasedDrop)
 		}
 		if (!activeDrops.length) return activeCampaign
@@ -152,14 +154,12 @@ export class Campaign {
 			activeCampaign.drops.enqueue(activeDrops[i])
 		}
 
-		if (detail.allow.isEnabled) {
-			const getLive = await this.getLive(detail.game.slug, detail.allow.channels)
-			activeCampaign.channels.enqueueMany(getLive)
-		}
+		const getLive = await this.getLive(detail.game.slug, detail.allow.channels)
+		activeCampaign.channels.enqueueMany(getLive)
 		return activeCampaign
 	}
 
-	private async getLive(slug: string, channels: Game[] | null): Promise<ActiveLiveChannel[]> {
+	private async getLive(slug: string, channels: Game[] | null) {
 		const foundLives: ActiveLiveChannel[] = []
 		if (!channels?.length) {
 			const gameDirectory = await container.twitch.gameDirectory(slug)
@@ -195,10 +195,16 @@ export class Campaign {
 	private dropsProgress: DropCampaignsInProgress[] = []
 }
 
-export function checkStatus(startAt: string, endAt: string): Status {
+export function checkStatus(startAt: string, endAt: string, minutesLeft: number = 0): Status {
 	let [active, expired, upcoming] = new Array(3).fill(false) as boolean[]
-	const [currentDate, startDate, endDate] = [new Date(), new Date(startAt), new Date(endAt)]
-	if (currentDate > startDate && currentDate < endDate) active = true
+	const [currentDate, startDate, endDate, remainingDate] = [
+		new Date(),
+		new Date(startAt),
+		new Date(endAt),
+		new Date(Date.now() + (minutesLeft + 5) * 1000),
+	]
+
+	if (currentDate > startDate && currentDate < endDate && remainingDate < endDate) active = true
 	else if (currentDate <= startDate) upcoming = true
 	else expired = true
 

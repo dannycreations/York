@@ -1,5 +1,5 @@
 export class Queue<V> {
-	public get length(): number {
+	public get length() {
 		return this.tailIdx - this.headIdx
 	}
 
@@ -7,17 +7,17 @@ export class Queue<V> {
 		return this.elements[this.headIdx + i]
 	}
 
-	public last(): V {
+	public last() {
 		return this.lastState
 	}
 
-	public enqueue(element: V): this {
+	public enqueue(element: V) {
 		this.elements[this.tailIdx] = element
 		this.tailIdx++
 		return this
 	}
 
-	public enqueueMany(elements: V[]): this {
+	public enqueueMany(elements: V[]) {
 		for (const element of elements) {
 			this.enqueue(element)
 		}
@@ -32,11 +32,11 @@ export class Queue<V> {
 		return item
 	}
 
-	public clear(): void {
+	public clear() {
 		while (this.length) this.dequeue()
 	}
 
-	public values(): V[] {
+	public values() {
 		return Object.values(this.elements)
 	}
 
