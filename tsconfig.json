@@ -4,7 +4,6 @@
 		"outDir": "dist",
 		"skipLibCheck": true,
 		"removeComments": true,
-		"noImplicitAny": false,
 		"strictNullChecks": false,
 		"useUnknownInCatchVariables": false
 	},

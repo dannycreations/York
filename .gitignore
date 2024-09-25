@@ -129,7 +129,7 @@ dist
 .yarn/install-state.gz
 .pnp.*
 
-debug
-temp
+debug/
+temp/
+*.db
 settings.json
-sqlite.db

@@ -41,7 +41,7 @@ export class TwitchApi {
 		return response.body
 	}
 
-	public async watch(channel: ActiveLiveChannel) {
+	public async watch(channel: ActiveLiveChannel): Promise<boolean> {
 		try {
 			const prefixUrl = ''
 			const responseType = 'text'

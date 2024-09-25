@@ -1,5 +1,5 @@
 import { container } from '@vegapunk/core'
-import { ERROR_CODES } from '@vegapunk/request'
+import { ErrorCodes } from '@vegapunk/request'
 import { randomString } from '@vegapunk/utilities'
 import ws from 'ws'
 import { Common } from './constants/Enum'
@@ -98,7 +98,7 @@ export class WebSocket {
 	}
 
 	private onError(error: ErrorCode): void {
-		if (ERROR_CODES.includes(error.code)) return
+		if (ErrorCodes.includes(error.code)) return
 
 		container.logger.error(error, 'at WS onError')
 	}

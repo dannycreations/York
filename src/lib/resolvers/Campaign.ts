@@ -29,7 +29,7 @@ export class Campaign implements AbstractResolver {
 
 		for (const campaign of dropCampaigns) {
 			const isStatus = checkStatus(campaign.startAt, campaign.endAt)
-			if (isStatus.expired) continue
+			if (isStatus === 'expired') continue
 			if (!!~container.client.config.exclusionList.indexOf(campaign.game.displayName)) continue
 			if (container.client.config.usePriorityConnected && campaign.self.isAccountConnected) {
 				if (!~container.client.config.priorityList.indexOf(campaign.game.displayName)) {
@@ -77,9 +77,11 @@ export class Campaign implements AbstractResolver {
 		const sortTimeBasedDrops = _.sortBy(timeBasedDrops, 'requiredMinutesWatched')
 
 		for (const drop of sortTimeBasedDrops) {
+			if (drop.requiredSubs > 0) continue
+
 			const isStatus = checkStatus(drop.startAt, drop.endAt)
-			if (isStatus.expired) continue
-			if (isStatus.upcoming) {
+			if (isStatus === 'expired') continue
+			if (isStatus === 'upcoming') {
 				container.campaignRepository.create({
 					id: dropCampaign.id,
 					name: dropCampaign.name.trim(),
@@ -105,7 +107,7 @@ export class Campaign implements AbstractResolver {
 				id: drop.id,
 				name: game.name,
 				dropInstanceId: drop.self.dropInstanceID,
-				preconditionId: drop.preconditionDrops[0]?.id,
+				preconditionId: drop.preconditionDrops?.[0].id,
 				hasPreconditionsMet: drop.self.hasPreconditionsMet,
 				currentMinutesWatched: drop.self.currentMinutesWatched,
 				requiredMinutesWatched: drop.requiredMinutesWatched,

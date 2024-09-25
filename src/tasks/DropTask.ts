@@ -5,7 +5,7 @@ export class DropTask extends Task {
 		super(context, { delay: 60_000 })
 	}
 
-	public async run() {
+	public async update() {
 		const dataDrops = await this.container.dropRepository.find({})
 		if (dataDrops.length) {
 			this.container.logger.info(dataDrops[0], 'DropTask')

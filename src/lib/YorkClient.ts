@@ -1,5 +1,5 @@
-import { EntityRepository } from '@mikro-orm/better-sqlite'
-import { Vegapunk, container } from '@vegapunk/core'
+import { EntityManager, EntityRepository, MikroORM } from '@mikro-orm/better-sqlite'
+import { container, Vegapunk } from '@vegapunk/core'
 import { parseJsonc } from '@vegapunk/utilities'
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -13,18 +13,15 @@ export class YorkClient extends Vegapunk {
 		isClaimPoints: false,
 		isDropPriorityOnly: true,
 		usePriorityConnected: true,
-		priorityList: [],
-		exclusionList: [],
-	}
-
-	public constructor() {
-		super()
-		container.campaignRepository = container.em.getRepository(CampaignEntity)
-		container.dropRepository = container.em.getRepository(DropEntity)
-		container.channelRepository = container.em.getRepository(ChannelEntity)
+		priorityList: [] as string[],
+		exclusionList: [] as string[],
 	}
 
 	public override async start() {
+		container.campaignRepository = container.em.getRepository(CampaignEntity)
+		container.dropRepository = container.em.getRepository(DropEntity)
+		container.channelRepository = container.em.getRepository(ChannelEntity)
+
 		const pathSettings = join(process.cwd(), 'settings.json')
 		if (existsSync(pathSettings)) {
 			const config = parseJsonc(readFileSync(pathSettings, 'utf8'))
@@ -38,6 +35,8 @@ export class YorkClient extends Vegapunk {
 
 declare module '@vegapunk/core' {
 	interface Container {
+		orm: MikroORM
+		em: EntityManager
 		campaignRepository: EntityRepository<CampaignEntity>
 		dropRepository: EntityRepository<DropEntity>
 		channelRepository: EntityRepository<ChannelEntity>

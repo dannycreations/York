@@ -1,5 +1,6 @@
 import { container } from '@vegapunk/core'
 import { TwitchGql } from '../api/TwitchGql'
+import { checkStatus } from '../helpers/campaign.helper'
 import { AbstractResolver } from './types/abstract.resolver'
 
 export class Inventory implements AbstractResolver {
@@ -21,8 +22,9 @@ export class Inventory implements AbstractResolver {
 					id: drop.id,
 					name: drop.benefitEdges[0].benefit.name,
 					status: 'progress',
+					state: checkStatus(drop.startAt, drop.endAt),
 					dropInstanceId: drop.self.dropInstanceID,
-					preconditionId: drop.preconditionDrops[0]?.id,
+					preconditionId: drop.preconditionDrops?.[0].id,
 					hasPreconditionsMet: drop.self.hasPreconditionsMet,
 					currentMinutesWatched: drop.self.currentMinutesWatched,
 					requiredMinutesWatched: drop.requiredMinutesWatched,

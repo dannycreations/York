@@ -1,9 +1,12 @@
-export function checkStatus(startAt: string, endAt: string) {
-	let [active, expired, upcoming] = new Array(3).fill(false) as boolean[]
-	const [currentDate, startDate, endDate] = [new Date(), new Date(startAt), new Date(endAt)]
-	if (currentDate > startDate && currentDate < endDate) active = true
-	else if (currentDate <= startDate) upcoming = true
-	else expired = true
+export function checkStatus(startAt: string, endAt: string, minutesLeft: number = 0) {
+	const [currentDate, startDate, endDate, remainingDate] = [
+		new Date(),
+		new Date(startAt),
+		new Date(endAt),
+		new Date(Date.now() + (minutesLeft + 5) * 1000),
+	]
 
-	return { active, expired, upcoming }
+	if (currentDate > startDate && currentDate < endDate && remainingDate < endDate) return 'active'
+	else if (currentDate <= startDate) return 'upcoming'
+	else return 'expired'
 }
