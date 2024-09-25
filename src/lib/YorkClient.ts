@@ -35,8 +35,11 @@ export class YorkClient extends Vegapunk {
 
 declare module '@vegapunk/core' {
 	interface Container {
+		// ! TODO: fixing types
 		orm: MikroORM
 		em: EntityManager
+		// ====================
+
 		campaignRepository: EntityRepository<CampaignEntity>
 		dropRepository: EntityRepository<DropEntity>
 		channelRepository: EntityRepository<ChannelEntity>
