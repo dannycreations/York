@@ -6,12 +6,11 @@ import { DropMainTask } from './DropMain'
 
 export class DropOfflineTask extends Task {
 	public constructor(context: Task.LoaderContext) {
-		super(context, { name: Tasks.DropOffline, delay: 60_000 * 5 })
+		super(context, { name: Tasks.DropOffline, delay: 60_000 * 5, ref: true })
 	}
 
-	public async run() {
-		const taskStores = this.container.stores.get('tasks')
-		const mainTask = taskStores.get(Tasks.DropMain) as DropMainTask
+	public async update() {
+		const mainTask = this.store.get(Tasks.DropMain) as DropMainTask
 		if (!mainTask.campaign.offline().length) return
 
 		const priorityList = this.container.client.config.priorityList

@@ -7,6 +7,7 @@ import { DropCampaignDetails } from './types/DropCampaignDetails'
 import { DropCurrentSessionContext } from './types/DropCurrentSessionContext'
 import { FFZStreamFetch } from './types/FFZStreamFetch'
 import { Inventory } from './types/Inventory'
+import { PlaybackAccessToken } from './types/PlaybackAccessToken'
 import { ViewerDropsDashboard } from './types/ViewerDropsDashboard'
 
 export class TwitchGql extends TwitchApi {
@@ -17,12 +18,7 @@ export class TwitchGql extends TwitchApi {
 				variables: {
 					fetchRewardCampaigns: true,
 				},
-				extensions: {
-					persistedQuery: {
-						version: 1,
-						sha256Hash: '5a4da2ab3d5b47c9f9ce864e727b2cb346af1e3ea8b897fe8f704a97ff017619',
-					},
-				},
+				extensions: this.query('5a4da2ab3d5b47c9f9ce864e727b2cb346af1e3ea8b897fe8f704a97ff017619'),
 			}),
 		})
 	}
@@ -33,12 +29,7 @@ export class TwitchGql extends TwitchApi {
 			body: JSON.stringify({
 				operationName: 'DropCampaignDetails',
 				variables: data,
-				extensions: {
-					persistedQuery: {
-						version: 1,
-						sha256Hash: 'e7acdecb05429a62f5984bdcb27ee938ae20543579bf73c3ae44e7c822bc4f54',
-					},
-				},
+				extensions: this.query('e7acdecb05429a62f5984bdcb27ee938ae20543579bf73c3ae44e7c822bc4f54'),
 			}),
 		})
 	}
@@ -66,12 +57,7 @@ export class TwitchGql extends TwitchApi {
 					limit: 30,
 					includeIsDJ: false,
 				},
-				extensions: {
-					persistedQuery: {
-						version: 1,
-						sha256Hash: 'c7c9d5aad09155c4161d2382092dc44610367f3536aac39019ec2582ae5065f9',
-					},
-				},
+				extensions: this.query('c7c9d5aad09155c4161d2382092dc44610367f3536aac39019ec2582ae5065f9'),
 			}),
 		})
 	}
@@ -83,12 +69,7 @@ export class TwitchGql extends TwitchApi {
 				variables: {
 					fetchRewardCampaigns: true,
 				},
-				extensions: {
-					persistedQuery: {
-						version: 1,
-						sha256Hash: 'a16feb991626027918d26488d4e8a4a4110beb76a09062255280abdac6740dd4',
-					},
-				},
+				extensions: this.query('a16feb991626027918d26488d4e8a4a4110beb76a09062255280abdac6740dd4'),
 			}),
 		})
 	}
@@ -98,12 +79,7 @@ export class TwitchGql extends TwitchApi {
 			body: JSON.stringify({
 				operationName: 'ChannelPointsContext',
 				variables: { channelLogin },
-				extensions: {
-					persistedQuery: {
-						version: 1,
-						sha256Hash: '1530a003a7d374b0380b79db0be0534f30ff46e61cffa2bc0e2468a909fbc024',
-					},
-				},
+				extensions: this.query('1530a003a7d374b0380b79db0be0534f30ff46e61cffa2bc0e2468a909fbc024'),
 			}),
 		})
 	}
@@ -113,12 +89,7 @@ export class TwitchGql extends TwitchApi {
 			body: JSON.stringify({
 				operationName: 'ClaimCommunityPoints',
 				variables: { input: { channelID, claimID } },
-				extensions: {
-					persistedQuery: {
-						version: 1,
-						sha256Hash: '46aaeebe02c99afdf4fc97c7c0cba964124bf6b0af229395f1f6d1feed05b3d0',
-					},
-				},
+				extensions: this.query('46aaeebe02c99afdf4fc97c7c0cba964124bf6b0af229395f1f6d1feed05b3d0'),
 			}),
 		})
 	}
@@ -128,12 +99,7 @@ export class TwitchGql extends TwitchApi {
 			body: JSON.stringify({
 				operationName: 'DropCurrentSessionContext',
 				variables: {},
-				extensions: {
-					persistedQuery: {
-						version: 1,
-						sha256Hash: '4d06b702d25d652afb9ef835d2a550031f1cf762b193523a92166f40ea3d142b',
-					},
-				},
+				extensions: this.query('4d06b702d25d652afb9ef835d2a550031f1cf762b193523a92166f40ea3d142b'),
 			}),
 		})
 	}
@@ -143,12 +109,7 @@ export class TwitchGql extends TwitchApi {
 			body: JSON.stringify({
 				operationName: 'DropsPage_ClaimDropRewards',
 				variables: { input: { dropInstanceID } },
-				extensions: {
-					persistedQuery: {
-						version: 1,
-						sha256Hash: 'a455deea71bdc9015b78eb49f4acfbce8baa7ccbedd28e549bb025bd0f751930',
-					},
-				},
+				extensions: this.query('a455deea71bdc9015b78eb49f4acfbce8baa7ccbedd28e549bb025bd0f751930'),
 			}),
 		})
 	}
@@ -158,14 +119,35 @@ export class TwitchGql extends TwitchApi {
 			body: JSON.stringify({
 				operationName: 'FFZ_StreamFetch',
 				variables: { logins },
-				extensions: {
-					persistedQuery: {
-						version: 1,
-						sha256Hash: 'e3dbb5d8509ff2ef9d6518bf6749d2112bf6fc3ee2886248579bd7db0feb6504',
-					},
-				},
+				extensions: this.query('e3dbb5d8509ff2ef9d6518bf6749d2112bf6fc3ee2886248579bd7db0feb6504'),
 			}),
 		})
+	}
+
+	public async playbackAccessToken(login: string) {
+		return super.graphql<PlaybackAccessToken>({
+			body: JSON.stringify({
+				operationName: 'PlaybackAccessToken',
+				variables: {
+					isLive: true,
+					isVod: false,
+					login,
+					playerType: 'site',
+					platform: 'web',
+					vodID: '',
+				},
+				extensions: this.query('ed230aa1e33e07eebb8928504583da78a5173989fadfb1ac94be06a04f3cdbe9'),
+			}),
+		})
+	}
+
+	private query(sha256Hash: string) {
+		return {
+			persistedQuery: {
+				version: 1,
+				sha256Hash,
+			},
+		}
 	}
 }
 

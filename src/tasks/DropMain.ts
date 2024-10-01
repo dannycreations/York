@@ -12,19 +12,19 @@ export class DropMainTask extends Task {
 	public campaign: Campaign
 
 	public constructor(context: Task.LoaderContext) {
-		super(context, { name: Tasks.DropMain, delay: 60_000 })
+		super(context, { name: Tasks.DropMain, delay: 60_000, ref: true })
 		this.queue = new QueueStore()
 		this.campaign = new Campaign()
 	}
 
-	public override async runOnInit() {
-		await this.run()
+	public override async start() {
+		await this.update()
 
-		const dropTopic = `user-drop-events.${this.container.twitch.userID}`
+		const dropTopic = `user-drop-events.${this.container.twitch.userId}`
 		await this.container.ws.send(RequestType.Listen, dropTopic)
 	}
 
-	public async run(): Promise<void> {
+	public async update(): Promise<void> {
 		super.setDelay(this.options.delay)
 
 		await this.createTask()
@@ -39,18 +39,18 @@ export class DropMainTask extends Task {
 			const id = this.queue.last().id
 			_.remove(this.campaign.campaign(), { id })
 			this.queue.hasTask(false)
-			return this.run()
+			return this.update()
 		}
 
 		const selectDrop = selectCampaign.drops
 		if (!selectDrop.peek()) {
 			this.queue.dequeue()
-			return this.run()
+			return this.update()
 		} else {
 			if (selectDrop.isStatus().expired) {
 				this.container.logger.info(chalk`{red ${selectCampaign.name}} | Campaigns expired`)
 				this.queue.dequeue()
-				return this.run()
+				return this.update()
 			}
 		}
 
@@ -58,7 +58,7 @@ export class DropMainTask extends Task {
 		if (!selectDrop.hasPreconditionsMet()) {
 			this.container.logger.info(chalk`{red ${selectDrop.name}} | Preconditions drops`)
 			this.queue.dequeue()
-			return this.run()
+			return this.update()
 		} else if (selectDrop.hasMinutesWatchedMet()) {
 			if (this.container.client.config.isClaimDrops) {
 				if (!selectDrop.dropInstanceID) {
@@ -77,7 +77,7 @@ export class DropMainTask extends Task {
 							} else {
 								selectStream.dequeue()
 							}
-							return this.run()
+							return this.update()
 						}
 
 						if (!i) this.container.logger.info(chalk`{red ${selectDrop.name}} | DropID not found`)
@@ -93,7 +93,7 @@ export class DropMainTask extends Task {
 
 			this.campaign.resetInventory()
 			selectDrop.dequeue()
-			return this.run()
+			return this.update()
 		}
 
 		if (await selectStream.watch()) {
@@ -115,7 +115,7 @@ export class DropMainTask extends Task {
 
 			this.container.logger.info(chalk`{red ${selectCampaign.name}} | Offline`)
 			this.queue.dequeue()
-			return this.run()
+			return this.update()
 		}
 	}
 
@@ -129,9 +129,8 @@ export class DropMainTask extends Task {
 			this.queue.isSleeping(true)
 			this.campaign.resetInventory()
 
-			const taskStores = this.container.stores.get('tasks')
-			const upcomingTask = taskStores.get(Tasks.DropUpcoming) as DropUpcomingTask
-			return upcomingTask.run()
+			const upcomingTask = this.store.get(Tasks.DropUpcoming) as DropUpcomingTask
+			return upcomingTask.update()
 		}
 
 		await this.campaign.fetchCampaign()

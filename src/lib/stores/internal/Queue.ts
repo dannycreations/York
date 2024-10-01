@@ -27,7 +27,7 @@ export class Queue<V> {
 	public dequeue(i: number = 0): V | undefined {
 		const item = this.elements[this.headIdx + i]
 		this.lastState = item
-		delete this.elements[this.headIdx + i]
+		this.elements[this.headIdx + i] = undefined
 		this.headIdx++
 		return item
 	}

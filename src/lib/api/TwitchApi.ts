@@ -5,18 +5,18 @@ import { Common } from './constants/Enum'
 import { HelixStreams } from './types/HelixStreams'
 import { PlaybackAccessToken } from './types/PlaybackAccessToken'
 
-export class TwitchApi {
-	public constructor(access_token: string) {
+export abstract class TwitchApi {
+	public constructor(auth_token: string) {
 		this.options = {
 			method: 'POST',
 			prefixUrl: Common.ApiUrl,
-			headers: { authorization: `OAuth ${access_token}` },
+			headers: { authorization: `OAuth ${auth_token}` },
 			retry: -1,
 			responseType: 'json',
 		}
 	}
 
-	public get userID(): string | undefined {
+	public get userId(): string | undefined {
 		return this.authState.user_id
 	}
 
@@ -37,63 +37,54 @@ export class TwitchApi {
 			response.body.data = null
 			throw response.body
 		}
-
 		return response.body
 	}
 
+	abstract playbackAccessToken(login: string): Promise<Graphql<PlaybackAccessToken>>
+
 	public async watch(channel: ActiveLiveChannel): Promise<boolean> {
+		const stage: number[] = []
 		try {
 			const prefixUrl = ''
 			const responseType = 'text'
 
 			if (typeof channel.broadcast_url !== 'string') {
-				const getPlayback = await this.graphql<PlaybackAccessToken>({
-					body: JSON.stringify({
-						operationName: 'PlaybackAccessToken',
-						variables: {
-							isLive: true,
-							login: channel.login,
-							isVod: false,
-							vodID: '',
-							playerType: 'site',
-							platform: 'web',
-						},
-						extensions: {
-							persistedQuery: {
-								version: 1,
-								sha256Hash: '3093517e37e4f4cb48906155bcd894150aef92617939236d2508f3375ab732ce',
-							},
-						},
-					}),
-				})
-
-				const getBroadcast = await this.request<string>({
+				stage.push(0)
+				const playback = await this.playbackAccessToken(channel.login)
+				stage.push(1)
+				const broadcast = await this.request<string>({
 					method: 'GET',
 					prefixUrl: 'https://usher.ttvnw.net',
 					url: `api/channel/hls/${channel.login}.m3u8`,
 					searchParams: {
-						sig: getPlayback.data.streamPlaybackAccessToken.signature,
-						token: getPlayback.data.streamPlaybackAccessToken.value,
+						sig: playback.data.streamPlaybackAccessToken.signature,
+						token: playback.data.streamPlaybackAccessToken.value,
 					},
 					responseType,
 				})
-				channel.broadcast_url = getBroadcast.body.split('\n').filter(Boolean).at(-1)
+				channel.broadcast_url = broadcast.body.split('\n').filter(Boolean).at(-1)
+				stage.push(2)
 			}
 
-			const getStream = await this.request<string>({
+			stage.push(3)
+			const stream = await this.request<string>({
 				method: 'GET',
 				prefixUrl,
 				url: channel.broadcast_url,
 				headers: { connection: 'close' },
 				responseType,
 			})
-			const streamFilter = getStream.body.split('\n').filter(Boolean)
+			const streamFilter = stream.body.split('\n').filter(Boolean)
+			stage.push(4)
 
 			let parseSLQUrl = streamFilter.at(-1)
 			if (!!~parseSLQUrl.indexOf('#')) parseSLQUrl = streamFilter.at(-2)
+			stage.push(5)
 
-			const tryWatch = await this.request({ method: 'HEAD', prefixUrl, url: parseSLQUrl, responseType })
-			return tryWatch.statusCode === 200
+			const watch = await this.request({ method: 'HEAD', prefixUrl, url: parseSLQUrl, responseType })
+			stage.push(6)
+
+			return watch.statusCode === 200
 		} catch (error) {
 			if (error instanceof RequestError) {
 				if (error.response.statusCode === 404) {
@@ -102,6 +93,7 @@ export class TwitchApi {
 				}
 			}
 
+			error.stage = stage
 			container.logger.error(error, 'Could not watch stream')
 			return false
 		}
@@ -185,7 +177,7 @@ export class TwitchApi {
 			if (error instanceof RequestError) {
 				if (error.response.statusCode === 401) {
 					container.logger.fatal(error.response.body, error.message)
-					process.exit()
+					process.exit(0)
 				}
 			}
 

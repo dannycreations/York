@@ -38,7 +38,7 @@ export class Campaign {
 	}
 
 	public resetInventory() {
-		delete this.isInventory
+		this.isInventory = undefined
 		this.dropsClaimed = []
 		this.dropsProgress = []
 	}
@@ -146,16 +146,17 @@ export class Campaign {
 
 			activeDrops.push(drop as ActiveTimeBasedDrop)
 		}
-		if (!activeDrops.length) return activeCampaign
 
-		for (let i = 0; i < activeDrops.length; i++) {
-			const selectBenefit = activeDrops[i].benefitEdges[0]
-			selectBenefit.benefit.name = `${i + 1}/${activeDrops.length}, ${selectBenefit.benefit.name.trim()}`
-			activeCampaign.drops.enqueue(activeDrops[i])
+		if (activeDrops.length) {
+			for (let i = 0; i < activeDrops.length; i++) {
+				const selectBenefit = activeDrops[i].benefitEdges[0]
+				selectBenefit.benefit.name = `${i + 1}/${activeDrops.length}, ${selectBenefit.benefit.name.trim()}`
+				activeCampaign.drops.enqueue(activeDrops[i])
+			}
+
+			const getLive = await this.getLive(detail.game.slug, detail.allow.channels)
+			activeCampaign.channels.enqueueMany(getLive)
 		}
-
-		const getLive = await this.getLive(detail.game.slug, detail.allow.channels)
-		activeCampaign.channels.enqueueMany(getLive)
 		return activeCampaign
 	}
 
@@ -196,18 +197,17 @@ export class Campaign {
 }
 
 export function checkStatus(startAt: string, endAt: string, minutesLeft: number = 0): Status {
-	let [active, expired, upcoming] = new Array(3).fill(false) as boolean[]
+	let [active, expired, upcoming] = new Array<boolean>(3).fill(false)
 	const [currentDate, startDate, endDate, remainingDate] = [
 		new Date(),
 		new Date(startAt),
 		new Date(endAt),
-		new Date(Date.now() + (minutesLeft + 5) * 1000),
+		new Date(Date.now() + (minutesLeft + 10) * 1000),
 	]
 
 	if (currentDate > startDate && currentDate < endDate && remainingDate < endDate) active = true
 	else if (currentDate <= startDate) upcoming = true
 	else expired = true
-
 	return { active, expired, upcoming }
 }
 

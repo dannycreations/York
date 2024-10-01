@@ -1,6 +1,6 @@
 import { container } from '@vegapunk/core'
-import { Queue } from '../database/Queue'
 import { ActiveTimeBasedDrop, checkStatus } from '../resolvers/Campaign'
+import { Queue } from './internal/Queue'
 
 export class DropStore extends Queue<ActiveTimeBasedDrop> {
 	public get id() {

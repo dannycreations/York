@@ -9,17 +9,17 @@ importers:
   .:
     dependencies:
       '@vegapunk/core':
-        specifier: ^1.0.13
-        version: 1.0.13
+        specifier: ^1.0.24
+        version: 1.0.24
       '@vegapunk/logger':
-        specifier: ^1.0.6
-        version: 1.0.6
+        specifier: ^1.0.7
+        version: 1.0.7
       '@vegapunk/request':
-        specifier: ^1.0.9
-        version: 1.0.9
-      '@vegapunk/utilities':
         specifier: ^1.0.12
         version: 1.0.12
+      '@vegapunk/utilities':
+        specifier: ^1.0.19
+        version: 1.0.19
       dotenv:
         specifier: ^16.4.5
         version: 16.4.5
@@ -30,18 +30,21 @@ importers:
       '@sapphire/ts-config':
         specifier: ^5.0.1
         version: 5.0.1
+      '@types/node':
+        specifier: 20.x
+        version: 20.16.7
       '@types/ws':
         specifier: ^8.5.12
         version: 8.5.12
       tsc-watch:
         specifier: ^6.2.0
-        version: 6.2.0(typescript@5.5.4)
+        version: 6.2.0(typescript@5.6.2)
       tsx:
-        specifier: ^4.17.0
-        version: 4.19.0
+        specifier: ^4.19.1
+        version: 4.19.1
       typescript:
-        specifier: ^5.5.4
-        version: 5.5.4
+        specifier: ^5.6.2
+        version: 5.6.2
 
 packages:
 
@@ -201,6 +204,10 @@ packages:
     resolution: {integrity: sha512-QCjj7X/QlY0QUCeAaZQmnrsMH/b2BMQYee3F1Y5iF17JagUQqO3KZlG7vfXWQU3SRAJX5OgZZynBjixUH+nNGg==}
     engines: {node: '>=v14.0.0', npm: '>=7.0.0'}
 
+  '@sapphire/snowflake@3.5.3':
+    resolution: {integrity: sha512-jjmJywLAFoWeBi1W7994zZyiNWPIiqRRNAmSERxyg93xRGzNYvGjlZ0gR6x0F4gPRi2+0O6S71kOZYyr3cxaIQ==}
+    engines: {node: '>=v14.0.0', npm: '>=7.0.0'}
+
   '@sapphire/ts-config@5.0.1':
     resolution: {integrity: sha512-86YBYNBDNs6/bCrTsv274553v43Bz8YljfrrIQ4N8ll2npUxbf6cpC0gjfJY+FMa1HwKUgoMF4lvhzY0Ph0smw==}
     engines: {node: '>=v16.0.0', npm: '>=8.0.0'}
@@ -226,8 +233,8 @@ packages:
   '@types/keyv@3.1.4':
     resolution: {integrity: sha512-BQ5aZNSCpj7D6K2ksrRCTmKRLEpnPvWDiLPfoGyhZ++8YtiK9d/3DBKPJgry359X/P1PfruyYwvnvwFjuEiEIg==}
 
-  '@types/node@22.5.2':
-    resolution: {integrity: sha512-acJsPTEqYqulZS/Yp/S3GgeE6GZ0qYODUR8aVr/DkhHQ8l9nd4j5x1/ZJy9/gHrRlFMqkO6i0I3E27Alu4jjPg==}
+  '@types/node@20.16.7':
+    resolution: {integrity: sha512-QkDQjAY3gkvJNcZOWwzy3BN34RweT0OQ9zJyvLCU0kSK22dO2QYh/NHGfbEAYylPYzRB1/iXcojS79wOg5gFSw==}
 
   '@types/responselike@1.0.3':
     resolution: {integrity: sha512-H/+L+UkTV33uf49PH5pCAUBVPNj2nDBXTN+qS1dOwyyg24l3CcicicCA7ca+HMvJBZcFgl5r8e+RR6elsb4Lyw==}
@@ -235,27 +242,33 @@ packages:
   '@types/ws@8.5.12':
     resolution: {integrity: sha512-3tPRkv1EtkDpzlgyKyI8pGsGZAGPEaXeu0DOj5DI25Ja91bdAYddYHbADRYVrZMRbfW+1l5YwXVDKohDJNQxkQ==}
 
-  '@vegapunk/core@1.0.13':
-    resolution: {integrity: sha512-lJ8Hn7w48Nvp524j78WMCe6WqA/6HqcZsEWsxElFXGGuT6ITyXo2wpfXyXd+sAdwgqVlQqpua8ommERP4evAyA==}
+  '@vegapunk/core@1.0.24':
+    resolution: {integrity: sha512-LwM4y1XuyF/04UHW/ZfGFJvXzIi5UT6les9FVXQL69LiPOZjMvTjXQgbO9IE5Poccv54w2CM3b08DOs1n3y8Rw==}
     engines: {node: 20.x, npm: 10.x}
 
-  '@vegapunk/logger@1.0.6':
-    resolution: {integrity: sha512-8ybwqCX1Sde8Q//LtU6YNSFpgJFQX4eqhJcmoBw8MMmMiv7NLCZuXVx9JPK1HGR2/n/G4NqkWlS1qXRVn1axqg==}
+  '@vegapunk/logger@1.0.7':
+    resolution: {integrity: sha512-4KhTYphInGDBv88DCW4o3cdHyvucdPZq2+C/IMtsFLv7Mx6gGFzuq1Z+rwsJPTMhUEpHsqDCQcRainSRoAMmgQ==}
     engines: {node: 20.x, npm: 10.x}
 
-  '@vegapunk/request@1.0.9':
-    resolution: {integrity: sha512-Eg3EivRWOB+HmNcEXRVVsgov9TbUhgacvTe50rq6j8bQWA0ShMF6igYGppwrSnYCsbVAnZKps57OInnARKgS8A==}
+  '@vegapunk/request@1.0.12':
+    resolution: {integrity: sha512-wt5lu/xNy7kOGpxk2y2eszD6imu+wszU4MKWZnRyNj7Xsz9AS07HlCKPOEbZHaLVP5/C2mufwJZ49qTRUixBjQ==}
     engines: {node: 20.x, npm: 10.x}
     bundledDependencies:
       - '@types/user-agents'
 
-  '@vegapunk/utilities@1.0.12':
-    resolution: {integrity: sha512-dHGBW1pcmVf3czzcn3xX3yhXJ5ttIyh9TYUddPZeofcUWj8RPDfII5AC+CVQkc8y/rSOU0MRdXa1sEdgS0AOeg==}
+  '@vegapunk/utilities@1.0.18':
+    resolution: {integrity: sha512-OIZ49bhbilG2oWHNGkEJ2iQ4ed/A4qU4iLJjIVSjwOodBxowdnwvlMgDtMMJ11qFaQvH+itVDej12utQ4AGZ0A==}
     engines: {node: 20.x, npm: 10.x}
     bundledDependencies:
       - '@types/humanize-duration'
       - '@types/lodash'
-      - '@types/node'
+
+  '@vegapunk/utilities@1.0.19':
+    resolution: {integrity: sha512-NrwHYwnwNahQBwrrXw+lIp0yDslpZs/T6oMXF2fEf2vBcVkF/EYQTm2G4sYxw39d2PCKJoFYjq/dr0/qOiBSKA==}
+    engines: {node: 20.x, npm: 10.x}
+    bundledDependencies:
+      - '@types/humanize-duration'
+      - '@types/lodash'
 
   abort-controller@3.0.0:
     resolution: {integrity: sha512-h8lQ8tacZYnR3vNQTgibj+tODHI5/+l06Au2Pcriv/Gmet0eaj4TwWH41sO9wnHDiQsEj19q0drzdWdeAHtweg==}
@@ -363,8 +376,8 @@ packages:
     resolution: {integrity: sha512-nBF+F1rAZVCu/p7rjzgA+Yb4lfYXrpl7a6VmJrU8wF9I1CKvP/QwPNZHnOlwbTkY6dvtFIzFMSyQXbLoTQPRpA==}
     engines: {node: '>=8'}
 
-  get-tsconfig@4.8.0:
-    resolution: {integrity: sha512-Pgba6TExTZ0FJAn1qkJAjIeKoDJ3CsI2ChuLohJnZl/tTU8MVrq3b+2t5UOPfRa4RMsorClBjJALkJUMjG1PAw==}
+  get-tsconfig@4.8.1:
+    resolution: {integrity: sha512-k9PN+cFBmaLWtVz29SkUoqU5O0slLuHJXt/2P+tMVFT+phsSGXGkp9t3rQIqdz0e+06EHNGs3oM6ZX1s2zHxRg==}
 
   got@11.8.6:
     resolution: {integrity: sha512-6tfZ91bOr7bOXnK7PRDCGBLa1H4U080YHNaAQ2KsMGlLEzRbk44nsZF2E1IeRc3vtJHPVbKCYgdFbaGO2ljd8g==}
@@ -492,8 +505,8 @@ packages:
     engines: {node: '>= 0.10'}
     hasBin: true
 
-  pump@3.0.0:
-    resolution: {integrity: sha512-LwZy+p3SFs1Pytd/jYct4wpv49HiYCqd9Rlc5ZVdk0V+8Yzv6jR5Blk3TRmPL1ft69TxP0IMZGJ+WPFU2BFhww==}
+  pump@3.0.2:
+    resolution: {integrity: sha512-tUPXtzlGM8FE3P0ZL6DVs/3P58k9nk8/jZeQCurTJylQA8qFYzHFfhBJkuqyE0FifOsQ0uKWekiZ5g8wtr28cw==}
 
   quick-format-unescaped@4.0.4:
     resolution: {integrity: sha512-tYC1Q1hgyRuHgloV/YXs2w15unPVh8qfu/qCTfhTYamaw7fyhumKa2yGpdSo87vY32rIclj+4fWYQXUMs9EHvg==}
@@ -581,21 +594,21 @@ packages:
   tslib@2.7.0:
     resolution: {integrity: sha512-gLXCKdN1/j47AiHiOkJN69hJmcbGTHI0ImLmbYLHykhgeN0jVGola9yVjFgzCUklsZQMW55o+dW7IXv3RCXDzA==}
 
-  tsx@4.19.0:
-    resolution: {integrity: sha512-bV30kM7bsLZKZIOCHeMNVMJ32/LuJzLVajkQI/qf92J2Qr08ueLQvW00PUZGiuLPP760UINwupgUj8qrSCPUKg==}
+  tsx@4.19.1:
+    resolution: {integrity: sha512-0flMz1lh74BR4wOvBjuh9olbnwqCPc35OOlfyzHba0Dc+QNUeWX/Gq2YTbnwcWPO3BMd8fkzRVrHcsR+a7z7rA==}
     engines: {node: '>=18.0.0'}
     hasBin: true
 
-  typescript@5.5.4:
-    resolution: {integrity: sha512-Mtq29sKDAEYP7aljRgtPOpTvOfbwRWlS6dPRzwjdE+C0R4brX/GUyhHSecbHMFLNBLcJIPt9nl9yG5TZ1weH+Q==}
+  typescript@5.6.2:
+    resolution: {integrity: sha512-NW8ByodCSNCwZeghjN3o+JX5OFH0Ojg6sadjEKY4huZ52TqbJTJnDo5+Tw98lSy63NZvi4n+ez5m2u5d4PkZyw==}
     engines: {node: '>=14.17'}
     hasBin: true
 
   undici-types@6.19.8:
     resolution: {integrity: sha512-ve2KP6f/JnbPBFyobGHuerC9g1FYGn/F8n1LWTwNxCEzd6IfqTwUQcNXgEtmmQ6DlRrC1hrSrBnCZPokRrDHjw==}
 
-  user-agents@1.1.315:
-    resolution: {integrity: sha512-IqIc8QOhdC8u76Dw352u3ODh87l/YE9jNCCgXeLGhwJx75jb0VDnVeSaupGAJu84QEmpBSk/kdR9VJWw7/KCwA==}
+  user-agents@1.1.325:
+    resolution: {integrity: sha512-BmVDscJOZsBBztMPHg+wf65QwbT+N3C46YEsuW8BmcxRxwKh2AbdSaKEjzoC7rDlyuECXEUXO+C2eW3QAhbl2A==}
 
   which@2.0.2:
     resolution: {integrity: sha512-BLI3Tl1TW3Pvl70l3yq3Y64i+awpwXqsGBYWkkqMtnbXgrMD+yj7rhW0kuEDxzJaYXGjEW5ogapKNMEKNMjibA==}
@@ -701,10 +714,12 @@ snapshots:
 
   '@sapphire/result@2.6.6': {}
 
+  '@sapphire/snowflake@3.5.3': {}
+
   '@sapphire/ts-config@5.0.1':
     dependencies:
       tslib: 2.7.0
-      typescript: 5.5.4
+      typescript: 5.6.2
 
   '@sapphire/utilities@3.17.0': {}
 
@@ -718,47 +733,60 @@ snapshots:
     dependencies:
       '@types/http-cache-semantics': 4.0.4
       '@types/keyv': 3.1.4
-      '@types/node': 22.5.2
+      '@types/node': 20.16.7
       '@types/responselike': 1.0.3
 
   '@types/http-cache-semantics@4.0.4': {}
 
   '@types/keyv@3.1.4':
     dependencies:
-      '@types/node': 22.5.2
+      '@types/node': 20.16.7
 
-  '@types/node@22.5.2':
+  '@types/node@20.16.7':
     dependencies:
       undici-types: 6.19.8
 
   '@types/responselike@1.0.3':
     dependencies:
-      '@types/node': 22.5.2
+      '@types/node': 20.16.7
 
   '@types/ws@8.5.12':
     dependencies:
-      '@types/node': 22.5.2
+      '@types/node': 20.16.7
 
-  '@vegapunk/core@1.0.13':
+  '@vegapunk/core@1.0.24':
     dependencies:
       '@sapphire/pieces': 4.3.1
       '@sapphire/result': 2.6.6
-      '@vegapunk/logger': 1.0.6
+      '@vegapunk/logger': 1.0.7
+      '@vegapunk/utilities': 1.0.19
 
-  '@vegapunk/logger@1.0.6':
+  '@vegapunk/logger@1.0.7':
     dependencies:
       moment-timezone: 0.5.45
       pino: 9.4.0
       pino-pretty: 11.2.2
 
-  '@vegapunk/request@1.0.9':
+  '@vegapunk/request@1.0.12':
     dependencies:
-      '@vegapunk/utilities': 1.0.12
+      '@vegapunk/utilities': 1.0.18
       got: 11.8.6
-      user-agents: 1.1.315
+      user-agents: 1.1.325
 
-  '@vegapunk/utilities@1.0.12':
+  '@vegapunk/utilities@1.0.18':
     dependencies:
+      '@sapphire/snowflake': 3.5.3
+      '@sapphire/utilities': 3.17.0
+      chalk: 4.1.2
+      humanize-duration: 3.32.1
+      jsonc-parser: 3.3.1
+      lodash: 4.17.21
+      nanoid: 3.3.7
+
+  '@vegapunk/utilities@1.0.19':
+    dependencies:
+      '@sapphire/snowflake': 3.5.3
+      '@sapphire/utilities': 3.17.0
       chalk: 4.1.2
       humanize-duration: 3.32.1
       jsonc-parser: 3.3.1
@@ -887,9 +915,9 @@ snapshots:
 
   get-stream@5.2.0:
     dependencies:
-      pump: 3.0.0
+      pump: 3.0.2
 
-  get-tsconfig@4.8.0:
+  get-tsconfig@4.8.1:
     dependencies:
       resolve-pkg-maps: 1.0.0
 
@@ -990,7 +1018,7 @@ snapshots:
       minimist: 1.2.8
       on-exit-leak-free: 2.1.2
       pino-abstract-transport: 1.2.0
-      pump: 3.0.0
+      pump: 3.0.2
       readable-stream: 4.5.2
       secure-json-parse: 2.7.0
       sonic-boom: 4.1.0
@@ -1020,7 +1048,7 @@ snapshots:
     dependencies:
       event-stream: 3.3.4
 
-  pump@3.0.0:
+  pump@3.0.2:
     dependencies:
       end-of-stream: 1.4.4
       once: 1.4.0
@@ -1091,28 +1119,28 @@ snapshots:
 
   through@2.3.8: {}
 
-  tsc-watch@6.2.0(typescript@5.5.4):
+  tsc-watch@6.2.0(typescript@5.6.2):
     dependencies:
       cross-spawn: 7.0.3
       node-cleanup: 2.1.2
       ps-tree: 1.2.0
       string-argv: 0.3.2
-      typescript: 5.5.4
+      typescript: 5.6.2
 
   tslib@2.7.0: {}
 
-  tsx@4.19.0:
+  tsx@4.19.1:
     dependencies:
       esbuild: 0.23.1
-      get-tsconfig: 4.8.0
+      get-tsconfig: 4.8.1
     optionalDependencies:
       fsevents: 2.3.3
 
-  typescript@5.5.4: {}
+  typescript@5.6.2: {}
 
   undici-types@6.19.8: {}
 
-  user-agents@1.1.315:
+  user-agents@1.1.325:
     dependencies:
       lodash.clonedeep: 4.5.0
 

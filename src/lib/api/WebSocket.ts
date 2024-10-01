@@ -1,5 +1,5 @@
 import { container } from '@vegapunk/core'
-import { ERROR_CODES } from '@vegapunk/request'
+import { ErrorCodes } from '@vegapunk/request'
 import { randomString } from '@vegapunk/utilities'
 import ws from 'ws'
 import { Common } from './constants/Enum'
@@ -8,8 +8,10 @@ import { Message, Request, RequestType, Response, ResponseType } from './types/W
 export class WebSocket {
 	public ev?: ws
 
-	public async connect(): Promise<void> {
-		return new Promise(async (resolve) => {
+	public constructor(public auth_token: string) {}
+
+	public async connect() {
+		await new Promise<void>((resolve) => {
 			try {
 				container.logger.trace('WS Connecting')
 				if (this.ev) this.ev.removeAllListeners()
@@ -19,16 +21,18 @@ export class WebSocket {
 				this.ev.once('close', () => this.reconnect())
 				this.ev.on('message', (buffer: Buffer) => this.onMessage(buffer))
 				this.ev.on('error', (error: ErrorCode) => this.onError(error))
-				this.timeoutState.reconnect = setTimeout(() => this.reconnect(), 10_000)
+				this.timeoutState.reconnect = setTimeout(() => this.reconnect(), 10_000).unref()
 
 				const wait = setInterval(() => {
 					if (this.ev?.readyState === 1) {
 						clearInterval(wait)
 						resolve()
 					}
-				}, 100)
+				}, 100).unref()
 			} catch (error) {
-				container.logger.error(error, 'at WS connect')
+				error.message = `at WS connect: ${error.message}`
+				container.logger.error(error)
+				resolve()
 			}
 		})
 	}
@@ -40,7 +44,7 @@ export class WebSocket {
 		const payload = {
 			type,
 			nonce: randomString(),
-			data: { topics: [topic], auth_token: process.env.AUTH_TOKEN },
+			data: { topics: [topic], auth_token: this.auth_token },
 		}
 
 		this.reqPool.set(topic, payload)
@@ -74,7 +78,7 @@ export class WebSocket {
 
 				const reqList = [...this.reqPool.values()].find((r) => r.nonce === response.nonce)
 				if (!reqList) {
-					container.logger.warn(response, 'Unknown websocket response 1')
+					container.logger.warn(response, 'Stage 0 Unknown websocket response')
 					break
 				}
 
@@ -93,27 +97,28 @@ export class WebSocket {
 				container.client.emit(resEventTopic, resEventMessage)
 				break
 			default:
-				container.logger.warn(response, 'Unknown websocket message 2')
+				container.logger.warn(response, 'Stage 1 Unknown websocket message')
 		}
 	}
 
 	private onError(error: ErrorCode) {
-		if (ERROR_CODES.includes(error.code)) return
+		if (ErrorCodes.includes(error.code)) return
 
-		container.logger.error(error, 'at WS onError')
+		error.message = `at WS onError: ${error.message}`
+		container.logger.error(error)
 	}
 
 	private async ping() {
 		clearTimeout(this.timeoutState.ping)
-		this.timeoutState.ping = setTimeout(() => this.ping(), 60_000 * 4)
-		this.timeoutState.reconnect = setTimeout(() => this.reconnect(), 10_000)
+		this.timeoutState.ping = setTimeout(() => this.ping(), 60_000 * 4).unref()
+		this.timeoutState.reconnect = setTimeout(() => this.reconnect(), 10_000).unref()
 		await this.sendPromise({ type: RequestType.Ping } as Request)
 	}
 
 	private reconnect() {
 		container.logger.trace('WS Reconnect')
 		clearTimeout(this.timeoutState.reconnect)
-		this.timeoutState.reconnect = setTimeout(() => this.connect(), 10_000)
+		this.timeoutState.reconnect = setTimeout(() => this.connect(), 10_000).unref()
 	}
 
 	private async sendPromise(request: Request): Promise<void> {

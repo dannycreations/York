@@ -7,14 +7,13 @@ import { DropMainTask } from './DropMain'
 
 export class DropUpcomingTask extends Task {
 	public constructor(context: Task.LoaderContext) {
-		super(context, { name: Tasks.DropUpcoming, delay: 60_000 * 5 })
+		super(context, { name: Tasks.DropUpcoming, delay: 60_000 * 5, ref: true })
 	}
 
-	public async run() {
+	public async update() {
 		super.setDelay(this.options.delay)
 
-		const taskStores = this.container.stores.get('tasks')
-		const mainTask = taskStores.get(Tasks.DropMain) as DropMainTask
+		const mainTask = this.store.get(Tasks.DropMain) as DropMainTask
 		const isSleeping = mainTask.queue.isSleeping() && !super.isStatus.running
 
 		if (!mainTask.campaign.upcoming().length) {
@@ -44,7 +43,7 @@ export class DropUpcomingTask extends Task {
 				}
 			}
 			if (this.isSleeping) {
-				delete this.isSleeping
+				this.isSleeping = undefined
 				return mainTask.startTask(true)
 			}
 			if (isSleeping) {

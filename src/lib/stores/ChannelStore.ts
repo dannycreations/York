@@ -1,6 +1,6 @@
 import { container } from '@vegapunk/core'
 import { ActiveLiveChannel } from '../api/TwitchApi'
-import { Queue } from '../database/Queue'
+import { Queue } from './internal/Queue'
 
 export class ChannelStore extends Queue<ActiveLiveChannel> {
 	public constructor(private gameID?: string) {
@@ -34,7 +34,12 @@ export class ChannelStore extends Queue<ActiveLiveChannel> {
 		}
 
 		Object.assign(selectStream, stream)
-		return container.twitch.watch(selectStream)
+		const watch = await container.twitch.watch(selectStream)
+		if (!watch) {
+			super.dequeue()
+			return this.watch()
+		}
+		return true
 	}
 
 	public async claimPoints() {
