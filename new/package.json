@@ -1,0 +1,31 @@
+{
+	"name": "york",
+	"version": "1.0.0",
+	"main": "dist/main.js",
+	"author": "dannycreations",
+	"license": "GPL-3.0",
+	"private": true,
+	"scripts": {
+		"start:pm2": "pm2 start . --stop-exit-codes 0",
+		"start:watch": "npm run clean && tsx watch src/main.ts",
+		"start:debug": "npm run build && node --inspect-brk .",
+		"build": "npm run clean && tsc",
+		"clean": "npx rimraf -g \"*.tsbuildinfo\" \"dist\"",
+		"clean:nodefiles": "npx rimraf -g \"*-lock*\" \"node_modules\"",
+		"update": "npx npm-check-updates -u -x @types/node"
+	},
+	"dependencies": {
+		"@vegapunk/core": "^1.0.39",
+		"@vegapunk/request": "^1.0.31",
+		"@vegapunk/utilities": "^1.0.54",
+		"dotenv": "^16.4.7",
+		"ws": "^8.18.0"
+	},
+	"devDependencies": {
+		"@sapphire/ts-config": "^5.0.1",
+		"@types/node": "20.x",
+		"@types/ws": "^8.5.14",
+		"tsx": "^4.19.2",
+		"typescript": "^5.7.3"
+	}
+}
