@@ -1,7 +1,7 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { container, Vegapunk } from '@vegapunk/core';
-import { parseJsonc, restartApp } from '@vegapunk/utilities';
+import { parseJsonc } from '@vegapunk/utilities';
 import { v } from '@vegapunk/utilities/strict';
 
 import { AppGql } from './api/AppGql';
@@ -56,7 +56,7 @@ export class YorkClient extends Vegapunk {
   public override async destroy(): Promise<void> {
     container.ws.dispose();
     super.destroy();
-    restartApp();
+    process.exit(1);
   }
 
   private async loadConfig(settingPath: string): Promise<void> {

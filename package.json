@@ -18,7 +18,7 @@
     "@vegapunk/core": "^1.0.53",
     "@vegapunk/request": "^1.0.42",
     "@vegapunk/struct": "^1.0.15",
-    "@vegapunk/utilities": "^1.0.75",
+    "@vegapunk/utilities": "^1.0.76",
     "dotenv": "^17.2.3"
   },
   "devDependencies": {

@@ -1,6 +1,6 @@
 import { container } from '@vegapunk/core';
 import { DefaultOptions, requestDefault, RequestError, Response, UserAgent } from '@vegapunk/request';
-import { shutdownApp } from '@vegapunk/utilities';
+import { killApp } from '@vegapunk/utilities';
 import { defaultsDeep, isObjectLike, truncate } from '@vegapunk/utilities/common';
 import { isErrorLike, Result } from '@vegapunk/utilities/result';
 import { sleep, waitUntil } from '@vegapunk/utilities/sleep';
@@ -119,8 +119,7 @@ export class AppApi {
           if (isErrorLike<RequestError>(error) && isObjectLike(error.response)) {
             if (error.response.statusCode === 401) {
               container.logger.fatal(error.response.body, error.message);
-              shutdownApp();
-              return;
+              killApp();
             }
 
             reject(error);

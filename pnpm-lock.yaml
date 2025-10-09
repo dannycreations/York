@@ -18,8 +18,8 @@ importers:
         specifier: ^1.0.15
         version: 1.0.15(typescript@5.9.3)
       '@vegapunk/utilities':
-        specifier: ^1.0.75
-        version: 1.0.75(typescript@5.9.3)
+        specifier: ^1.0.76
+        version: 1.0.76(typescript@5.9.3)
       dotenv:
         specifier: ^17.2.3
         version: 17.2.3
@@ -346,8 +346,8 @@ packages:
     bundledDependencies:
       - '@types/humanize-duration'
 
-  '@vegapunk/utilities@1.0.75':
-    resolution: {integrity: sha512-9wie+wPJG5szvwCoIfykCzhhfaxAJD9Ez37ZJyMrF+d9bupprr0jciMcQ85uAH32Yk+x83VZJb4EiGCuTjp1Tw==}
+  '@vegapunk/utilities@1.0.76':
+    resolution: {integrity: sha512-7bdV9JzzGqgc/tcKSoak/r9EZF8h5agnJ/4rgPLM0h21HMxUR/ZASeZ4RwWxtfZgakcOKBybYa9a8iSprzPSLg==}
     engines: {node: '>=20'}
     bundledDependencies:
       - '@types/humanize-duration'
@@ -945,7 +945,7 @@ snapshots:
       - typescript
       - use-sync-external-store
 
-  '@vegapunk/utilities@1.0.75(typescript@5.9.3)':
+  '@vegapunk/utilities@1.0.76(typescript@5.9.3)':
     dependencies:
       '@sapphire/result': 2.7.3
       chalk: 4.1.2
