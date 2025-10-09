@@ -5,11 +5,11 @@ export enum RequestType {
 }
 
 export interface RequestTopic {
-  type: RequestType;
-  nonce: string;
-  data: {
-    topics: [string];
-    auth_token: string | undefined;
+  readonly type: RequestType;
+  readonly nonce: string;
+  readonly data: {
+    readonly topics: readonly [string];
+    readonly auth_token: string | undefined;
   };
 }
 
@@ -21,20 +21,20 @@ export enum ResponseType {
 }
 
 export interface ResponseTopic {
-  type: ResponseType;
-  error: string;
-  nonce: string;
+  readonly type: ResponseType;
+  readonly error: string;
+  readonly nonce: string;
 }
 
 export interface ResponseMessage extends Omit<ResponseTopic, 'error' | 'nonce'> {
-  data: {
-    topic: string;
-    message: string;
+  readonly data: {
+    readonly topic: string;
+    readonly message: string;
   };
 }
 
 export interface ResponseContent<T = string, V = object> {
-  topic_id: string;
-  type: T;
-  data: V;
+  readonly topic_id: string;
+  readonly type: T;
+  readonly data: V;
 }

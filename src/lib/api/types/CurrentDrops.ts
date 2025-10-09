@@ -1,22 +1,22 @@
 export interface CurrentDrops {
-  currentUser: CurrentUser;
+  readonly currentUser: CurrentUser;
 }
 
 export interface CurrentUser {
-  id: string;
-  dropCurrentSession: DropCurrentSession | null;
+  readonly id: string;
+  readonly dropCurrentSession: DropCurrentSession | null;
 }
 
 export interface DropCurrentSession {
-  channel: Channel | null;
-  game: Omit<Channel, 'name'> | null;
-  currentMinutesWatched: number;
-  requiredMinutesWatched: number;
-  dropID: string;
+  readonly channel: Channel | null;
+  readonly game: Omit<Channel, 'name'> | null;
+  readonly currentMinutesWatched: number;
+  readonly requiredMinutesWatched: number;
+  readonly dropID: string;
 }
 
 export interface Channel {
-  id: string;
-  name: string;
-  displayName: string;
+  readonly id: string;
+  readonly name: string;
+  readonly displayName: string;
 }

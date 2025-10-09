@@ -1,14 +1,14 @@
 export interface UseLive {
-  user: User;
+  readonly user: User;
 }
 
 export interface User {
-  id: string;
-  login: string;
-  stream: Stream | null;
+  readonly id: string;
+  readonly login: string;
+  readonly stream: Stream | null;
 }
 
 export interface Stream {
-  id: string;
-  createdAt: string;
+  readonly id: string;
+  readonly createdAt: string;
 }

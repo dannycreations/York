@@ -1,26 +1,26 @@
 export interface HelixStreams {
-  data: Stream[];
-  pagination: Pagination;
+  readonly data: readonly Stream[];
+  readonly pagination: Pagination;
 }
 
 export interface Stream {
-  id: string;
-  user_id: string;
-  user_login: string;
-  user_name: string;
-  game_id: string;
-  game_name: string;
-  type: string;
-  title: string;
-  viewer_count: number;
-  started_at: string;
-  language: string;
-  thumbnail_url: string;
-  tag_ids: string[];
-  tags: string[];
-  is_mature: boolean;
+  readonly id: string;
+  readonly user_id: string;
+  readonly user_login: string;
+  readonly user_name: string;
+  readonly game_id: string;
+  readonly game_name: string;
+  readonly type: string;
+  readonly title: string;
+  readonly viewer_count: number;
+  readonly started_at: string;
+  readonly language: string;
+  readonly thumbnail_url: string;
+  readonly tag_ids: readonly string[];
+  readonly tags: readonly string[];
+  readonly is_mature: boolean;
 }
 
 export interface Pagination {
-  cursor: string;
+  readonly cursor: string;
 }

@@ -1,144 +1,144 @@
-import { DropStatus } from '../../constants/Enum';
+import type { DropStatus } from '../../constants/Enum';
 
 export interface Inventory {
-  currentUser: CurrentUser;
+  readonly currentUser: CurrentUser;
 }
 
 export interface CurrentUser {
-  id: string;
-  inventory: InventoryData;
+  readonly id: string;
+  readonly inventory: InventoryData;
 }
 
 export interface InventoryData {
-  dropCampaignsInProgress: DropCampaignsInProgress[];
-  gameEventDrops: GameEventDrop[];
-  completedRewardCampaigns: CompletedRewardCampaign[];
+  readonly dropCampaignsInProgress: readonly DropCampaignsInProgress[];
+  readonly gameEventDrops: readonly GameEventDrop[];
+  readonly completedRewardCampaigns: readonly CompletedRewardCampaign[];
 }
 
 export interface CompletedRewardCampaign {
-  id: string;
-  name: string;
-  brand: string;
-  startsAt: string;
-  endsAt: string;
-  status: string;
-  summary: string;
-  instructions: string;
-  externalURL: string;
-  rewardValueURLParam: string;
-  aboutURL: string;
-  isSitewide: boolean;
-  game: CompletedRewardCampaignGame;
-  unlockRequirements: UnlockRequirements;
-  image: Image;
-  rewards: Reward[];
+  readonly id: string;
+  readonly name: string;
+  readonly brand: string;
+  readonly startsAt: string;
+  readonly endsAt: string;
+  readonly status: string;
+  readonly summary: string;
+  readonly instructions: string;
+  readonly externalURL: string;
+  readonly rewardValueURLParam: string;
+  readonly aboutURL: string;
+  readonly isSitewide: boolean;
+  readonly game: CompletedRewardCampaignGame;
+  readonly unlockRequirements: UnlockRequirements;
+  readonly image: Image;
+  readonly rewards: readonly Reward[];
 }
 
 export interface CompletedRewardCampaignGame {
-  id: string;
-  slug: string;
-  displayName: string;
+  readonly id: string;
+  readonly slug: string;
+  readonly displayName: string;
 }
 
 export interface Image {
-  image1xURL: string;
+  readonly image1xURL: string;
 }
 
 export interface Reward {
-  id: string;
-  name: string;
-  bannerImage: Image;
-  thumbnailImage: Image;
-  earnableUntil: string;
-  redemptionInstructions: string;
-  redemptionURL: string;
+  readonly id: string;
+  readonly name: string;
+  readonly bannerImage: Image;
+  readonly thumbnailImage: Image;
+  readonly earnableUntil: string;
+  readonly redemptionInstructions: string;
+  readonly redemptionURL: string;
 }
 
 export interface UnlockRequirements {
-  subsGoal: number;
-  minuteWatchedGoal: number;
+  readonly subsGoal: number;
+  readonly minuteWatchedGoal: number;
 }
 
 export interface DropCampaignsInProgress {
-  id: string;
-  detailsURL: string;
-  accountLinkURL: string;
-  startAt: string;
-  endAt: string;
-  imageURL: string;
-  name: string;
-  status: DropStatus;
-  self: DropCampaignsInProgressSelf;
-  game: DropCampaignsInProgressGame;
-  allow: Allow;
-  eventBasedDrops: string[];
-  timeBasedDrops: TimeBasedDrop[];
+  readonly id: string;
+  readonly detailsURL: string;
+  readonly accountLinkURL: string;
+  readonly startAt: string;
+  readonly endAt: string;
+  readonly imageURL: string;
+  readonly name: string;
+  readonly status: DropStatus;
+  readonly self: DropCampaignsInProgressSelf;
+  readonly game: DropCampaignsInProgressGame;
+  readonly allow: Allow;
+  readonly eventBasedDrops: readonly string[];
+  readonly timeBasedDrops: readonly TimeBasedDrop[];
 }
 
 export interface Allow {
-  channels: Channel[] | null;
+  readonly channels: readonly Channel[] | null;
 }
 
 export interface Channel {
-  id: string;
-  name: string;
-  url?: string;
-  boxArtURL?: string;
-  imageAssetURL?: string;
+  readonly id: string;
+  readonly name: string;
+  readonly url?: string;
+  readonly boxArtURL?: string;
+  readonly imageAssetURL?: string;
 }
 
 export interface DropCampaignsInProgressGame {
-  id: string;
-  slug: string;
-  name: string;
-  boxArtURL: string;
+  readonly id: string;
+  readonly slug: string;
+  readonly name: string;
+  readonly boxArtURL: string;
 }
 
 export interface DropCampaignsInProgressSelf {
-  isAccountConnected: boolean;
+  readonly isAccountConnected: boolean;
 }
 
 export interface TimeBasedDrop {
-  id: string;
-  name: string;
-  startAt: string;
-  endAt: string;
-  preconditionDrops: null;
-  requiredMinutesWatched: number;
-  requiredSubs: number;
-  benefitEdges: BenefitEdge[];
-  self: TimeBasedDropSelf;
-  campaign: Campaign;
+  readonly id: string;
+  readonly name: string;
+  readonly startAt: string;
+  readonly endAt: string;
+  readonly preconditionDrops: null;
+  readonly requiredMinutesWatched: number;
+  readonly requiredSubs: number;
+  readonly benefitEdges: readonly BenefitEdge[];
+  readonly self: TimeBasedDropSelf;
+  readonly campaign: Campaign;
 }
 
 export interface BenefitEdge {
-  benefit: Channel;
-  entitlementLimit: number;
-  claimCount: number;
+  readonly benefit: Channel;
+  readonly entitlementLimit: number;
+  readonly claimCount: number;
 }
 
 export interface Campaign {
-  id: string;
-  detailsURL: string;
-  accountLinkURL: string;
-  self: DropCampaignsInProgressSelf;
+  readonly id: string;
+  readonly detailsURL: string;
+  readonly accountLinkURL: string;
+  readonly self: DropCampaignsInProgressSelf;
 }
 
 export interface TimeBasedDropSelf {
-  hasPreconditionsMet: boolean;
-  currentMinutesWatched: number;
-  currentSubs: number;
-  isClaimed: boolean;
-  dropInstanceID: string | null;
+  readonly hasPreconditionsMet: boolean;
+  readonly currentMinutesWatched: number;
+  readonly currentSubs: number;
+  readonly isClaimed: boolean;
+  readonly dropInstanceID: string | null;
 }
 
 export interface GameEventDrop {
-  game: null;
-  id: string;
-  imageURL: string;
-  isConnected: boolean;
-  lastAwardedAt: string;
-  name: string;
-  requiredAccountLink: string;
-  totalCount: number;
+  readonly game: null;
+  readonly id: string;
+  readonly imageURL: string;
+  readonly isConnected: boolean;
+  readonly lastAwardedAt: string;
+  readonly name: string;
+  readonly requiredAccountLink: string;
+  readonly totalCount: number;
 }

@@ -1,16 +1,16 @@
 export interface ClaimPoints {
-  claimCommunityPoints: ClaimCommunityPoints;
+  readonly claimCommunityPoints: ClaimCommunityPoints;
 }
 
 export interface ClaimCommunityPoints {
-  claim: Claim;
-  currentPoints: number;
-  error: null;
+  readonly claim: Claim;
+  readonly currentPoints: number;
+  readonly error: null;
 }
 
 export interface Claim {
-  id: string;
-  multipliers: string[];
-  pointsEarnedBaseline: number;
-  pointsEarnedTotal: number;
+  readonly id: string;
+  readonly multipliers: readonly string[];
+  readonly pointsEarnedBaseline: number;
+  readonly pointsEarnedTotal: number;
 }

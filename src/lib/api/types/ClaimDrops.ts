@@ -1,19 +1,19 @@
 export interface ClaimDrops {
-  claimDropRewards: ClaimDropRewards;
+  readonly claimDropRewards: ClaimDropRewards;
 }
 
 export interface ClaimDropRewards {
-  status: string;
-  isUserAccountConnected: boolean;
-  dropType: DropType;
+  readonly status: string;
+  readonly isUserAccountConnected: boolean;
+  readonly dropType: DropType;
 }
 
 export interface DropType {
-  id: string;
-  campaign: Campaign;
+  readonly id: string;
+  readonly campaign: Campaign;
 }
 
 export interface Campaign {
-  id: string;
-  detailsURL: string;
+  readonly id: string;
+  readonly detailsURL: string;
 }

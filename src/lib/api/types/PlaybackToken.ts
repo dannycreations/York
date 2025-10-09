@@ -1,14 +1,14 @@
 export interface PlaybackToken {
-  streamPlaybackAccessToken: StreamPlaybackAccessToken;
+  readonly streamPlaybackAccessToken: StreamPlaybackAccessToken;
 }
 
 export interface StreamPlaybackAccessToken {
-  value: string;
-  signature: string;
-  authorization: Authorization;
+  readonly value: string;
+  readonly signature: string;
+  readonly authorization: Authorization;
 }
 
 export interface Authorization {
-  isForbidden: boolean;
-  forbiddenReasonCode: string;
+  readonly isForbidden: boolean;
+  readonly forbiddenReasonCode: string;
 }

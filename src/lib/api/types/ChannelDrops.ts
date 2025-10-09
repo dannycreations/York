@@ -1,54 +1,54 @@
 export interface ChannelDrops {
-  channel: Channel;
+  readonly channel: Channel;
 }
 
 export interface Channel {
-  id: string;
-  viewerDropCampaigns: ViewerDropCampaign[] | null;
+  readonly id: string;
+  readonly viewerDropCampaigns: readonly ViewerDropCampaign[] | null;
 }
 
 export interface ViewerDropCampaign {
-  id: string;
-  name: string;
-  game: Game;
-  detailsURL: string;
-  endAt: Date;
-  imageURL: string;
-  eventBasedDrops: any[];
-  timeBasedDrops: TimeBasedDrop[];
-  summary: Summary;
+  readonly id: string;
+  readonly name: string;
+  readonly game: Game;
+  readonly detailsURL: string;
+  readonly endAt: Date;
+  readonly imageURL: string;
+  readonly eventBasedDrops: readonly unknown[];
+  readonly timeBasedDrops: readonly TimeBasedDrop[];
+  readonly summary: Summary;
 }
 
 export interface Game {
-  id: string;
-  name: string;
+  readonly id: string;
+  readonly name: string;
 }
 
 export interface Summary {
-  includesMWRequirement: boolean;
-  includesSubRequirement: boolean;
-  isSitewide: boolean;
-  isRewardCampaign: boolean;
-  isPermanentlyDismissible: boolean;
+  readonly includesMWRequirement: boolean;
+  readonly includesSubRequirement: boolean;
+  readonly isSitewide: boolean;
+  readonly isRewardCampaign: boolean;
+  readonly isPermanentlyDismissible: boolean;
 }
 
 export interface TimeBasedDrop {
-  id: string;
-  name: string;
-  startAt: Date;
-  endAt: Date;
-  benefitEdges: BenefitEdge[];
-  requiredMinutesWatched: number;
+  readonly id: string;
+  readonly name: string;
+  readonly startAt: Date;
+  readonly endAt: Date;
+  readonly benefitEdges: readonly BenefitEdge[];
+  readonly requiredMinutesWatched: number;
 }
 
 export interface BenefitEdge {
-  benefit: Benefit;
-  entitlementLimit: number;
+  readonly benefit: Benefit;
+  readonly entitlementLimit: number;
 }
 
 export interface Benefit {
-  id: string;
-  name: string;
-  game: Game;
-  imageAssetURL: string;
+  readonly id: string;
+  readonly name: string;
+  readonly game: Game;
+  readonly imageAssetURL: string;
 }

@@ -1,78 +1,78 @@
-import { DropStatus } from '../../constants/Enum';
+import type { DropStatus } from '../../constants/Enum';
 
 export interface DropsDashboard {
-  currentUser: CurrentUser;
-  rewardCampaignsAvailableToUser: RewardCampaignsAvailableToUser[];
+  readonly currentUser: CurrentUser;
+  readonly rewardCampaignsAvailableToUser: readonly RewardCampaignsAvailableToUser[];
 }
 
 export interface CurrentUser {
-  id: string;
-  login: string;
-  dropCampaigns: DropCampaign[];
+  readonly id: string;
+  readonly login: string;
+  readonly dropCampaigns: readonly DropCampaign[];
 }
 
 export interface DropCampaign {
-  id: string;
-  name: string;
-  owner: Owner;
-  game: Game;
-  status: DropStatus;
-  startAt: string;
-  endAt: string;
-  detailsURL: string;
-  accountLinkURL: string;
-  self: Self;
+  readonly id: string;
+  readonly name: string;
+  readonly owner: Owner;
+  readonly game: Game;
+  readonly status: DropStatus;
+  readonly startAt: string;
+  readonly endAt: string;
+  readonly detailsURL: string;
+  readonly accountLinkURL: string;
+  readonly self: Self;
 }
 
 export interface Game {
-  id: string;
-  displayName: string;
-  boxArtURL?: string;
+  readonly id: string;
+  readonly displayName: string;
+  readonly boxArtURL?: string;
 }
 
 export interface Owner {
-  id: string;
-  name: string;
+  readonly id: string;
+  readonly name: string;
 }
 
 export interface Self {
-  isAccountConnected: boolean;
+  readonly isAccountConnected: boolean;
 }
 
 export interface RewardCampaignsAvailableToUser {
-  id: string;
-  name: string;
-  brand: string;
-  startsAt: string;
-  endsAt: string;
-  status: string;
-  summary: string;
-  instructions: string;
-  externalURL: string;
-  rewardValueURLParam: string;
-  aboutURL: string;
-  isSitewide: boolean;
-  game: Game | null;
-  unlockRequirements: UnlockRequirements;
-  image: Image;
-  rewards: Reward[];
+  readonly id: string;
+  readonly name: string;
+  readonly brand: string;
+  readonly startsAt: string;
+  readonly endsAt: string;
+  readonly status: string;
+  readonly summary: string;
+  readonly instructions: string;
+  readonly externalURL: string;
+  readonly rewardValueURLParam: string;
+  readonly aboutURL: string;
+  readonly isSitewide: boolean;
+  readonly game: Game | null;
+  readonly unlockRequirements: UnlockRequirements;
+  readonly image: Image;
+  readonly rewards: readonly Reward[];
 }
 
 export interface Image {
-  image1xURL: string;
+  readonly image1xURL: string;
 }
 
 export interface Reward {
-  id: string;
-  name: string;
-  bannerImage: Image;
-  thumbnailImage: Image;
-  earnableUntil: string;
-  redemptionInstructions: string;
-  redemptionURL: string;
+  readonly id: string;
+  readonly name: string;
+  readonly bannerImage: Image;
+  readonly thumbnailImage: Image;
+  readonly earnableUntil: string;
+  readonly redemptionInstructions: string;
+  readonly redemptionURL: string;
 }
 
 export interface UnlockRequirements {
-  subsGoal: number;
-  minuteWatchedGoal: number;
+  readonly subsGoal: number;
+  readonly minuteWatchedGoal: number;
 }

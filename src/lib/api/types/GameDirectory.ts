@@ -1,69 +1,69 @@
 export interface GameDirectory {
-  game: Game;
+  readonly game: Game;
 }
 
 export interface Game {
-  id: string;
-  name: string;
-  displayName: string;
-  streams: Streams;
+  readonly id: string;
+  readonly name: string;
+  readonly displayName: string;
+  readonly streams: Streams;
 }
 
 export interface Streams {
-  banners: null;
-  edges: Edge[];
-  pageInfo: PageInfo;
+  readonly banners: null;
+  readonly edges: readonly Edge[];
+  readonly pageInfo: PageInfo;
 }
 
 export interface Edge {
-  cursor: string;
-  node: Node;
-  trackingID: string | null;
+  readonly cursor: string;
+  readonly node: Node;
+  readonly trackingID: string | null;
 }
 
 export interface Node {
-  id: string;
-  title: string;
-  viewersCount: number;
-  previewImageURL: string;
-  broadcaster: Broadcaster;
-  freeformTags: FreeformTag[];
-  type: string;
-  game: NodeGame;
-  previewThumbnailProperties: PreviewThumbnailProperties;
+  readonly id: string;
+  readonly title: string;
+  readonly viewersCount: number;
+  readonly previewImageURL: string;
+  readonly broadcaster: Broadcaster;
+  readonly freeformTags: readonly FreeformTag[];
+  readonly type: string;
+  readonly game: NodeGame;
+  readonly previewThumbnailProperties: PreviewThumbnailProperties;
 }
 
 export interface Broadcaster {
-  id: string;
-  login: string;
-  displayName: string;
-  roles: Roles;
-  profileImageURL: string;
-  primaryColorHex: null | string;
+  readonly id: string;
+  readonly login: string;
+  readonly displayName: string;
+  readonly roles: Roles;
+  readonly profileImageURL: string;
+  readonly primaryColorHex: null | string;
 }
 
 export interface Roles {
-  isPartner: boolean;
-  isParticipatingDJ: boolean;
+  readonly isPartner: boolean;
+  readonly isParticipatingDJ: boolean;
 }
 
 export interface FreeformTag {
-  id: string;
-  name: string;
+  readonly id: string;
+  readonly name: string;
 }
 
 export interface NodeGame {
-  id: string;
-  boxArtURL: string;
-  name: string;
-  displayName: string;
-  slug: string;
+  readonly id: string;
+  readonly boxArtURL: string;
+  readonly name: string;
+  readonly displayName: string;
+  readonly slug: string;
 }
 
 export interface PreviewThumbnailProperties {
-  blurReason: string;
+  readonly blurReason: string;
 }
 
 export interface PageInfo {
-  hasNextPage: boolean;
+  readonly hasNextPage: boolean;
 }

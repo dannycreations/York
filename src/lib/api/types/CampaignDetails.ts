@@ -1,60 +1,60 @@
-import { TimeBasedDrop as InventoryDrop } from './Inventory';
+import type { TimeBasedDrop } from './Inventory';
 
 export interface CampaignDetails {
-  user: User;
+  readonly user: User;
 }
 
 export interface User {
-  id: string;
-  dropCampaign: DropCampaign;
+  readonly id: string;
+  readonly dropCampaign: DropCampaign;
 }
 
 export interface DropCampaign {
-  id: string;
-  self: Self;
-  allow: Allow;
-  accountLinkURL: string;
-  description: string;
-  detailsURL: string;
-  endAt: string;
-  eventBasedDrops: string[];
-  game: Game;
-  imageURL: string;
-  name: string;
-  owner: Game;
-  startAt: string;
-  status: string;
-  timeBasedDrops: Omit<InventoryDrop, 'self' | 'campaign'>[];
+  readonly id: string;
+  readonly self: Self;
+  readonly allow: Allow;
+  readonly accountLinkURL: string;
+  readonly description: string;
+  readonly detailsURL: string;
+  readonly endAt: string;
+  readonly eventBasedDrops: readonly string[];
+  readonly game: Game;
+  readonly imageURL: string;
+  readonly name: string;
+  readonly owner: Game;
+  readonly startAt: string;
+  readonly status: string;
+  readonly timeBasedDrops: readonly Omit<TimeBasedDrop, 'self' | 'campaign'>[];
 }
 
 export interface Allow {
-  channels: Required<Pick<Game, 'name'>>[] | null;
-  isEnabled: boolean;
+  readonly channels: readonly Required<Pick<Game, 'name'>>[] | null;
+  readonly isEnabled: boolean;
 }
 
 export interface Game {
-  id: string;
-  name?: string;
-  slug?: string;
-  displayName?: string;
+  readonly id: string;
+  readonly name?: string;
+  readonly slug?: string;
+  readonly displayName?: string;
 }
 
 export interface Self {
-  isAccountConnected: boolean;
+  readonly isAccountConnected: boolean;
 }
 
 export interface BenefitEdge {
-  benefit: Benefit;
-  entitlementLimit: number;
+  readonly benefit: Benefit;
+  readonly entitlementLimit: number;
 }
 
 export interface Benefit {
-  id: string;
-  createdAt: string;
-  entitlementLimit: number;
-  game: Game;
-  imageAssetURL: string;
-  isIosAvailable: boolean;
-  name: string;
-  ownerOrganization: Game;
+  readonly id: string;
+  readonly createdAt: string;
+  readonly entitlementLimit: number;
+  readonly game: Game;
+  readonly imageAssetURL: string;
+  readonly isIosAvailable: boolean;
+  readonly name: string;
+  readonly ownerOrganization: Game;
 }
