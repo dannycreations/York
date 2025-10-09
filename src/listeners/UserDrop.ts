@@ -2,14 +2,15 @@ import { Listener } from '@vegapunk/core';
 import { chalk } from '@vegapunk/utilities';
 import { uniqueId } from '@vegapunk/utilities/common';
 
-import { ResponseContent } from '../lib/api/types/WebSocket';
 import { Tasks, WsEvents } from '../lib/constants/Enum';
 import { Campaign } from '../lib/struct/Campaign';
 import { Drop } from '../lib/struct/Drop';
 import { writeDebugFile } from '../lib/utils/dev.util';
-import { DropMainTask } from '../tasks/DropMain';
 
-export class UserListener extends Listener<WsEvents.UserDrop> {
+import type { ResponseContent } from '../lib/api/types/WebSocket';
+import type { DropMainTask } from '../tasks/DropMain';
+
+export class UserDropListener extends Listener<WsEvents.UserDrop> {
   public constructor(context: Listener.LoaderContext) {
     super(context, { event: WsEvents.UserDrop });
   }
@@ -19,10 +20,11 @@ export class UserListener extends Listener<WsEvents.UserDrop> {
     const { queue } = taskStores.get(Tasks.DropMain) as DropMainTask;
 
     const selectDrop = queue.peek()?.drops.peek();
-    if (!selectDrop) return;
+    if (!selectDrop) {
+      return;
+    }
 
     await writeDebugFile(message, `UserDrop-${message.type ? message.type : uniqueId()}`);
-
     switch (message.type) {
       case 'drop-claim':
         return this.dropClaim(message as DropClaim, selectDrop);
@@ -32,17 +34,23 @@ export class UserListener extends Listener<WsEvents.UserDrop> {
   }
 
   private async dropClaim(message: DropClaim, selectDrop: Drop): Promise<void> {
-    if (message.data.drop_id !== selectDrop.id) return;
+    if (message.data.drop_id !== selectDrop.id) {
+      return;
+    }
 
     selectDrop['dropInstanceID'] = message.data.drop_instance_id;
   }
 
   private async dropProgress(message: DropProgress, selectDrop: Drop): Promise<void> {
-    if (message.data.drop_id !== selectDrop.id) return;
+    if (message.data.drop_id !== selectDrop.id) {
+      return;
+    }
 
     const localMinutesWatched = selectDrop.currentMinutesWatched;
     const currentMinutesWatched = message.data.current_progress_min;
-    if (localMinutesWatched === currentMinutesWatched) return;
+    if (localMinutesWatched === currentMinutesWatched) {
+      return;
+    }
 
     const desync = currentMinutesWatched - localMinutesWatched;
     Campaign.trackMinutesWatched = 1;
@@ -56,18 +64,18 @@ export class UserListener extends Listener<WsEvents.UserDrop> {
 type DropClaim = ResponseContent<
   'drop-claim',
   {
-    drop_id: string;
-    channel_id: string;
-    drop_instance_id: string;
+    readonly drop_id: string;
+    readonly channel_id: string;
+    readonly drop_instance_id: string;
   }
 >;
 
 type DropProgress = ResponseContent<
   'drop-progress',
   {
-    drop_id: string;
-    channel_id: string;
-    current_progress_min: number;
-    required_progress_min: number;
+    readonly drop_id: string;
+    readonly channel_id: string;
+    readonly current_progress_min: number;
+    readonly required_progress_min: number;
   }
 >;

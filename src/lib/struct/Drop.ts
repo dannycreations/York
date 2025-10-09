@@ -1,27 +1,32 @@
 import { container } from '@vegapunk/core';
-import { chalk, RequiredExcept, strictHas } from '@vegapunk/utilities';
+import { chalk, strictHas } from '@vegapunk/utilities';
 import { truncate } from '@vegapunk/utilities/common';
 
-import { TimeBasedDrop as InventoryDrop } from '../api/types/Inventory';
-import { DropStatus, dropStatus } from '../helpers/time.helper';
+import { dropStatus } from '../helpers/time.helper';
+
+import type { RequiredExcept } from '@vegapunk/utilities';
+import type { TimeBasedDrop as InventoryDrop } from '../api/types/Inventory';
+import type { DropStatusResult } from '../helpers/time.helper';
 
 export class Drop {
   public readonly id: string;
   public readonly name: string;
-  public readonly benefits: string[];
+  public readonly benefits: readonly string[];
   public readonly campaignId: string;
   public readonly startAt: Date;
   public readonly endAt: Date;
   public readonly requiredMinutesWatched: number;
 
+  private dropInstanceID?: string;
+
   public isClaimed: boolean;
   public hasPreconditionsMet: boolean;
   public currentMinutesWatched: number;
 
-  public constructor(drop: DropContext) {
+  public constructor(readonly drop: DropContext) {
     this.id = drop.id;
     this.name = truncate(drop.benefitEdges[0].benefit.name.trim());
-    this.benefits = drop.benefitEdges.map((r) => r.benefit.id);
+    this.benefits = drop.benefitEdges.map((edge) => edge.benefit.id);
     this.campaignId = drop.campaignId;
     this.startAt = new Date(drop.startAt);
     this.endAt = new Date(drop.endAt);
@@ -33,7 +38,7 @@ export class Drop {
     this.dropInstanceID = drop.self?.dropInstanceID || undefined;
   }
 
-  public get isStatus(): DropStatus {
+  public get isStatus(): DropStatusResult {
     if (this.isClaimed) {
       return { expired: true, upcoming: false };
     }
@@ -67,10 +72,8 @@ export class Drop {
     container.logger.info(chalk`{green ${this.name}} | {yellow Drops claimed}.`);
     return true;
   }
-
-  private dropInstanceID?: string;
 }
 
 export interface DropContext extends RequiredExcept<InventoryDrop, 'self' | 'campaign'> {
-  campaignId: string;
+  readonly campaignId: string;
 }

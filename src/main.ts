@@ -1,16 +1,17 @@
 import 'dotenv/config';
 
+import { runApp } from '@vegapunk/utilities';
+
 import { YorkClient } from './lib/YorkClient';
 
-const client = new YorkClient();
-
-async function main() {
+async function main(): Promise<void> {
+  const client = new YorkClient();
   try {
     await client.start();
-  } catch (error) {
+  } catch (error: unknown) {
     console.trace(error);
     await client.destroy();
   }
 }
 
-main().catch(console.trace);
+void runApp(main);

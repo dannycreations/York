@@ -5,9 +5,14 @@ import { sleep, waitUntil } from '@vegapunk/utilities/sleep';
 import { dayjs } from '@vegapunk/utilities/time';
 
 import { Tasks } from '../lib/constants/Enum';
-import { DropMainTask } from './DropMain';
+
+import type { DropMainTask } from './DropMain';
 
 export class DropUpcomingTask extends Task {
+  private readonly sleepTime: number = 7_200_000;
+  private nextRefresh: number;
+  private isMainCallSleep?: boolean;
+
   public constructor(context: Task.LoaderContext) {
     super(context, { name: Tasks.DropUpcoming, delay: 120_000 });
 
@@ -27,11 +32,12 @@ export class DropUpcomingTask extends Task {
 
     const upcomingLength = mainCampaign.upcoming.length;
     if (upcomingLength === 0) {
-      if (!mainTask.isStatus.enabled && isMainCall) {
+      if (!mainTask.status.enabled && isMainCall) {
         const waitUntilTime = dayjs(Date.now() + this.sleepTime).format('lll');
         this.container.logger.info(chalk`{bold.yellow No upcoming campaigns.}`);
         this.container.logger.info(chalk`{bold.yellow Sleeping until ${waitUntilTime}.}`);
 
+        mainTask.resetTask();
         mainTask.setDelay(this.sleepTime);
         mainTask.startTask();
       }
@@ -54,7 +60,7 @@ export class DropUpcomingTask extends Task {
       this.container.logger.info(chalk`{bold.yellow ${nextCampaign.name}} | {bold.yellow {strikethrough Upcoming}}.`);
 
       mainTask.stopTask();
-      await waitUntil(() => !mainTask.isStatus.running);
+      await waitUntil(() => !mainTask.status.running);
 
       const currentQueued = mainQueue.peek();
       if (!currentQueued) {
@@ -81,8 +87,4 @@ export class DropUpcomingTask extends Task {
       this.container.logger.info(chalk`{bold.yellow Sleeping until ${startTime}.}`);
     }
   }
-
-  private nextRefresh: number;
-  private isMainCallSleep?: boolean;
-  private readonly sleepTime: number = 7_200_000;
 }

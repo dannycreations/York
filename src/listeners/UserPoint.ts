@@ -2,13 +2,17 @@ import { Listener } from '@vegapunk/core';
 import { strictGet } from '@vegapunk/utilities';
 import { uniqueId } from '@vegapunk/utilities/common';
 
-import { ResponseContent } from '../lib/api/types/WebSocket';
 import { Tasks, WsEvents } from '../lib/constants/Enum';
 import { Channel } from '../lib/struct/Channel';
 import { writeDebugFile } from '../lib/utils/dev.util';
-import { DropMainTask } from '../tasks/DropMain';
 
-export class UserListener extends Listener<WsEvents.UserPoint> {
+import type { ResponseContent } from '../lib/api/types/WebSocket';
+import type { DropMainTask } from '../tasks/DropMain';
+
+export class UserPointListener extends Listener<WsEvents.UserPoint> {
+  private readonly watchTime: number = 900_000;
+  private nextClaim: number = 0;
+
   public constructor(context: Listener.LoaderContext) {
     super(context, { event: WsEvents.UserPoint });
   }
@@ -18,10 +22,11 @@ export class UserListener extends Listener<WsEvents.UserPoint> {
     const { queue } = taskStores.get(Tasks.DropMain) as DropMainTask;
 
     const selectChannel = queue.peek()?.channels.peek();
-    if (!selectChannel) return;
+    if (!selectChannel) {
+      return;
+    }
 
     await writeDebugFile(message, `UserPoint-${message.type ? message.type : uniqueId()}`);
-
     switch (message.type) {
       case 'claim-available':
         return this.pointClaim(message as PointClaim, selectChannel);
@@ -31,43 +36,43 @@ export class UserListener extends Listener<WsEvents.UserPoint> {
   }
 
   private async pointClaim(message: PointClaim, selectChannel: Channel): Promise<void> {
-    if (message.data.claim.channel_id !== selectChannel.id) return;
+    if (message.data.claim.channel_id !== selectChannel.id) {
+      return;
+    }
 
     await selectChannel.claimPoints(message.data.claim.id);
     this.nextClaim = Date.now() + this.watchTime;
   }
 
   private async pointProgress(message: PointProgress, selectChannel: Channel): Promise<void> {
-    if (this.nextClaim >= Date.now()) return;
-    if (message.data.channel_id !== selectChannel.id) return;
+    if (this.nextClaim >= Date.now() || message.data.channel_id !== selectChannel.id) {
+      return;
+    }
 
     const channel = await this.container.api.channelPoints(selectChannel.login);
     const points = strictGet(channel, 'data.community.channel.self.communityPoints');
     await selectChannel.claimPoints(strictGet(points, 'availableClaim.id'));
     this.nextClaim = Date.now() + this.watchTime;
   }
-
-  private nextClaim: number = 0;
-  private readonly watchTime: number = 900_000; // 15 minutes
 }
 
 type PointClaim = ResponseContent<
   'claim-available',
   {
-    timestamp: string;
-    claim: {
-      id: string;
-      user_id: string;
-      channel_id: string;
-      point_gain: {
-        user_id: string;
-        channel_id: string;
-        total_points: number;
-        baseline_points: number;
-        reason_code: string;
-        multipliers: string[];
+    readonly timestamp: string;
+    readonly claim: {
+      readonly id: string;
+      readonly user_id: string;
+      readonly channel_id: string;
+      readonly point_gain: {
+        readonly user_id: string;
+        readonly channel_id: string;
+        readonly total_points: number;
+        readonly baseline_points: number;
+        readonly reason_code: string;
+        readonly multipliers: readonly string[];
       };
-      created_at: string;
+      readonly created_at: string;
     };
   }
 >;
@@ -75,20 +80,20 @@ type PointClaim = ResponseContent<
 type PointProgress = ResponseContent<
   'points-earned',
   {
-    timestamp: string;
-    channel_id: string;
-    point_gain: {
-      user_id: string;
-      channel_id: string;
-      total_points: number;
-      baseline_points: number;
-      reason_code: string;
-      multipliers: string[];
+    readonly timestamp: string;
+    readonly channel_id: string;
+    readonly point_gain: {
+      readonly user_id: string;
+      readonly channel_id: string;
+      readonly total_points: number;
+      readonly baseline_points: number;
+      readonly reason_code: string;
+      readonly multipliers: readonly string[];
     };
-    balance: {
-      user_id: string;
-      channel_id: string;
-      balance: number;
+    readonly balance: {
+      readonly user_id: string;
+      readonly channel_id: string;
+      readonly balance: number;
     };
   }
 >;

@@ -8,6 +8,8 @@ import { CampaignStore } from '../lib/stores/CampaignStore';
 import { QueueStore } from '../lib/stores/QueueStore';
 import { Campaign } from '../lib/struct/Campaign';
 
+const MAIN_TOPICS = [WsEvents.UserDrop, WsEvents.UserPoint] as const;
+
 export class DropMainTask extends Task {
   public readonly campaign: CampaignStore = new CampaignStore();
   public readonly queue: QueueStore<Campaign> = new QueueStore((a, b) => descend(a.priority, b.priority));
@@ -16,9 +18,34 @@ export class DropMainTask extends Task {
     super(context, { name: Tasks.DropMain, delay: 10_000 });
   }
 
+  public override async awake(): Promise<void> {
+    let lastCheckedDay: number | undefined = undefined;
+    await Task.createTask({
+      update: () => {
+        const currentDay = new Date().getDate();
+        if (lastCheckedDay === undefined) {
+          lastCheckedDay = currentDay;
+          return;
+        }
+        if (currentDay === lastCheckedDay) {
+          return;
+        }
+
+        lastCheckedDay = currentDay;
+        this.container.logger.info(chalk`{bold.yellow It's midnight time. Restarting app...}`);
+        this.container.client.destroy();
+      },
+      options: { name: 'midnight', delay: 10_000 },
+    });
+  }
+
   public override async start(): Promise<void> {
-    const topics = [WsEvents.UserDrop, WsEvents.UserPoint];
-    await Promise.all(topics.map((r) => this.container.ws.listen([r, this.container.api.userId!])));
+    await Promise.all(
+      MAIN_TOPICS.map((topic) => {
+        const userId = this.container.api.userId!;
+        return this.container.ws.listen([topic, userId]);
+      }),
+    );
     await this.update();
   }
 
@@ -30,7 +57,11 @@ export class DropMainTask extends Task {
     if (!selectCampaign) {
       return;
     }
-    if (selectCampaign.isStatus.expired) {
+    if (selectCampaign.channels.last) {
+      await selectCampaign.channels.last.unlisten();
+      selectCampaign.channels['lastHeap'] = undefined;
+    }
+    if (selectCampaign.status.expired) {
       this.container.logger.info(chalk`${selectCampaign.name} | {red Campaigns expired}.`);
       this.campaign.delete(selectCampaign.id);
       this.queue.dequeue();
@@ -68,8 +99,11 @@ export class DropMainTask extends Task {
             ok: (status) => {
               if (status) {
                 selectCampaign.drops.dequeue();
-                const selectDrop = selectCampaign.drops.peek();
-                if (selectDrop) selectDrop.hasPreconditionsMet = true;
+                const currentDrop = selectCampaign.drops.peek();
+                if (currentDrop) {
+                  currentDrop.hasPreconditionsMet = true;
+                }
+
                 this.queue.isWorking = true;
                 return true;
               }
@@ -83,12 +117,16 @@ export class DropMainTask extends Task {
                 return true;
               }
 
-              if (!i) this.container.logger.info(chalk`{green ${selectDrop.name}} | {red Award not found}.`);
+              if (!i) {
+                this.container.logger.info(chalk`{green ${selectDrop.name}} | {red Award not found}.`);
+              }
               this.container.logger.info(chalk`{yellow Waiting for ${i + 1}/${total} minutes}.`);
-              if (i + 1 === total) selectCampaign.drops.dequeue();
+              if (i + 1 === total) {
+                selectCampaign.drops.dequeue();
+              }
               return sleep(60_000, false);
             },
-            err: (error) => {
+            err: (error: unknown) => {
               this.container.logger.info(error, chalk`{green ${selectDrop.name}} | {red Possible service error}.`);
               selectCampaign.drops.dequeue();
               return true;
@@ -123,14 +161,17 @@ export class DropMainTask extends Task {
   }
 
   private async create(): Promise<void> {
-    if (this.queue.isSleeping || this.queue.size > 0) return;
+    if (this.queue.isSleeping || this.queue.size > 0) {
+      return;
+    }
     if (this.queue.state === 3) {
       super.stopTask();
       this.queue.clear();
       this.queue.state = 1;
       this.queue.isSleeping = true;
 
-      const upcomingTask = this.store.get(Tasks.DropUpcoming)!;
+      const taskStores = this.container.stores.get('tasks');
+      const upcomingTask = taskStores.get(Tasks.DropUpcoming)!;
       await upcomingTask.update();
       return this.container.logger.info('');
     }
@@ -139,7 +180,7 @@ export class DropMainTask extends Task {
     await Promise.all([this.campaign.getProgress(), this.campaign.getCampaigns()]);
 
     const campaigns = this.campaign.sortedActive;
-    const priorities = campaigns.filter((r) => priorityList.includes(r.game.displayName));
+    const priorities = campaigns.filter((campaign) => priorityList.has(campaign.game.displayName));
     const hasPriority = this.queue.state === 1 && !!priorities.length;
     const activeList = hasPriority ? priorities : campaigns;
 
@@ -148,5 +189,11 @@ export class DropMainTask extends Task {
 
     this.queue.enqueue(...activeList);
     this.queue.state = hasPriority ? 2 : 3;
+  }
+
+  public override resetTask(): void {
+    super.resetTask();
+    this.container.ws.disconnect(true);
+    this.queue.isSleeping = false;
   }
 }

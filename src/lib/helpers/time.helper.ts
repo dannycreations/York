@@ -1,6 +1,6 @@
 const GRACE_PERIOD_MINUTES: number = 10;
 
-export function dropStatus(startAt: Date, endAt: Date, minutesLeft?: number): DropStatus {
+export function dropStatus(startAt: Date, endAt: Date, minutesLeft?: number): DropStatusResult {
   const nowMs = Date.now();
   const startAtMs = startAt.getTime();
   const endAtMs = endAt.getTime();
@@ -19,7 +19,7 @@ export function dropStatus(startAt: Date, endAt: Date, minutesLeft?: number): Dr
   };
 }
 
-export interface DropStatus {
-  expired: boolean;
-  upcoming: boolean;
+export interface DropStatusResult {
+  readonly expired: boolean;
+  readonly upcoming: boolean;
 }

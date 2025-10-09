@@ -4,7 +4,8 @@ import { random, sortBy } from '@vegapunk/utilities/common';
 import { sleep, waitForEach, waitUntil } from '@vegapunk/utilities/sleep';
 
 import { Tasks } from '../lib/constants/Enum';
-import { DropMainTask } from './DropMain';
+
+import type { DropMainTask } from './DropMain';
 
 export class DropOfflineTask extends Task {
   public constructor(context: Task.LoaderContext) {
@@ -17,9 +18,9 @@ export class DropOfflineTask extends Task {
     const mainCampaign = mainTask.campaign;
     const { priorityList } = this.container.client.config;
 
-    const sortedOffline = sortBy(mainCampaign.sortedOffline, [(r) => !priorityList.includes(r.game.displayName)]);
+    const sortedOffline = sortBy(mainCampaign.sortedOffline, [(campaign) => !priorityList.has(campaign.game.displayName)]);
     await waitForEach(sortedOffline, async (offCampaign) => {
-      if (offCampaign.isStatus.expired) {
+      if (offCampaign.status.expired) {
         mainCampaign.delete(offCampaign.id);
         return false;
       }
@@ -40,7 +41,7 @@ export class DropOfflineTask extends Task {
       this.container.logger.info(chalk`{bold.yellow ${offCampaign.name}} | {bold.yellow {strikethrough Offline}}.`);
 
       mainTask.stopTask();
-      await waitUntil(() => !mainTask.isStatus.running);
+      await waitUntil(() => !mainTask.status.running);
 
       const currentQueued = mainQueue.peek();
       if (!currentQueued) {
