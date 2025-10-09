@@ -1,21 +1,19 @@
-import { GraphqlRequest, GraphqlResponse, TwitchApi } from './TwitchApi';
-import { CampaignDetails } from './types/CampaignDetails';
-import { ChannelDrops } from './types/ChannelDrops';
-import { ChannelPoints } from './types/ChannelPoints';
-import { ChannelStreams } from './types/ChannelStreams';
-import { ClaimDrops } from './types/ClaimDrops';
-import { ClaimPoints } from './types/ClaimPoints';
-import { CurrentDrops } from './types/CurrentDrops';
-import { DropsDashboard } from './types/DropsDashboard';
-import { GameDirectory } from './types/GameDirectory';
-import { Inventory } from './types/Inventory';
-import { PlaybackToken } from './types/PlaybackToken';
-import { UseLive } from './types/UseLive';
+import { AppApi } from './AppApi';
 
-/**
- * ! TODO: Better data structure
- * ! for single and multi gql request
- */
+import type { GraphqlRequest, GraphqlResponse } from './AppApi';
+import type { CampaignDetails } from './types/CampaignDetails';
+import type { ChannelDrops } from './types/ChannelDrops';
+import type { ChannelPoints } from './types/ChannelPoints';
+import type { ChannelStreams } from './types/ChannelStreams';
+import type { ClaimDrops } from './types/ClaimDrops';
+import type { ClaimPoints } from './types/ClaimPoints';
+import type { CurrentDrops } from './types/CurrentDrops';
+import type { DropsDashboard } from './types/DropsDashboard';
+import type { GameDirectory } from './types/GameDirectory';
+import type { Inventory } from './types/Inventory';
+import type { PlaybackToken } from './types/PlaybackToken';
+import type { UseLive } from './types/UseLive';
+
 export const GqlQuery = {
   dropsDashboard: (): GraphqlRequest => ({
     operationName: 'ViewerDropsDashboard',
@@ -29,6 +27,7 @@ export const GqlQuery = {
   }),
   gameDirectory: (slug: string): GraphqlRequest => ({
     operationName: 'DirectoryPage_Game',
+    hash: '98a996c3c3ebb1ba4fd65d6671c6028d7ee8d615cb540b0731b3db2a911d3649',
     variables: {
       imageWidth: 50,
       slug,
@@ -44,57 +43,57 @@ export const GqlQuery = {
       },
       sortTypeIsRecency: false,
       limit: 30,
-      includeIsDJ: false,
+      includeCostreaming: false,
     },
-    hash: 'c7c9d5aad09155c4161d2382092dc44610367f3536aac39019ec2582ae5065f9',
   }),
   inventory: (): GraphqlRequest => ({
     operationName: 'Inventory',
+    hash: 'd86775d0ef16a63a33ad52e80eaff963b2d5b72fada7c991504a57496e1d8e4b',
     variables: { fetchRewardCampaigns: true },
-    hash: '09acb7d3d7e605a92bdfdcc465f6aa481b71c234d8686a9ba38ea5ed51507592',
   }),
   currentDrops: (): GraphqlRequest => ({
     operationName: 'DropCurrentSessionContext',
-    variables: {},
     hash: '4d06b702d25d652afb9ef835d2a550031f1cf762b193523a92166f40ea3d142b',
+    variables: {},
   }),
   channelLive: (channelLogin: string): GraphqlRequest => ({
     operationName: 'UseLive',
-    variables: { channelLogin },
     hash: '639d5f11bfb8bf3053b424d9ef650d04c4ebb7d94711d644afb08fe9a0fad5d9',
+    variables: { channelLogin },
   }),
   channelStreams: (logins: string[]): GraphqlRequest => ({
     operationName: 'FFZ_StreamFetch',
-    variables: { logins },
     hash: 'e3dbb5d8509ff2ef9d6518bf6749d2112bf6fc3ee2886248579bd7db0feb6504',
+    variables: { logins },
   }),
   channelDrops: (channelID: string): GraphqlRequest => ({
     operationName: 'DropsHighlightService_AvailableDrops',
+    hash: '782dad0f032942260171d2d80a654f88bdd0c5a9dddc392e9bc92218a0f42d20',
     variables: { channelID },
-    hash: 'eff13f4a43157238e40b4cd74b0dac3a41b5f8fb31de1a3b19347fae84e60b92',
   }),
   channelPoints: (channelLogin: string): GraphqlRequest => ({
     operationName: 'ChannelPointsContext',
+    hash: '374314de591e69925fce3ddc2bcf085796f56ebb8cad67a0daa3165c03adc345',
     variables: { channelLogin },
-    hash: '1530a003a7d374b0380b79db0be0534f30ff46e61cffa2bc0e2468a909fbc024',
   }),
   claimDrops: (dropInstanceID: string): GraphqlRequest => ({
     operationName: 'DropsPage_ClaimDropRewards',
-    variables: { input: { dropInstanceID } },
     hash: 'a455deea71bdc9015b78eb49f4acfbce8baa7ccbedd28e549bb025bd0f751930',
+    variables: { input: { dropInstanceID } },
   }),
   claimPoints: (input: ClaimPoint): GraphqlRequest => ({
     operationName: 'ClaimCommunityPoints',
-    variables: { input },
     hash: '46aaeebe02c99afdf4fc97c7c0cba964124bf6b0af229395f1f6d1feed05b3d0',
+    variables: { input },
   }),
   claimMoments: (momentID: string): GraphqlRequest => ({
     operationName: 'CommunityMomentCallout_Claim',
-    variables: { input: { momentID } },
     hash: 'e2d67415aead910f7f9ceb45a77b750a1e1d9622c936d832328a0689e054db62',
+    variables: { input: { momentID } },
   }),
   playbackToken: (login: string): GraphqlRequest => ({
     operationName: 'PlaybackAccessToken',
+    hash: 'ed230aa1e33e07eebb8928504583da78a5173989fadfb1ac94be06a04f3cdbe9',
     variables: {
       isLive: true,
       login,
@@ -103,11 +102,10 @@ export const GqlQuery = {
       playerType: 'site',
       platform: 'web',
     },
-    hash: 'ed230aa1e33e07eebb8928504583da78a5173989fadfb1ac94be06a04f3cdbe9',
   }),
 } as const;
 
-export class TwitchGql extends TwitchApi {
+export class AppGql extends AppApi {
   public async dropsDashboard(): Promise<GraphqlResponse<DropsDashboard>> {
     return this.graphqlOne(GqlQuery.dropsDashboard());
   }

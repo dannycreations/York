@@ -1,13 +1,17 @@
-import { ClientEvents, container } from '@vegapunk/core';
+import { container } from '@vegapunk/core';
 import { WebSocket, WebSocketState } from '@vegapunk/struct';
 import { randomString } from '@vegapunk/utilities';
 import { attempt } from '@vegapunk/utilities/common';
 
-import { Twitch, WsEvents } from '../constants/Enum';
+import { Twitch } from '../constants/Enum';
 import { RequestTopic, RequestType, ResponseContent, ResponseMessage, ResponseTopic, ResponseType } from './types/WebSocket';
 
-export class TwitchSocket extends WebSocket<Required<WebSocketOptions>> {
+import type { ClientEvents } from '@vegapunk/core';
+import type { WsEvents } from '../constants/Enum';
+
+export class AppSocket extends WebSocket<Required<WebSocketOptions>> {
   private readonly subscribedTopics: Map<string, RequestTopic> = new Map();
+  private lastPongReceivedAt: number = 0;
 
   public constructor(authToken: string) {
     super({
@@ -36,7 +40,7 @@ export class TwitchSocket extends WebSocket<Required<WebSocketOptions>> {
       },
     };
 
-    await this.sendRequestAndWaitForResponse(request);
+    await this.sendRequestAndWait(request);
     this.subscribedTopics.set(topicName, request);
     this.options.logger(`AppSocket: Subscribed ${topicName}.`);
   }
@@ -57,7 +61,7 @@ export class TwitchSocket extends WebSocket<Required<WebSocketOptions>> {
       },
     };
 
-    await this.sendRequestAndWaitForResponse(request);
+    await this.sendRequestAndWait(request);
     this.subscribedTopics.delete(topicName);
     this.options.logger(`AppSocket: Unsubscribed ${topicName}.`);
   }
@@ -112,8 +116,8 @@ export class TwitchSocket extends WebSocket<Required<WebSocketOptions>> {
           return;
         }
 
-        const [error, content] = attempt<Record<string, unknown>, null>(() => JSON.parse(eventData.message));
-        if (error) {
+        const [errorContent, content] = attempt<Record<string, unknown>, null>(() => JSON.parse(eventData.message));
+        if (errorContent) {
           this.options.logger({ message }, 'AppSocket: Failed to parse content JSON.');
           return;
         }
@@ -134,7 +138,6 @@ export class TwitchSocket extends WebSocket<Required<WebSocketOptions>> {
     }
   }
 
-  private lastPongReceivedAt: number = 0;
   protected override async onPing(): Promise<void> {
     const pongDeadline = this.lastPongReceivedAt + this.options.pingIntervalMs + this.options.requestTimeoutMs;
     if (Date.now() > pongDeadline) {
@@ -169,7 +172,7 @@ export class TwitchSocket extends WebSocket<Required<WebSocketOptions>> {
     this.options.logger(eventError, eventError.message);
   }
 
-  private async sendRequestAndWaitForResponse(payload: RequestTopic): Promise<void> {
+  private async sendRequestAndWait(payload: RequestTopic): Promise<void> {
     this.options.logger(
       {
         topic: payload.data.topics.join(', '),
@@ -202,7 +205,7 @@ export class TwitchSocket extends WebSocket<Required<WebSocketOptions>> {
   }
 }
 
-export interface WebSocketOptions {
+interface WebSocketOptions {
   readonly authToken?: string;
 }
 

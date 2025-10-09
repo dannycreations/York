@@ -1,9 +1,11 @@
-import { ResponseContent } from '../api/types/WebSocket';
+import type { ResponseContent } from '../api/types/WebSocket';
 
 export enum Twitch {
   WebUrl = 'https://www.twitch.tv',
   ApiUrl = 'https://gql.twitch.tv/gql',
   WssUrl = 'wss://pubsub-edge.twitch.tv/v1',
+  SpadeReg = `https://video-edge-[.\\w\\-/]+\\.ts`,
+  SettingReg = `https://(static\.twitchcdn\.net|assets\.twitch\.tv)/config/settings\.[0-9a-f]{32}\.js`,
 }
 
 export enum WsEvents {

@@ -1,6 +1,6 @@
 import { container } from '@vegapunk/core';
 import { DefaultOptions, requestDefault, RequestError, Response, UserAgent } from '@vegapunk/request';
-import { OnlyOneRequired } from '@vegapunk/utilities';
+import { shutdownApp } from '@vegapunk/utilities';
 import { defaultsDeep, isObjectLike, truncate } from '@vegapunk/utilities/common';
 import { isErrorLike, Result } from '@vegapunk/utilities/result';
 import { sleep, waitUntil } from '@vegapunk/utilities/sleep';
@@ -8,17 +8,22 @@ import { sleep, waitUntil } from '@vegapunk/utilities/sleep';
 import { Twitch } from '../constants/Enum';
 import { writeDebugFile } from '../utils/dev.util';
 
+import type { OnlyOneRequired } from '@vegapunk/utilities';
+
 const userAgent = new UserAgent({ deviceCategory: 'mobile' });
 
-export class TwitchApi {
+export class AppApi {
   public static readonly IS_DEBUG: boolean = false;
 
-  public constructor(auth_token: string) {
+  private readonly options: DefaultOptions;
+  private readonly auth: { userId?: string } = {};
+
+  public constructor(authToken: string) {
     this.options = {
       method: 'GET',
       headers: {
         'user-agent': String(userAgent),
-        authorization: `OAuth ${auth_token}`,
+        authorization: `OAuth ${authToken}`,
         'client-id': 'kd1unb4b3q4t58fwlpcbzcbnm76a8fp',
       },
       retry: -1,
@@ -39,6 +44,7 @@ export class TwitchApi {
   private readonly gqlMaxRetries: number = 5;
   private readonly gqlErrorLogs: GraphqlError[] = [];
   private readonly gqlErrorRetry: readonly string[] = ['service unavailable', 'service timeout', 'context deadline exceeded'];
+
   public async graphql<T>(request: GraphqlRequest | GraphqlRequest[]): Promise<GraphqlResponse<T>[]> {
     if (!this.userId) {
       await waitUntil(() => !!this.userId);
@@ -80,7 +86,8 @@ export class TwitchApi {
               this.gqlErrorLogs.push(...retries);
               if (retry >= this.gqlMaxRetries) {
                 container.logger.warn(this.gqlErrorLogs, `Graphql response has ${this.gqlErrorLogs.length} errors.`);
-                (cancel(), reject(new Error('Max graphql retries exceeded')));
+                cancel();
+                reject(new Error('Max graphql retries exceeded'));
                 return;
               }
 
@@ -89,9 +96,11 @@ export class TwitchApi {
             }
 
             const error = new Error('Unknown errors');
-            (cancel(), reject(Object.assign(error, { cause: errors, options })));
+            cancel();
+            reject(Object.assign(error, { cause: errors, options }));
           }
-          (cancel(), resolve(res.body));
+          cancel();
+          resolve(res.body);
         },
         { delay: 0 },
       );
@@ -102,12 +111,16 @@ export class TwitchApi {
     return new Promise(async (resolve, reject) => {
       const result = await requestDefault<T>(defaultsDeep({}, options, this.options));
       const status = result.match({
-        ok: (res) => (resolve(res), res),
-        err: (error) => {
+        ok: (res) => {
+          resolve(res);
+          return res;
+        },
+        err: (error: unknown) => {
           if (isErrorLike<RequestError>(error) && isObjectLike(error.response)) {
             if (error.response.statusCode === 401) {
               container.logger.fatal(error.response.body, error.message);
-              process.exit(0);
+              shutdownApp();
+              return;
             }
 
             reject(error);
@@ -118,7 +131,7 @@ export class TwitchApi {
           return null;
         },
       });
-      if (TwitchApi.IS_DEBUG && status?.statusCode) {
+      if (AppApi.IS_DEBUG && status?.statusCode) {
         const url = `${status.statusCode} ${status.request.options.method} ${status.url}`;
         await writeDebugFile({
           request: {
@@ -153,9 +166,9 @@ export class TwitchApi {
       const htmlReg = new RegExp('twilightBuildID="([-a-z0-9]+)"');
       this.options.headers!['client-version'] = htmlReg.exec(body)![1];
     });
-    result.inspectErr((error) => {
+    result.inspectErr((error: unknown) => {
       container.logger.error(error, 'Could not fetch your unique.');
-      process.exit(1);
+      container.client.destroy();
     });
   }
 
@@ -168,14 +181,11 @@ export class TwitchApi {
 
       this.auth.userId = body.user_id;
     });
-    result.inspectErr((error) => {
+    result.inspectErr((error: unknown) => {
       container.logger.error(error, 'Could not validate your auth token.');
-      process.exit(1);
+      container.client.destroy();
     });
   }
-
-  private readonly options: DefaultOptions;
-  private readonly auth: { userId?: string } = {};
 }
 
 export type GraphqlRequest<T = object> = OnlyOneRequired<
