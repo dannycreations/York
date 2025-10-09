@@ -2,7 +2,7 @@
 	"isClaimDrops": true,
 	"isClaimPoints": true,
 	"isClaimMoments": true,
-	"isDropPriorityOnly": true,
+	"isPriorityOnly": false,
 	"usePriorityConnected": true,
 	"priorityList": ["Rust", "VALORANT", "Sea of Thieves"],
 	"exclusionList": []
