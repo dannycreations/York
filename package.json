@@ -15,10 +15,10 @@
     "update": "pnpx npm-check-updates -u -x @types/node"
   },
   "dependencies": {
-    "@vegapunk/core": "^1.0.53",
-    "@vegapunk/request": "^1.0.42",
-    "@vegapunk/struct": "^1.0.15",
-    "@vegapunk/utilities": "^1.0.76",
+    "@vegapunk/core": "^1.0.54",
+    "@vegapunk/request": "^1.0.43",
+    "@vegapunk/struct": "^1.0.16",
+    "@vegapunk/utilities": "^1.0.77",
     "dotenv": "^17.2.3"
   },
   "devDependencies": {
@@ -34,5 +34,5 @@
       "esbuild"
     ]
   },
-  "packageManager": "pnpm@10.18.1"
+  "packageManager": "pnpm@10.22.0"
 }
