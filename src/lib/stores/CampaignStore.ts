@@ -109,6 +109,10 @@ export class CampaignStore {
     });
   }
 
+  public clear(): void {
+    this.campaigns.clear();
+  }
+
   private values(): Campaign[] {
     return [...this.campaigns.values()];
   }

@@ -40,6 +40,7 @@ export class DropMainTask extends Task {
   }
 
   public override async start(): Promise<void> {
+    this.container.ws.connect();
     await Promise.all(
       MAIN_TOPICS.map((topic) => {
         const userId = this.container.api.userId!;
@@ -195,5 +196,6 @@ export class DropMainTask extends Task {
     super.resetTask();
     this.container.ws.disconnect(true);
     this.queue.isSleeping = false;
+    this.campaign.clear();
   }
 }
