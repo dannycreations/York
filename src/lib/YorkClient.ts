@@ -17,14 +17,15 @@ interface ClientConfig {
   readonly exclusionList: Set<string>;
 }
 
-const EnvSchema = v.pipe(
-  v.object({
-    AUTH_TOKEN: v.pipe(v.string(), v.minLength(1)),
-  }),
-  v.readonly(),
+const env = v.parse(
+  v.pipe(
+    v.object({
+      AUTH_TOKEN: v.pipe(v.string(), v.minLength(1)),
+    }),
+    v.readonly(),
+  ),
+  process.env,
 );
-
-const env = v.parse(EnvSchema, process.env);
 
 export class YorkClient extends Vegapunk {
   public override config: ClientConfig = {
