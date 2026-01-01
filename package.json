@@ -17,10 +17,10 @@
     "prepare": "husky"
   },
   "dependencies": {
-    "@vegapunk/core": "^1.0.54",
-    "@vegapunk/request": "^1.0.43",
-    "@vegapunk/struct": "^1.0.16",
-    "@vegapunk/utilities": "^1.0.77",
+    "@vegapunk/core": "^1.0.55",
+    "@vegapunk/request": "^1.0.44",
+    "@vegapunk/struct": "^1.0.17",
+    "@vegapunk/utilities": "^1.0.78",
     "dotenv": "^17.2.3"
   },
   "devDependencies": {
@@ -37,5 +37,5 @@
       "esbuild"
     ]
   },
-  "packageManager": "pnpm@10.24.0"
+  "packageManager": "pnpm@10.27.0"
 }

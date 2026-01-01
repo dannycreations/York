@@ -9,17 +9,17 @@ importers:
   .:
     dependencies:
       '@vegapunk/core':
-        specifier: ^1.0.54
-        version: 1.0.54(typescript@5.9.3)
+        specifier: ^1.0.55
+        version: 1.0.55(typescript@5.9.3)
       '@vegapunk/request':
-        specifier: ^1.0.43
-        version: 1.0.43(typescript@5.9.3)
+        specifier: ^1.0.44
+        version: 1.0.44(typescript@5.9.3)
       '@vegapunk/struct':
-        specifier: ^1.0.16
-        version: 1.0.16(typescript@5.9.3)
+        specifier: ^1.0.17
+        version: 1.0.17(typescript@5.9.3)
       '@vegapunk/utilities':
-        specifier: ^1.0.77
-        version: 1.0.77(typescript@5.9.3)
+        specifier: ^1.0.78
+        version: 1.0.78(typescript@5.9.3)
       dotenv:
         specifier: ^17.2.3
         version: 17.2.3
@@ -322,28 +322,28 @@ packages:
   '@types/responselike@1.0.3':
     resolution: {integrity: sha512-H/+L+UkTV33uf49PH5pCAUBVPNj2nDBXTN+qS1dOwyyg24l3CcicicCA7ca+HMvJBZcFgl5r8e+RR6elsb4Lyw==}
 
-  '@vegapunk/core@1.0.54':
-    resolution: {integrity: sha512-QZFTB9mQa77XSoqqQTPuPTiWm7J0Vi8WaeFGVlw9l63sABIINau+8QWpZrIgfEBDsVecYkgK+kd6QYeWroXCUA==}
+  '@vegapunk/core@1.0.55':
+    resolution: {integrity: sha512-pdiYl+C595b6ko+Gij/mYg14wdRIEyJWKeyb6gnKP3PulywxdJp9PxtjY1orXBhSevX8TfjccKNAZac0HoZ7oQ==}
     engines: {node: '>=20'}
 
-  '@vegapunk/logger@1.0.30':
-    resolution: {integrity: sha512-Gu+l0xD1hwhfTe9HM2m+ynJC8ddMkHhG3YVBeREFUC/EQFMfrzBLoyEOLD/ROHDpu8Ou63QnOVkraVIOBbrK3g==}
+  '@vegapunk/logger@1.0.31':
+    resolution: {integrity: sha512-NlOmvHNaP0fX/1LD0TmX4PfsFy9IlJelOUSqB2Rpjdsrgej30/BYSEx/4r9O2pztsq+Zg/n9lvrfdly/Jb538A==}
     engines: {node: '>=20'}
 
-  '@vegapunk/request@1.0.43':
-    resolution: {integrity: sha512-lgKysgMr4aUA3+QTwEpVOS/GYsSOO2rZWXP2JNZuEQ8YHS2lSAhHHZZwgJe7NvPhAhhf7wwHPA2ENbY0/ExEtQ==}
+  '@vegapunk/request@1.0.44':
+    resolution: {integrity: sha512-+H0NG9sTItckCFCpVPocIbLjeOtlSdi9UiF6okCKH6s8TTnhl9BPCGMLbNqdQZ5b+lRdRrh3Rc9KxaSwXJl0Iw==}
     engines: {node: '>=20'}
     bundledDependencies:
       - '@types/user-agents'
 
-  '@vegapunk/struct@1.0.16':
-    resolution: {integrity: sha512-A7LiG5L/IPwSF19UUk9XniZppXzyG9saM4yzosDF5hlSJtJM6G4tH1M3X/yhq5+vTlouQAMlaBmga8kyDXhuZA==}
+  '@vegapunk/struct@1.0.17':
+    resolution: {integrity: sha512-gwYuNZw2tYXOLOnmxEU3MyYkqEvP1fJW8tYaGemfmiia41bdhSo75231UboDUaL3kZUyDhLmzceVY78OapGeVg==}
     engines: {node: '>=20'}
     bundledDependencies:
       - '@types/ws'
 
-  '@vegapunk/utilities@1.0.77':
-    resolution: {integrity: sha512-sep1RNTvxOVSLSMdwLuCf5RwAIY7UGQP7jLCEo9Lnd5XsHVLD66eZmgKzHeBdyLum7Bb/Rm31BB8paN+zVXIHA==}
+  '@vegapunk/utilities@1.0.78':
+    resolution: {integrity: sha512-IF4zSOopqrXHCEqxrxjB3M12c4rimM8r8lj8w68Yz5xa3RR2WqGr11xunQIkKx99/ck+kpxZSEw8CkWQP5dWEQ==}
     engines: {node: '>=20'}
     bundledDependencies:
       - '@types/humanize-duration'
@@ -411,16 +411,16 @@ packages:
   end-of-stream@1.4.5:
     resolution: {integrity: sha512-ooEGc6HP26xXq/N+GCGOT0JKCLDGrq2bQUZrQ7gyrJiZANJ/8YDTxTpQBXGMn+WbIQXNVpyWymm7KYVICQnyOg==}
 
-  es-toolkit@1.41.0:
-    resolution: {integrity: sha512-bDd3oRmbVgqZCJS6WmeQieOrzpl3URcWBUVDXxOELlUW2FuW+0glPOz1n0KnRie+PdyvUZcXz2sOn00c6pPRIA==}
+  es-toolkit@1.43.0:
+    resolution: {integrity: sha512-SKCT8AsWvYzBBuUqMk4NPwFlSdqLpJwmy6AP322ERn8W2YLIB6JBXnwMI2Qsh2gfphT3q7EKAxKb23cvFHFwKA==}
 
   esbuild@0.27.1:
     resolution: {integrity: sha512-yY35KZckJJuVVPXpvjgxiCuVEJT67F6zDeVTv4rizyPrfGBUpZQsvmxnN+C371c2esD/hNMjj4tpBhuueLN7aA==}
     engines: {node: '>=18'}
     hasBin: true
 
-  fast-copy@3.0.2:
-    resolution: {integrity: sha512-dl0O9Vhju8IrcLndv2eU4ldt1ftXMqqfgN4H1cpmGV7P6jeB9FwpN9a2c8DPGE1Ys88rNUJVYDHq73CGAGOPfQ==}
+  fast-copy@4.0.2:
+    resolution: {integrity: sha512-ybA6PDXIXOXivLJK/z9e+Otk7ve13I4ckBvGO5I2RRmBU1gMHLVDJYEuJYhGwez7YNlYji2M2DvVU+a9mSFDlw==}
 
   fast-safe-stringify@2.1.1:
     resolution: {integrity: sha512-W+KJc2dmILlPplD/H4K9l9LcAHAfPtP6BY84uVLXQ6Evcz9Lcg33Y2z1IVblT6xdY54PXYVHEv+0Wpq8Io6zkA==}
@@ -455,8 +455,8 @@ packages:
     resolution: {integrity: sha512-V+23sDMr12Wnz7iTcDeJr3O6AIxlnvT/bmaAAAP/Xda35C90p9599p0F1eHR/N1KILWSoWVAiOMFjBBXaXSMxg==}
     engines: {node: '>=10.19.0'}
 
-  humanize-duration@3.33.1:
-    resolution: {integrity: sha512-hwzSCymnRdFx9YdRkQQ0OYequXiVAV6ZGQA2uzocwB0F4309Ke6pO8dg0P8LHhRQJyVjGteRTAA/zNfEcpXn8A==}
+  humanize-duration@3.33.2:
+    resolution: {integrity: sha512-K7Ny/ULO1hDm2nnhvAY+SJV1skxFb61fd073SG1IWJl+D44ULrruCuTyjHKjBVVcSuTlnY99DKtgEG39CM5QOQ==}
 
   husky@9.1.7:
     resolution: {integrity: sha512-5gs5ytaNjBrh5Ow3zrvdUUY+0VxIuWVL4i9irt6friV+BqdCfmV11CQTWMiBYWHbXhco+J1kHfTOUkePhCDvMA==}
@@ -531,8 +531,11 @@ packages:
   pino-abstract-transport@2.0.0:
     resolution: {integrity: sha512-F63x5tizV6WCh4R6RHyi2Ml+M70DNRXt/+HANowMflpgGFMAym/VKm6G7ZOQRjqN7XbGxK1Lg9t6ZrtzOaivMw==}
 
-  pino-pretty@13.1.2:
-    resolution: {integrity: sha512-3cN0tCakkT4f3zo9RXDIhy6GTvtYD6bK4CRBLN9j3E/ePqN1tugAXD5rGVfoChW6s0hiek+eyYlLNqc/BG7vBQ==}
+  pino-abstract-transport@3.0.0:
+    resolution: {integrity: sha512-wlfUczU+n7Hy/Ha5j9a/gZNy7We5+cXp8YL+X+PG8S0KXxw7n/JXA3c46Y0zQznIJ83URJiwy7Lh56WLokNuxg==}
+
+  pino-pretty@13.1.3:
+    resolution: {integrity: sha512-ttXRkkOz6WWC95KeY9+xxWL6AtImwbyMHrL1mSwqwW9u+vLp/WIElvHvCSDg0xO/Dzrggz1zv3rN5ovTRVowKg==}
     hasBin: true
 
   pino-std-serializers@7.0.0:
@@ -627,8 +630,8 @@ packages:
   user-agents@1.1.669:
     resolution: {integrity: sha512-pbIzG+AOqCaIpySKJ4IAm1l0VyE4jMnK4y1thV8lm8PYxI+7X5uWcppOK7zY79TCKKTAnJH3/4gaVIZHsjrmJA==}
 
-  valibot@1.1.0:
-    resolution: {integrity: sha512-Nk8lX30Qhu+9txPYTwM0cFlWLdPFsFr6LblzqIySfbZph9+BFsAHsNvHOymEviUepeIW6KFHzpX8TKhbptBXXw==}
+  valibot@1.2.0:
+    resolution: {integrity: sha512-mm1rxUsmOxzrwnX5arGS+U4T25RdvpPjPN4yR0u9pUBov9+zGVtO84tif1eY4r6zWxVxu3KzIyknJy3rxfRZZg==}
     peerDependencies:
       typescript: '>=5'
     peerDependenciesMeta:
@@ -650,8 +653,8 @@ packages:
       utf-8-validate:
         optional: true
 
-  zustand@5.0.8:
-    resolution: {integrity: sha512-gyPKpIaxY9XcO2vSMrLbiER7QMAMGOQZVRdJ6Zi782jkbzZygq5GI9nG8g+sMgitRtndwaBSl7uiqC49o1SSiw==}
+  zustand@5.0.9:
+    resolution: {integrity: sha512-ALBtUj0AfjJt3uNRQoL1tL2tMvj6Gp/6e39dnfT6uzpelGru8v1tPOGBzayOWbPJvujM8JojDk3E1LxeFisBNg==}
     engines: {node: '>=12.20.0'}
     peerDependencies:
       '@types/react': '>=18.0.0'
@@ -868,12 +871,12 @@ snapshots:
     dependencies:
       '@types/node': 22.16.0
 
-  '@vegapunk/core@1.0.54(typescript@5.9.3)':
+  '@vegapunk/core@1.0.55(typescript@5.9.3)':
     dependencies:
       '@sapphire/pieces': 4.4.1
       '@sapphire/snowflake': 3.5.5
-      '@vegapunk/logger': 1.0.30
-      '@vegapunk/utilities': 1.0.77(typescript@5.9.3)
+      '@vegapunk/logger': 1.0.31
+      '@vegapunk/utilities': 1.0.78(typescript@5.9.3)
     transitivePeerDependencies:
       - '@types/react'
       - immer
@@ -881,14 +884,14 @@ snapshots:
       - typescript
       - use-sync-external-store
 
-  '@vegapunk/logger@1.0.30':
+  '@vegapunk/logger@1.0.31':
     dependencies:
       pino: 10.1.0
-      pino-pretty: 13.1.2
+      pino-pretty: 13.1.3
 
-  '@vegapunk/request@1.0.43(typescript@5.9.3)':
+  '@vegapunk/request@1.0.44(typescript@5.9.3)':
     dependencies:
-      '@vegapunk/utilities': 1.0.77(typescript@5.9.3)
+      '@vegapunk/utilities': 1.0.78(typescript@5.9.3)
       got: 11.8.6
       user-agents: 1.1.669
     transitivePeerDependencies:
@@ -898,9 +901,9 @@ snapshots:
       - typescript
       - use-sync-external-store
 
-  '@vegapunk/struct@1.0.16(typescript@5.9.3)':
+  '@vegapunk/struct@1.0.17(typescript@5.9.3)':
     dependencies:
-      '@vegapunk/utilities': 1.0.77(typescript@5.9.3)
+      '@vegapunk/utilities': 1.0.78(typescript@5.9.3)
       ws: 8.18.3
     transitivePeerDependencies:
       - '@types/react'
@@ -911,17 +914,17 @@ snapshots:
       - use-sync-external-store
       - utf-8-validate
 
-  '@vegapunk/utilities@1.0.77(typescript@5.9.3)':
+  '@vegapunk/utilities@1.0.78(typescript@5.9.3)':
     dependencies:
       '@sapphire/result': 2.8.0
       chalk: 4.1.2
       dayjs: 1.11.19
-      es-toolkit: 1.41.0
-      humanize-duration: 3.33.1
+      es-toolkit: 1.43.0
+      humanize-duration: 3.33.2
       jsonc-parser: 3.3.1
       nanoid: 3.3.11
-      valibot: 1.1.0(typescript@5.9.3)
-      zustand: 5.0.8
+      valibot: 1.2.0(typescript@5.9.3)
+      zustand: 5.0.9
     transitivePeerDependencies:
       - '@types/react'
       - immer
@@ -984,7 +987,7 @@ snapshots:
     dependencies:
       once: 1.4.0
 
-  es-toolkit@1.41.0: {}
+  es-toolkit@1.43.0: {}
 
   esbuild@0.27.1:
     optionalDependencies:
@@ -1015,7 +1018,7 @@ snapshots:
       '@esbuild/win32-ia32': 0.27.1
       '@esbuild/win32-x64': 0.27.1
 
-  fast-copy@3.0.2: {}
+  fast-copy@4.0.2: {}
 
   fast-safe-stringify@2.1.1: {}
 
@@ -1055,7 +1058,7 @@ snapshots:
       quick-lru: 5.1.1
       resolve-alpn: 1.2.1
 
-  humanize-duration@3.33.1: {}
+  humanize-duration@3.33.2: {}
 
   husky@9.1.7: {}
 
@@ -1103,17 +1106,21 @@ snapshots:
     dependencies:
       split2: 4.2.0
 
-  pino-pretty@13.1.2:
+  pino-abstract-transport@3.0.0:
+    dependencies:
+      split2: 4.2.0
+
+  pino-pretty@13.1.3:
     dependencies:
       colorette: 2.0.20
       dateformat: 4.6.3
-      fast-copy: 3.0.2
+      fast-copy: 4.0.2
       fast-safe-stringify: 2.1.1
       help-me: 5.0.0
       joycon: 3.1.1
       minimist: 1.2.8
       on-exit-leak-free: 2.1.2
-      pino-abstract-transport: 2.0.0
+      pino-abstract-transport: 3.0.0
       pump: 3.0.3
       secure-json-parse: 4.0.0
       sonic-boom: 4.2.0
@@ -1199,7 +1206,7 @@ snapshots:
     dependencies:
       lodash.clonedeep: 4.5.0
 
-  valibot@1.1.0(typescript@5.9.3):
+  valibot@1.2.0(typescript@5.9.3):
     optionalDependencies:
       typescript: 5.9.3
 
@@ -1207,4 +1214,4 @@ snapshots:
 
   ws@8.18.3: {}
 
-  zustand@5.0.8: {}
+  zustand@5.0.9: {}
