@@ -6,7 +6,7 @@ import { isObjectLike, uniqueId } from '@vegapunk/utilities/common';
 
 export function marker(stage: number | string, ...args: (number | string)[]): void {
   const str = `${stage} ${args.join(' ')}`.trimEnd();
-  container.logger.info(chalk`{bold.red ========== STAGE ${str} ==========}.`);
+  container.logger.info(chalk`{bold.red ========== STAGE ${str} ==========}`);
 }
 
 export async function writeDebugFile(data: string | object, name?: string): Promise<void> {

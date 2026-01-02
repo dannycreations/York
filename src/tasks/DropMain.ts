@@ -63,7 +63,7 @@ export class DropMainTask extends Task {
       selectCampaign.channels['lastHeap'] = undefined;
     }
     if (selectCampaign.status.expired) {
-      this.container.logger.info(chalk`${selectCampaign.name} | {red Campaigns expired}.`);
+      this.container.logger.info(chalk`${selectCampaign.name} | {red Campaigns expired}`);
       this.campaign.delete(selectCampaign.id);
       this.queue.dequeue();
       return this.update();
@@ -74,12 +74,12 @@ export class DropMainTask extends Task {
 
     const selectDrop = selectCampaign.drops.peek();
     if (!selectDrop) {
-      this.container.logger.info(chalk`${selectCampaign.name} | {red No active drops}.`);
+      this.container.logger.info(chalk`${selectCampaign.name} | {red No active drops}`);
       this.queue.dequeue();
       return this.update();
     }
     if (!selectDrop.hasPreconditionsMet) {
-      this.container.logger.info(chalk`{green ${selectDrop.name}} | {red Preconditions drops}.`);
+      this.container.logger.info(chalk`{green ${selectDrop.name}} | {red Preconditions drops}`);
       this.queue.dequeue();
       return this.update();
     }
@@ -110,7 +110,7 @@ export class DropMainTask extends Task {
               }
               if (!selectDrop.isMinutesWatchedMet) {
                 if (selectDrop.requiredMinutesWatched - selectDrop.currentMinutesWatched >= 20) {
-                  this.container.logger.info(chalk`{green ${selectDrop.name}} | {red Possible broken drops}.`);
+                  this.container.logger.info(chalk`{green ${selectDrop.name}} | {red Possible broken drops}`);
                   this.queue.dequeue();
                 } else {
                   selectCampaign.channels.dequeue();
@@ -119,16 +119,16 @@ export class DropMainTask extends Task {
               }
 
               if (!i) {
-                this.container.logger.info(chalk`{green ${selectDrop.name}} | {red Award not found}.`);
+                this.container.logger.info(chalk`{green ${selectDrop.name}} | {red Award not found}`);
               }
-              this.container.logger.info(chalk`{yellow Waiting for ${i + 1}/${total} minutes}.`);
+              this.container.logger.info(chalk`{yellow Waiting for ${i + 1}/${total} minutes}`);
               if (i + 1 === total) {
                 selectCampaign.drops.dequeue();
               }
               return sleep(60_000, false);
             },
             err: (error: unknown) => {
-              this.container.logger.info(error, chalk`{green ${selectDrop.name}} | {red Possible service error}.`);
+              this.container.logger.info(error, chalk`{green ${selectDrop.name}} | {red Possible service error}`);
               selectCampaign.drops.dequeue();
               return true;
             },
@@ -144,14 +144,14 @@ export class DropMainTask extends Task {
     const selectChannel = selectCampaign.channels.peek();
     if (!selectChannel) {
       selectCampaign.isOffline = true;
-      this.container.logger.info(chalk`${selectCampaign.name} | {red Campaigns offline}.`);
+      this.container.logger.info(chalk`${selectCampaign.name} | {red Campaigns offline}`);
       this.queue.dequeue();
       return this.update();
     }
     if (!this.queue.isWorking) {
       const drops = `${selectCampaign.drops.size} drops`;
       const channels = `${selectCampaign.channels.size} channels`;
-      this.container.logger.info(chalk`${selectCampaign.name} | {yellow Found ${drops} / ${channels}}.`);
+      this.container.logger.info(chalk`${selectCampaign.name} | {yellow Found ${drops} / ${channels}}`);
     }
 
     this.queue.isWorking = true;
@@ -186,7 +186,7 @@ export class DropMainTask extends Task {
     const activeList = hasPriority ? priorities : campaigns;
 
     const totalStr = `${activeList.length} ${hasPriority ? '' : 'Non-'}Priority game!`;
-    this.container.logger.info(chalk`{bold.yellow Checking ${totalStr}.}`);
+    this.container.logger.info(chalk`{bold.yellow Checking ${totalStr}}`);
 
     this.queue.enqueue(...activeList);
     this.queue.state = hasPriority ? 2 : 3;

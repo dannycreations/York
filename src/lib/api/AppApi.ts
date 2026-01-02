@@ -85,7 +85,7 @@ export class AppApi {
             if (retries.length) {
               this.gqlErrorLogs.push(...retries);
               if (retry >= this.gqlMaxRetries) {
-                container.logger.warn(this.gqlErrorLogs, `Graphql response has ${this.gqlErrorLogs.length} errors.`);
+                container.logger.warn(this.gqlErrorLogs, `Graphql response has ${this.gqlErrorLogs.length} errors`);
                 cancel();
                 reject(new Error('Max graphql retries exceeded'));
                 return;
@@ -141,7 +141,7 @@ export class AppApi {
           response: { headers: status.headers, body: status.body },
         });
 
-        container.logger.debug(`API: ${truncate(url)}.`);
+        container.logger.debug(`API: ${truncate(url)}`);
       }
     });
   }
@@ -166,7 +166,7 @@ export class AppApi {
       this.options.headers!['client-version'] = htmlReg.exec(body)![1];
     });
     result.inspectErr((error: unknown) => {
-      container.logger.error(error, 'Could not fetch your unique.');
+      container.logger.error(error, 'Could not fetch your unique');
       container.client.destroy();
     });
   }
@@ -181,7 +181,7 @@ export class AppApi {
       this.auth.userId = body.user_id;
     });
     result.inspectErr((error: unknown) => {
-      container.logger.error(error, 'Could not validate your auth token.');
+      container.logger.error(error, 'Could not validate your auth token');
       container.client.destroy();
     });
   }

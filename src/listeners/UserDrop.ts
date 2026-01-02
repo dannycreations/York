@@ -57,7 +57,7 @@ export class UserDropListener extends Listener<WsEvents.UserDrop> {
     selectDrop.currentMinutesWatched += desync;
 
     const str = chalk`{yellow Desync ${Math.max(0, desync) ? '+' : ''}${desync} minutes}`;
-    this.container.logger.info(chalk`{green ${selectDrop.name}} | ${str}.`);
+    this.container.logger.info(chalk`{green ${selectDrop.name}} | ${str}`);
   }
 }
 

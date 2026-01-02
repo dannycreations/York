@@ -38,7 +38,7 @@ export class DropOfflineTask extends Task {
       }
 
       offCampaign.isOffline = false;
-      this.container.logger.info(chalk`{bold.yellow ${offCampaign.name}} | {bold.yellow {strikethrough Offline}}.`);
+      this.container.logger.info(chalk`{bold.yellow ${offCampaign.name}} | {bold.yellow {strikethrough Offline}}`);
 
       mainTask.stopTask();
       await waitUntil(() => !mainTask.status.running);

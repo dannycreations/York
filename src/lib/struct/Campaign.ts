@@ -78,7 +78,7 @@ export class Campaign {
 
       const localMinutesWatched = ++selectDrop.currentMinutesWatched;
       const currentProgress = chalk`{green ${localMinutesWatched}/${selectDrop.requiredMinutesWatched}}`;
-      container.logger.info(chalk`{green ${selectDrop.name}} | {green ${selectChannel.login}} | ${currentProgress}.`);
+      container.logger.info(chalk`{green ${selectDrop.name}} | {green ${selectChannel.login}} | ${currentProgress}`);
 
       if (Campaign.trackMinutesWatched >= 20) {
         Campaign.trackMinutesWatched = 0;
@@ -171,6 +171,10 @@ export class Campaign {
       const directory = await container.api.gameDirectory(this.game.slug);
       const users = strictGet(directory, 'data.game.streams.edges', []);
       await waitForEach(users as Edge[], (user) => {
+        if (!user.node.broadcaster) {
+          return;
+        }
+
         const id = user.node.broadcaster.id;
         const login = user.node.broadcaster.login;
         const channel = new Channel({ id, login, gameId });

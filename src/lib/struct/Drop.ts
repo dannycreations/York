@@ -69,7 +69,7 @@ export class Drop {
     }
 
     this.dropInstanceID = undefined;
-    container.logger.info(chalk`{green ${this.name}} | {yellow Drops claimed}.`);
+    container.logger.info(chalk`{green ${this.name}} | {yellow Drops claimed}`);
     return true;
   }
 }

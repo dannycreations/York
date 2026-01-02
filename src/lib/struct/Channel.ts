@@ -97,7 +97,7 @@ export class Channel {
     }
 
     this.pointInstanceID = undefined;
-    container.logger.info(chalk`{green ${this.login}} | {yellow Points claimed}.`);
+    container.logger.info(chalk`{green ${this.login}} | {yellow Points claimed}`);
     return true;
   }
 
@@ -110,7 +110,7 @@ export class Channel {
     await writeDebugFile(res, uniqueId('claimMoments'));
 
     this.momentInstanceID = undefined;
-    container.logger.info(chalk`{green ${this.login}} | {yellow Moments claimed}.`);
+    container.logger.info(chalk`{green ${this.login}} | {yellow Moments claimed}`);
     return true;
   }
 
@@ -125,7 +125,7 @@ export class Channel {
       return body;
     });
     if (result.isErr()) {
-      container.logger.error(result.unwrapErr(), `Could not fetch stream ${this.id}.`);
+      container.logger.error(result.unwrapErr(), `Could not fetch stream ${this.id}`);
       return null;
     }
     return result.unwrap();
@@ -175,7 +175,7 @@ export class Channel {
       return watch.statusCode === 204;
     });
     if (result.isErr()) {
-      container.logger.error(result.unwrapErr(), `Could not send event ${this.login}.`);
+      container.logger.error(result.unwrapErr(), `Could not send event ${this.login}`);
       return false;
     }
     return true;
@@ -216,7 +216,7 @@ export class Channel {
         }
       }
 
-      container.logger.error(error, `Could not watch stream ${this.login}.`);
+      container.logger.error(error, `Could not watch stream ${this.login}`);
       return false;
     }
     return true;

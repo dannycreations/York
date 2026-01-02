@@ -34,8 +34,8 @@ export class DropUpcomingTask extends Task {
     if (upcomingLength === 0) {
       if (!mainTask.status.enabled && isMainCall) {
         const waitUntilTime = dayjs(Date.now() + this.sleepTime).format('lll');
-        this.container.logger.info(chalk`{bold.yellow No upcoming campaigns.}`);
-        this.container.logger.info(chalk`{bold.yellow Sleeping until ${waitUntilTime}.}`);
+        this.container.logger.info(chalk`{bold.yellow No upcoming campaigns}`);
+        this.container.logger.info(chalk`{bold.yellow Sleeping until ${waitUntilTime}}`);
 
         mainTask.resetTask();
         mainTask.setDelay(this.sleepTime);
@@ -57,7 +57,7 @@ export class DropUpcomingTask extends Task {
         mainTask.queue.isSleeping = false;
       }
 
-      this.container.logger.info(chalk`{bold.yellow ${nextCampaign.name}} | {bold.yellow {strikethrough Upcoming}}.`);
+      this.container.logger.info(chalk`{bold.yellow ${nextCampaign.name}} | {bold.yellow {strikethrough Upcoming}}`);
 
       mainTask.stopTask();
       await waitUntil(() => !mainTask.status.running);
@@ -83,8 +83,8 @@ export class DropUpcomingTask extends Task {
       const startTime = dayjs(nextCampaign.startAt).format('lll');
       const countStr = chalk`{bold.yellow ${upcomingLength} upcoming}`;
 
-      this.container.logger.info(chalk`{bold.yellow No active campaigns} | ${countStr}.`);
-      this.container.logger.info(chalk`{bold.yellow Sleeping until ${startTime}.}`);
+      this.container.logger.info(chalk`{bold.yellow No active campaigns} | ${countStr}`);
+      this.container.logger.info(chalk`{bold.yellow Sleeping until ${startTime}}`);
     }
   }
 }
