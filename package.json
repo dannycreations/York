@@ -21,14 +21,15 @@
     "@vegapunk/request": "^1.0.44",
     "@vegapunk/struct": "^1.0.17",
     "@vegapunk/utilities": "^1.0.78",
-    "dotenv": "^17.2.3"
+    "dotenv": "^17.2.3",
+    "effect": "^3.19.14"
   },
   "devDependencies": {
     "@ianvs/prettier-plugin-sort-imports": "^4.7.0",
     "@sapphire/ts-config": "^5.0.3",
     "@types/node": "22.x",
     "husky": "^9.1.7",
-    "prettier": "^3.7.4",
+    "prettier": "^3.8.0",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3"
   },
@@ -37,5 +38,5 @@
       "esbuild"
     ]
   },
-  "packageManager": "pnpm@10.27.0"
+  "packageManager": "pnpm@10.28.0"
 }
