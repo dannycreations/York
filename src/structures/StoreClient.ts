@@ -3,7 +3,7 @@ import { dirname } from 'node:path';
 import { parseJsonc } from '@vegapunk/utilities';
 import { defaultsDeep } from '@vegapunk/utilities/common';
 import { isErrorLike } from '@vegapunk/utilities/result';
-import { Context, Data, Effect, Layer, Ref, Schedule, Schema, Scope } from 'effect';
+import { Context, Data, Effect, Layer, Ref, Schedule, Schema } from 'effect';
 
 /**
  * Ensures that the directory for a given file path exists.
@@ -89,12 +89,7 @@ const saveStore = <A, I, R>(filePath: string, schema: Schema.Schema<A, I, R>, da
  * @param initialData - The initial data for the store.
  * @param initialDelay - The delay in milliseconds between auto-saves.
  */
-export const createStore = <A extends object, I, R>(
-  filePath: string,
-  schema: Schema.Schema<A, I, R>,
-  initialData: A,
-  initialDelay: number = 1000,
-): Effect.Effect<StoreClient<A>, StoreClientError, R | Scope.Scope> =>
+export const createStore = <A extends object, I, R>(filePath: string, schema: Schema.Schema<A, I, R>, initialData: A, initialDelay: number = 1000) =>
   Effect.gen(function* () {
     const dataRef = yield* Ref.make(initialData);
     const delayRef = yield* Ref.make(initialDelay);
@@ -170,4 +165,4 @@ export const StoreClientLayer = <S, A extends object, I, R>(
   schema: Schema.Schema<A, I, R>,
   initialData: A,
   initialDelay: number = 1000,
-): Layer.Layer<S, StoreClientError, R> => Layer.scoped(tag, createStore(filePath, schema, initialData, initialDelay));
+) => Layer.scoped(tag, createStore(filePath, schema, initialData, initialDelay));

@@ -71,7 +71,7 @@ export const TwitchSocketLayer = (authToken: string): Layer.Layer<TwitchSocketTa
       /**
        * Sends a LISTEN request to the Twitch PubSub server.
        */
-      const performListen = (ws: WebSocket<object>, topic: string, id: string, updateRef: boolean): Effect.Effect<void, TwitchSocketError> =>
+      const performListen = (ws: WebSocket<object>, topic: string, id: string, updateRef: boolean) =>
         Effect.gen(function* () {
           const topicKey = `${topic}.${id}`;
           if (updateRef) {
@@ -94,7 +94,7 @@ export const TwitchSocketLayer = (authToken: string): Layer.Layer<TwitchSocketTa
           });
         });
 
-      const onOpen = (ws: WebSocket<object>): Effect.Effect<void, TwitchSocketError> =>
+      const onOpen = (ws: WebSocket<object>) =>
         Effect.gen(function* () {
           yield* Ref.set(lastPongReceivedAt, Date.now());
           const topics = yield* Ref.get(subscribedTopics);
@@ -107,7 +107,7 @@ export const TwitchSocketLayer = (authToken: string): Layer.Layer<TwitchSocketTa
       /**
        * Handles incoming messages from the WebSocket.
        */
-      const onMessage = (data: Buffer): Effect.Effect<void> =>
+      const onMessage = (data: Buffer) =>
         Effect.gen(function* () {
           const messageResult = yield* Schema.decodeUnknown(
             Schema.Struct({
@@ -242,7 +242,7 @@ export const TwitchSocketLayer = (authToken: string): Layer.Layer<TwitchSocketTa
       /**
        * Subscribes to a specific PubSub topic.
        */
-      const listen = (topic: string, id: string): Effect.Effect<void, TwitchSocketError> =>
+      const listen = (topic: string, id: string) =>
         Effect.gen(function* () {
           const topicKey = `${topic}.${id}`;
           const current = yield* Ref.get(subscribedTopics);
@@ -258,7 +258,7 @@ export const TwitchSocketLayer = (authToken: string): Layer.Layer<TwitchSocketTa
       /**
        * Unsubscribes from a previously registered PubSub topic.
        */
-      const unlisten = (topic: string, id: string): Effect.Effect<void, TwitchSocketError> =>
+      const unlisten = (topic: string, id: string) =>
         Effect.gen(function* () {
           const topicKey = `${topic}.${id}`;
           const current = yield* Ref.get(subscribedTopics);
@@ -295,7 +295,7 @@ export const TwitchSocketLayer = (authToken: string): Layer.Layer<TwitchSocketTa
       /**
        * Disconnects the current WebSocket instance.
        */
-      const disconnect = (reconnect: boolean = false): Effect.Effect<void> =>
+      const disconnect = (reconnect: boolean = false) =>
         Effect.gen(function* () {
           const socket = yield* Ref.get(wsRef);
           if (socket) {

@@ -72,7 +72,7 @@ const userAgent = new UserAgent({ deviceCategory: 'desktop' });
  *
  * @param error - The error to check.
  */
-export const isErrorTimeout = (error: unknown): boolean =>
+export const isErrorTimeout = (error: unknown) =>
   isErrorLike<{ _tag: string; code?: string }>(error) && (error._tag === 'TimeoutException' || error.code === 'ETIMEDOUT');
 
 /**
@@ -82,7 +82,7 @@ export const isErrorTimeout = (error: unknown): boolean =>
  * @param options - Request options or a URL string.
  * @returns An Effect that resolves to the HTTP response.
  */
-const requestFn = <T = string>(options: string | DefaultOptions): Effect.Effect<Response<T>, HttpClientError> =>
+const requestFn = <T = string>(options: string | DefaultOptions) =>
   Effect.gen(function* () {
     const isString = typeof options === 'string';
     const payload = defaultsDeep({}, isString ? { url: options } : options, {
@@ -139,7 +139,7 @@ const requestFn = <T = string>(options: string | DefaultOptions): Effect.Effect<
       },
     }).pipe(
       Effect.retry({
-        while: (error: unknown) => {
+        while: (error) => {
           if (!(error instanceof HttpClientError)) return false;
           const isNetworkError = !!error.code && ERROR_CODES.includes(error.code);
           const isRetryableStatus = !!error.status && ERROR_STATUS_CODES.includes(error.status);
@@ -156,7 +156,7 @@ const requestFn = <T = string>(options: string | DefaultOptions): Effect.Effect<
  * @param retryMs - The interval in milliseconds between connection checks.
  * @returns An Effect that resolves when a connection is established.
  */
-const waitForConnectionFn = (retryMs: number = 10_000): Effect.Effect<void, HttpClientError> =>
+const waitForConnectionFn = (retryMs: number = 10_000) =>
   Effect.gen(function* () {
     const checkGoogle = Effect.tryPromise({
       try: () => lookup('google.com'),

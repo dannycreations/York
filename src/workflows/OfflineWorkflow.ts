@@ -15,7 +15,7 @@ import type { MainState } from './MainWorkflow';
  * @param configStore - The configuration store.
  * @returns An Effect that represents the offline monitoring loop.
  */
-export const OfflineWorkflow = (state: MainState, configStore: StoreClient<ClientConfig>): Effect.Effect<void, never, CampaignStoreTag> =>
+export const OfflineWorkflow = (state: MainState, configStore: StoreClient<ClientConfig>) =>
   Effect.gen(function* () {
     const campaignStore = yield* CampaignStoreTag;
 

@@ -1,5 +1,5 @@
 import { chalk } from '@vegapunk/utilities';
-import { Effect, Fiber, Option, Ref, Stream } from 'effect';
+import { Effect, Option, Ref, Stream } from 'effect';
 
 import { WsTopic } from '../core/Types';
 import { TwitchApiTag } from '../services/TwitchApi';
@@ -19,10 +19,7 @@ import type { MainState } from './MainWorkflow';
  * @param configStore - The configuration store.
  * @returns An Effect that represents the socket processing loop.
  */
-export const SocketWorkflow = (
-  state: MainState,
-  configStore: StoreClient<ClientConfig>,
-): Effect.Effect<Fiber.Fiber<void, never>, never, TwitchApiTag | TwitchSocketTag> =>
+export const SocketWorkflow = (state: MainState, configStore: StoreClient<ClientConfig>) =>
   Effect.gen(function* () {
     const api = yield* TwitchApiTag;
     const socket = yield* TwitchSocketTag;

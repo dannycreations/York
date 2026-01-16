@@ -4,9 +4,9 @@ import { Data, Effect, Option, Ref, Schedule, Schema, Scope } from 'effect';
 import { ConfigStoreTag } from '../core/Config';
 import { getDropStatus, HelixStreamsSchema, WsTopic } from '../core/Types';
 import { CampaignStoreTag } from '../services/CampaignStore';
-import { TwitchApiError, TwitchApiTag } from '../services/TwitchApi';
-import { TwitchSocketError, TwitchSocketTag } from '../services/TwitchSocket';
-import { WatchError, WatchServiceTag } from '../services/WatchService';
+import { TwitchApiTag } from '../services/TwitchApi';
+import { TwitchSocketTag } from '../services/TwitchSocket';
+import { WatchServiceTag } from '../services/WatchService';
 import { cycleMidnightRestart, cycleWithRestart } from '../structures/RuntimeClient';
 import { OfflineWorkflow } from './OfflineWorkflow';
 import { SocketWorkflow } from './SocketWorkflow';
@@ -48,7 +48,7 @@ const performWatchLoop = (
   campaignStore: CampaignStore,
   watchService: WatchService,
   configStore: StoreClient<ClientConfig>,
-): Effect.Effect<void, MainWorkflowError | TwitchApiError | TwitchSocketError | WatchError> =>
+) =>
   Effect.gen(function* () {
     const campaignOpt = yield* Ref.get(state.currentCampaign);
     if (Option.isNone(campaignOpt)) {
@@ -252,13 +252,7 @@ const performWatchLoop = (
 /**
  * Handles claiming of drops for a given campaign.
  */
-const performClaimDrops = (
-  state: MainState,
-  api: TwitchApi,
-  campaignStore: CampaignStore,
-  campaign: Campaign,
-  drop: Drop,
-): Effect.Effect<void, TwitchApiError> =>
+const performClaimDrops = (state: MainState, api: TwitchApi, campaignStore: CampaignStore, campaign: Campaign, drop: Drop) =>
   Effect.gen(function* () {
     yield* Ref.set(state.isClaiming, true);
     let claimed = false;

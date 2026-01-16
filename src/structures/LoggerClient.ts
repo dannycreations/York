@@ -5,7 +5,7 @@ import pino from 'pino';
 import pinoPretty from 'pino-pretty';
 
 import type { ReadonlyRecord } from 'effect/Record';
-import type { Level, Logger as LoggerPino, StreamEntry } from 'pino';
+import type { Level, StreamEntry } from 'pino';
 
 /**
  * Maps Pino log levels to Effect log levels.
@@ -51,7 +51,7 @@ export interface LoggerOptions {
  *
  * @param options - Configuration options for the logger.
  */
-export const createLogger = (options: LoggerOptions = {}): LoggerPino => {
+export const createLogger = (options: LoggerOptions = {}) => {
   const {
     dir = join(process.cwd(), 'logs'),
     level = process.env.NODE_ENV === 'development' ? 'debug' : 'info',
@@ -143,7 +143,7 @@ export const createLogger = (options: LoggerOptions = {}): LoggerPino => {
  * @param self - The logger instance to replace.
  * @param logger - The Pino logger instance to use.
  */
-export const LoggerClientLayer = (self: Logger.Logger<unknown, void>, logger: pino.Logger): Layer.Layer<never> => {
+export const LoggerClientLayer = (self: Logger.Logger<unknown, void>, logger: pino.Logger) => {
   return Layer.merge(
     Logger.replace(
       self,

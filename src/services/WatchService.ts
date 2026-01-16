@@ -64,7 +64,7 @@ export const WatchServiceLayer: Layer.Layer<WatchServiceTag, never, HttpClientTa
     /**
      * Simulates watching a channel by sending minute-watched events and checking the stream.
      */
-    const watch = (channel: Channel): Effect.Effect<{ success: boolean; hlsUrl?: string }, never> =>
+    const watch = (channel: Channel) =>
       Effect.gen(function* () {
         const spadeUrl = yield* getSpadeUrl;
         const userId = yield* api.userId;
@@ -135,7 +135,7 @@ export const WatchServiceLayer: Layer.Layer<WatchServiceTag, never, HttpClientTa
      *
      * @param login - The channel login to fetch the HLS URL for.
      */
-    const getHlsUrl = (login: string): Effect.Effect<string, WatchError> =>
+    const getHlsUrl = (login: string) =>
       Effect.gen(function* () {
         const playback = yield* api.graphql(GqlQueries.playbackToken(login), PlaybackTokenSchema);
         const token = playback[0].streamPlaybackAccessToken;
@@ -157,7 +157,7 @@ export const WatchServiceLayer: Layer.Layer<WatchServiceTag, never, HttpClientTa
      *
      * @param hlsUrl - The HLS URL to check.
      */
-    const checkStream = (hlsUrl: string): Effect.Effect<boolean, never> =>
+    const checkStream = (hlsUrl: string) =>
       Effect.gen(function* () {
         const hls = yield* http.request({ url: hlsUrl });
         const hlsFilter = hls.body.split('\n').filter(Boolean).reverse();

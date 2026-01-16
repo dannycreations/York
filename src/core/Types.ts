@@ -18,7 +18,7 @@ export const GRACE_PERIOD_MINUTES = 10;
  * @param minutesLeft - Optional remaining minutes to check for early expiration.
  * @returns An object containing `isUpcoming` and `isExpired` flags.
  */
-export const getDropStatus = (startAt: Date, endAt: Date, minutesLeft?: number): { isUpcoming: boolean; isExpired: boolean } => {
+export const getDropStatus = (startAt: Date, endAt: Date, minutesLeft?: number) => {
   const nowMs = Date.now();
   const startAtMs = startAt.getTime();
   const endAtMs = endAt.getTime();
@@ -173,7 +173,7 @@ export const GqlResponseSchema = <A, I, R>(data: Schema.Schema<A, I, R>) =>
  *
  * @template T - The type of the data field.
  */
-export type GqlResponse<T = unknown> = {
+export interface GqlResponse<T = unknown> {
   readonly data: T;
   readonly errors?: ReadonlyArray<GqlError>;
   readonly extensions?: {
@@ -181,7 +181,7 @@ export type GqlResponse<T = unknown> = {
     readonly operationName: string;
     readonly requestID: string;
   };
-};
+}
 
 /**
  * Schema for the ViewerDropsDashboard GraphQL response.

@@ -197,7 +197,7 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
      *
      * @param campaignId - The unique identifier of the campaign.
      */
-    const getDropsForCampaign = (campaignId: string): Effect.Effect<ReadonlyArray<Drop>, TwitchApiError> =>
+    const getDropsForCampaign = (campaignId: string) =>
       Effect.gen(function* () {
         const detailRes = yield* api.campaignDetails(campaignId);
         const dropDetail = detailRes.user?.dropCampaign;
@@ -312,7 +312,7 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
     /**
      * Updates the offline status of a specific campaign.
      */
-    const setOffline = (id: string, isOffline: boolean): Effect.Effect<void> =>
+    const setOffline = (id: string, isOffline: boolean) =>
       Ref.update(campaignsRef, (map) => {
         const next = new Map(map);
         const campaign = next.get(id);
@@ -325,7 +325,7 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
     /**
      * Updates the priority of a specific campaign.
      */
-    const setPriority = (id: string, priority: number): Effect.Effect<void> =>
+    const setPriority = (id: string, priority: number) =>
       Ref.update(campaignsRef, (map) => {
         const next = new Map(map);
         const campaign = next.get(id);
@@ -340,9 +340,9 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
      *
      * @param campaign - The campaign for which to find channels.
      */
-    const getChannelsForCampaign = (campaign: Campaign): Effect.Effect<ReadonlyArray<Channel>, TwitchApiError | TwitchSocketError> =>
+    const getChannelsForCampaign = (campaign: Campaign) =>
       Effect.gen(function* () {
-        const filterChannelsByCampaign = (channels: readonly Channel[], campaignId: string): Effect.Effect<ReadonlyArray<Channel>, TwitchApiError> =>
+        const filterChannelsByCampaign = (channels: readonly Channel[], campaignId: string) =>
           Effect.gen(function* () {
             if (channels.length === 0) {
               return [];
@@ -357,7 +357,7 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
             });
           });
 
-        const cleanup = (channels: readonly Channel[]): Effect.Effect<void, TwitchSocketError> =>
+        const cleanup = (channels: readonly Channel[]) =>
           Effect.gen(function* () {
             if (!socket) {
               return;

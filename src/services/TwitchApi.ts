@@ -119,7 +119,7 @@ export const TwitchApiLayer = (authToken: string, isDebug: boolean = false): Lay
       /**
        * Writes data to a debug file for troubleshooting purposes.
        */
-      const writeDebugFile = (data: string | object, name?: string): Effect.Effect<void> =>
+      const writeDebugFile = (data: string | object, name?: string) =>
         Effect.tryPromise({
           try: async () => {
             const content = typeof data === 'object' ? JSON.stringify(data, null, 2) : data;
@@ -133,10 +133,7 @@ export const TwitchApiLayer = (authToken: string, isDebug: boolean = false): Lay
       /**
        * Executes an HTTP request with Twitch-specific headers and error handling.
        */
-      const request = <T>(
-        options: string | DefaultOptions,
-        isDebugOverride?: boolean,
-      ): Effect.Effect<{ body: T; statusCode: number; headers: Record<string, string | string[] | undefined> }, TwitchApiError> =>
+      const request = <T>(options: string | DefaultOptions, isDebugOverride?: boolean) =>
         Effect.gen(function* () {
           const commonHeaders = yield* Ref.get(headersRef);
           const payload = typeof options === 'string' ? { url: options } : options;
@@ -251,7 +248,7 @@ export const TwitchApiLayer = (authToken: string, isDebug: boolean = false): Lay
         requests: GraphqlRequest | ReadonlyArray<GraphqlRequest>,
         schema: Schema.Schema<A, I, R>,
         waitForUserId: boolean = true,
-      ): Effect.Effect<ReadonlyArray<A>, TwitchApiError, R> =>
+      ) =>
         Effect.gen(function* () {
           const userId = waitForUserId ? yield* getUserId : '';
           const args = (Array.isArray(requests) ? requests : [requests]).map((r) => {
@@ -289,22 +286,21 @@ export const TwitchApiLayer = (authToken: string, isDebug: boolean = false): Lay
             Effect.gen(function* () {
               if (res.errors && res.errors.length > 0) {
                 const retryableErrors = ['service unavailable', 'service timeout', 'context deadline exceeded'];
-                const hasUnretryable = res.errors.some((e) => !retryableErrors.includes(e.message.toLowerCase()));
+                const retries = res.errors.filter((e) => retryableErrors.includes(e.message.toLowerCase()));
 
-                if (hasUnretryable) {
+                if (retries.length > 0) {
+                  yield* Effect.logWarning(chalk`{yellow GraphQL response has ${retries.length} retryable errors}`, retries);
                   return yield* Effect.fail(
                     new TwitchApiError({
-                      message: `GraphQL Error: ${res.errors[0].message}`,
+                      message: 'Retryable GraphQL Error',
                       cause: res.errors,
                     }),
                   );
                 }
 
-                yield* Effect.logWarning(chalk`{yellow GraphQL response has retryable errors}`, res.errors);
-
                 return yield* Effect.fail(
                   new TwitchApiError({
-                    message: 'Retryable GraphQL Error',
+                    message: `GraphQL Error: ${res.errors[0].message}`,
                     cause: res.errors,
                   }),
                 );
@@ -327,38 +323,30 @@ export const TwitchApiLayer = (authToken: string, isDebug: boolean = false): Lay
 
       const currentDrops = graphql(GqlQueries.currentDrops, CurrentDropsSchema).pipe(Effect.map((res) => res[0]));
 
-      const gameDirectory = (slug: string): Effect.Effect<Schema.Schema.Type<typeof GameDirectorySchema>, TwitchApiError> =>
-        graphql(GqlQueries.gameDirectory(slug), GameDirectorySchema).pipe(Effect.map((res) => res[0]));
+      const gameDirectory = (slug: string) => graphql(GqlQueries.gameDirectory(slug), GameDirectorySchema).pipe(Effect.map((res) => res[0]));
 
-      const channelPoints = (channelLogin: string): Effect.Effect<Schema.Schema.Type<typeof ChannelPointsSchema>, TwitchApiError> =>
+      const channelPoints = (channelLogin: string) =>
         graphql(GqlQueries.channelPoints(channelLogin), ChannelPointsSchema).pipe(Effect.map((res) => res[0]));
 
-      const channelLive = (channelLogin: string): Effect.Effect<Schema.Schema.Type<typeof ChannelLiveSchema>, TwitchApiError> =>
+      const channelLive = (channelLogin: string) =>
         graphql(GqlQueries.channelLive(channelLogin), ChannelLiveSchema).pipe(Effect.map((res) => res[0]));
 
-      const channelStreams = (logins: string[]): Effect.Effect<Schema.Schema.Type<typeof ChannelStreamsSchema>, TwitchApiError> =>
-        graphql(GqlQueries.channelStreams(logins), ChannelStreamsSchema).pipe(Effect.map((res) => res[0]));
+      const channelStreams = (logins: string[]) => graphql(GqlQueries.channelStreams(logins), ChannelStreamsSchema).pipe(Effect.map((res) => res[0]));
 
-      const channelDrops = (channelID: string): Effect.Effect<Schema.Schema.Type<typeof ChannelDropsSchema>, TwitchApiError> =>
-        graphql(GqlQueries.channelDrops(channelID), ChannelDropsSchema).pipe(Effect.map((res) => res[0]));
+      const channelDrops = (channelID: string) => graphql(GqlQueries.channelDrops(channelID), ChannelDropsSchema).pipe(Effect.map((res) => res[0]));
 
-      const claimPoints = (channelID: string, claimID: string): Effect.Effect<Schema.Schema.Type<typeof ClaimPointsSchema>, TwitchApiError> =>
+      const claimPoints = (channelID: string, claimID: string) =>
         graphql(GqlQueries.claimPoints(channelID, claimID), ClaimPointsSchema).pipe(Effect.map((res) => res[0]));
 
-      const claimMoments = (momentID: string): Effect.Effect<Schema.Schema.Type<typeof ClaimMomentsSchema>, TwitchApiError> =>
-        graphql(GqlQueries.claimMoments(momentID), ClaimMomentsSchema).pipe(Effect.map((res) => res[0]));
+      const claimMoments = (momentID: string) => graphql(GqlQueries.claimMoments(momentID), ClaimMomentsSchema).pipe(Effect.map((res) => res[0]));
 
-      const claimDrops = (dropInstanceID: string): Effect.Effect<Schema.Schema.Type<typeof ClaimDropsSchema>, TwitchApiError> =>
+      const claimDrops = (dropInstanceID: string) =>
         graphql(GqlQueries.claimDrops(dropInstanceID), ClaimDropsSchema).pipe(Effect.map((res) => res[0]));
 
-      const campaignDetails = (
-        dropID: string,
-        channelLogin?: string,
-      ): Effect.Effect<Schema.Schema.Type<typeof CampaignDetailsSchema>, TwitchApiError> =>
+      const campaignDetails = (dropID: string, channelLogin?: string) =>
         graphql(GqlQueries.campaignDetails(dropID, channelLogin), CampaignDetailsSchema).pipe(Effect.map((res) => res[0]));
 
-      const playbackToken = (login: string): Effect.Effect<Schema.Schema.Type<typeof PlaybackTokenSchema>, TwitchApiError> =>
-        graphql(GqlQueries.playbackToken(login), PlaybackTokenSchema).pipe(Effect.map((res) => res[0]));
+      const playbackToken = (login: string) => graphql(GqlQueries.playbackToken(login), PlaybackTokenSchema).pipe(Effect.map((res) => res[0]));
 
       return {
         userId: getUserId,

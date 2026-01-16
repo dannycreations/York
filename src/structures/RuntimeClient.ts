@@ -21,7 +21,7 @@ export interface RuntimeOptions {
  *
  * @param effect - The effect to execute.
  */
-export const runForkWithCleanUp = <A, E>(effect: Effect.Effect<A, E>): void => {
+export const runForkWithCleanUp = <A, E>(effect: Effect.Effect<A, E>) => {
   const fiber = Effect.runFork(
     effect.pipe(
       Effect.catchAllCause((cause) =>
@@ -50,10 +50,7 @@ export const runForkWithCleanUp = <A, E>(effect: Effect.Effect<A, E>): void => {
  * @param program - The effect to execute repeatedly.
  * @param options - Configuration for restart behavior.
  */
-export const cycleWithRestart = <A, E, R>(
-  program: Effect.Effect<A, E, R | Scope.Scope>,
-  options: RuntimeOptions = {},
-): Effect.Effect<void, never, R> => {
+export const cycleWithRestart = <A, E, R>(program: Effect.Effect<A, E, R | Scope.Scope>, options: RuntimeOptions = {}) => {
   const { maxRestarts = 3, intervalMs = 60_000, restartDelayMs = 5_000 } = options;
   const restartTimes: number[] = [];
 
