@@ -7,9 +7,6 @@ import pinoPretty from 'pino-pretty';
 import type { ReadonlyRecord } from 'effect/Record';
 import type { Level, StreamEntry } from 'pino';
 
-/**
- * Maps Pino log levels to Effect log levels.
- */
 export const PINO_LEVEL_MAP: ReadonlyRecord<string, LogLevel.LogLevel> = {
   trace: LogLevel.Trace,
   debug: LogLevel.Debug,
@@ -20,9 +17,6 @@ export const PINO_LEVEL_MAP: ReadonlyRecord<string, LogLevel.LogLevel> = {
   silent: LogLevel.None,
 };
 
-/**
- * Maps Effect log levels to Pino log levels.
- */
 export const EFFECT_LEVEL_MAP: ReadonlyRecord<LogLevel.LogLevel['_tag'], pino.LevelWithSilent> = {
   All: 'trace',
   Trace: 'trace',
@@ -34,9 +28,6 @@ export const EFFECT_LEVEL_MAP: ReadonlyRecord<LogLevel.LogLevel['_tag'], pino.Le
   None: 'silent',
 };
 
-/**
- * Options for configuring the logger.
- */
 export interface LoggerOptions {
   readonly dir?: string;
   readonly level?: Level;
@@ -46,11 +37,6 @@ export interface LoggerOptions {
   readonly rejection?: boolean;
 }
 
-/**
- * Creates a configured Pino logger instance.
- *
- * @param options - Configuration options for the logger.
- */
 export const createLogger = (options: LoggerOptions = {}) => {
   const {
     dir = join(process.cwd(), 'logs'),
@@ -137,14 +123,8 @@ export const createLogger = (options: LoggerOptions = {}) => {
   return instance;
 };
 
-/**
- * Layer providing a replacement for the default Effect logger using Pino.
- *
- * @param self - The logger instance to replace.
- * @param logger - The Pino logger instance to use.
- */
-export const LoggerClientLayer = (self: Logger.Logger<unknown, void>, logger: pino.Logger) => {
-  return Layer.merge(
+export const LoggerClientLayer = (self: Logger.Logger<unknown, void>, logger: pino.Logger) =>
+  Layer.merge(
     Logger.replace(
       self,
       Logger.make(({ logLevel, message, cause }) => {
@@ -154,16 +134,17 @@ export const LoggerClientLayer = (self: Logger.Logger<unknown, void>, logger: pi
         if (cause && !Cause.isEmptyType(cause)) {
           const [failure] = Cause.failures(cause);
           const causePretty = { cause: Cause.pretty(cause) };
+
           if (isErrorLike<{ cause: unknown }>(failure) && failure.cause) {
-            payload.push(Object.assign({}, failure.cause, causePretty));
+            payload.push({ ...failure.cause, ...causePretty });
           } else {
             payload.push(causePretty);
           }
         }
 
-        (logger[level] as (...args: unknown[]) => void)(...payload);
+        const logFn = logger[level] as (...args: unknown[]) => void;
+        logFn(...payload);
       }),
     ),
     Logger.minimumLogLevel(PINO_LEVEL_MAP[logger.level] ?? LogLevel.Info),
   );
-};

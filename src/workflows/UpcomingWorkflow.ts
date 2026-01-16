@@ -5,12 +5,6 @@ import { CampaignStoreTag } from '../services/CampaignStore';
 
 import type { MainState } from './MainWorkflow';
 
-/**
- * Manages upcoming campaigns and transitions them to active status when they start.
- *
- * @param state - The shared application state.
- * @returns An Effect that represents the upcoming campaign monitoring loop.
- */
 export const UpcomingWorkflow = (state: MainState) =>
   Effect.gen(function* () {
     const campaignStore = yield* CampaignStoreTag;

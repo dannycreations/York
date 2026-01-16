@@ -8,13 +8,6 @@ import type { ClientConfig } from '../core/Config';
 import type { StoreClient } from '../structures/StoreClient';
 import type { MainState } from './MainWorkflow';
 
-/**
- * Manages the transition of campaigns from offline to online status.
- *
- * @param state - The shared application state.
- * @param configStore - The configuration store.
- * @returns An Effect that represents the offline monitoring loop.
- */
 export const OfflineWorkflow = (state: MainState, configStore: StoreClient<ClientConfig>) =>
   Effect.gen(function* () {
     const campaignStore = yield* CampaignStoreTag;

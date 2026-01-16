@@ -12,13 +12,6 @@ import type { SocketMessage } from '../services/TwitchSocket';
 import type { StoreClient } from '../structures/StoreClient';
 import type { MainState } from './MainWorkflow';
 
-/**
- * Creates a background processor for handling WebSocket messages from Twitch PubSub.
- *
- * @param state - The shared application state.
- * @param configStore - The configuration store.
- * @returns An Effect that represents the socket processing loop.
- */
 export const SocketWorkflow = (state: MainState, configStore: StoreClient<ClientConfig>) =>
   Effect.gen(function* () {
     const api = yield* TwitchApiTag;
@@ -37,7 +30,6 @@ export const SocketWorkflow = (state: MainState, configStore: StoreClient<Client
         const channel = currentChannel.value;
         const userId = yield* api.userId;
 
-        // Legacy parity: handle unlistening for non-matching topic IDs in ChannelStream
         if (msg.topicType === WsTopic.ChannelStream && msg.topicId !== channel.id) {
           yield* socket.unlisten(WsTopic.ChannelStream, msg.topicId);
           return;
@@ -94,17 +86,6 @@ export const SocketWorkflow = (state: MainState, configStore: StoreClient<Client
     return yield* socket.messages.pipe(Stream.runForEach(processMessage), Effect.orDie, Effect.fork);
   });
 
-/**
- * Handles community points related socket messages.
- */
-/**
- * Handles community points related socket messages.
- *
- * @param msg - The socket message received.
- * @param channel - The currently watched channel.
- * @param state - The shared application state.
- * @param api - The Twitch API service.
- */
 const handleUserPoint = (msg: SocketMessage, channel: Channel, state: MainState, api: TwitchApi, configStore: StoreClient<ClientConfig>) =>
   Effect.gen(function* () {
     const config = yield* configStore.get;
@@ -138,16 +119,6 @@ const handleUserPoint = (msg: SocketMessage, channel: Channel, state: MainState,
     }
   });
 
-/**
- * Handles drop progress related socket messages.
- */
-/**
- * Handles drop progress related socket messages.
- *
- * @param msg - The socket message received.
- * @param currentDrop - The currently active drop being watched.
- * @param state - The shared application state.
- */
 const handleUserDrop = (msg: SocketMessage, currentDrop: Option.Option<Drop>, state: MainState) =>
   Effect.gen(function* () {
     if (Option.isNone(currentDrop)) {

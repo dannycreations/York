@@ -25,9 +25,6 @@ export class MainWorkflowError extends Data.TaggedError('MainWorkflowError')<{
   readonly cause?: unknown;
 }> {}
 
-/**
- * Represents the shared application state for the main workflow.
- */
 export interface MainState {
   readonly currentCampaign: Ref.Ref<Option.Option<Campaign>>;
   readonly currentChannel: Ref.Ref<Option.Option<Channel>>;
@@ -38,9 +35,6 @@ export interface MainState {
   readonly isClaiming: Ref.Ref<boolean>;
 }
 
-/**
- * Executes the main watch loop for a given campaign and channel.
- */
 const performWatchLoop = (
   state: MainState,
   api: TwitchApi,
@@ -132,8 +126,8 @@ const performWatchLoop = (
                     Effect.mapError((e) => new MainWorkflowError({ message: `Helix validation failed: ${e}`, cause: e })),
                   );
 
-                if (streamRes.data.length > 0) {
-                  const live = streamRes.data[0];
+                const live = streamRes.data[0];
+                if (live) {
                   chan = {
                     ...chan,
                     currentSid: live.id,
@@ -240,82 +234,66 @@ const performWatchLoop = (
     yield* Ref.set(state.currentChannel, Option.none());
   });
 
-/**
- * Handles claiming of drops for a given campaign.
- *
- * @param state - The shared application state.
- * @param api - The Twitch API service.
- * @param campaignStore - The campaign store service.
- * @param campaign - The campaign for which to claim drops.
- * @param drop - The specific drop to claim.
- */
-/**
- * Handles claiming of drops for a given campaign.
- */
 const performClaimDrops = (state: MainState, api: TwitchApi, campaignStore: CampaignStore, campaign: Campaign, drop: Drop) =>
   Effect.gen(function* () {
     yield* Ref.set(state.isClaiming, true);
-    let claimed = false;
-    const total = 5;
-    yield* Effect.forEach(
-      Array.from({ length: total }, (_, i) => i),
-      (i) =>
-        Effect.gen(function* () {
-          if (claimed) {
-            return;
-          }
 
-          if (i > 0 || !drop.dropInstanceID) {
-            yield* campaignStore.updateProgress;
-            const drops = yield* campaignStore.getDropsForCampaign(campaign.id);
-            const d = drops.find((p) => p.id === drop.id);
-            if (d) {
-              yield* Ref.set(state.currentDrop, Option.some(d));
-            }
-          }
+    const totalAttempts = 5;
+    let isClaimed = false;
 
-          const currentDropOpt = yield* Ref.get(state.currentDrop);
-          if (Option.isNone(currentDropOpt)) {
-            return;
-          }
-          const currentDrop = currentDropOpt.value;
+    for (let attempt = 0; attempt < totalAttempts; attempt++) {
+      if (isClaimed) break;
 
-          const res = yield* api.claimDrops(currentDrop.dropInstanceID || '');
-          if (res.claimDropRewards) {
-            yield* Effect.logInfo(chalk`{green ${drop.name}} | {yellow Drops claimed}`);
-            claimed = true;
-            return;
-          }
+      if (attempt > 0 || !drop.dropInstanceID) {
+        yield* campaignStore.updateProgress;
+        const drops = yield* campaignStore.getDropsForCampaign(campaign.id);
+        const updatedDrop = drops.find((p) => p.id === drop.id);
+        if (updatedDrop) {
+          yield* Ref.set(state.currentDrop, Option.some(updatedDrop));
+        }
+      }
 
-          if (currentDrop.currentMinutesWatched < currentDrop.requiredMinutesWatched) {
-            if (currentDrop.requiredMinutesWatched - currentDrop.currentMinutesWatched >= 20) {
-              yield* Effect.logInfo(chalk`{green ${drop.name}} | {red Possible broken drops}`);
-              yield* Ref.set(state.currentChannel, Option.none());
-            } else {
-              yield* Ref.update(state.currentChannel, (c) => Option.map(c, (ch) => ({ ...ch, isOnline: false })));
-              yield* Ref.set(state.currentChannel, Option.none());
-            }
-            claimed = true;
-            return;
-          }
+      const currentDropOpt = yield* Ref.get(state.currentDrop);
+      if (Option.isNone(currentDropOpt)) break;
 
-          if (i < total - 1) {
-            if (i === 0) {
-              yield* Effect.logInfo(chalk`{green ${drop.name}} | {red Award not found}`);
-            }
-            yield* Effect.logInfo(chalk`{yellow Waiting for ${i + 1}/${total} minutes}`);
-            yield* Effect.sleep('1 minute');
-          }
-        }),
-      { discard: true },
-    );
-    if (!claimed) yield* Effect.logInfo(chalk`{green ${drop.name}} | {red Award not found after ${total} minutes}`);
+      const currentDrop = currentDropOpt.value;
+      const claimRes = yield* api.claimDrops(currentDrop.dropInstanceID ?? '');
+
+      if (claimRes.claimDropRewards) {
+        yield* Effect.logInfo(chalk`{green ${drop.name}} | {yellow Drops claimed}`);
+        isClaimed = true;
+        continue;
+      }
+
+      if (currentDrop.currentMinutesWatched < currentDrop.requiredMinutesWatched) {
+        const isBroken = currentDrop.requiredMinutesWatched - currentDrop.currentMinutesWatched >= 20;
+        yield* Effect.logInfo(chalk`{green ${drop.name}} | {red ${isBroken ? 'Possible broken drops' : 'Minutes not met'}}`);
+
+        if (!isBroken) {
+          yield* Ref.update(state.currentChannel, (c) => Option.map(c, (ch) => ({ ...ch, isOnline: false })));
+        }
+
+        yield* Ref.set(state.currentChannel, Option.none());
+        isClaimed = true;
+        continue;
+      }
+
+      if (attempt < totalAttempts - 1) {
+        if (attempt === 0) {
+          yield* Effect.logInfo(chalk`{green ${drop.name}} | {red Award not found}`);
+        }
+        yield* Effect.logInfo(chalk`{yellow Waiting for ${attempt + 1}/${totalAttempts} minutes}`);
+        yield* Effect.sleep('1 minute');
+      }
+    }
+
+    if (!isClaimed) {
+      yield* Effect.logInfo(chalk`{green ${drop.name}} | {red Award not found after ${totalAttempts} minutes}`);
+    }
+
     yield* Ref.set(state.isClaiming, false);
   });
 
-/**
- * The main workflow that orchestrates all application tasks.
- */
 export const MainWorkflow: Effect.Effect<
   void,
   never,

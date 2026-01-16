@@ -1,8 +1,5 @@
 import { Schema } from 'effect';
 
-/**
- * Schema for a GraphQL request payload.
- */
 export const GraphqlRequestSchema = Schema.Struct({
   operationName: Schema.String,
   variables: Schema.Record({ key: Schema.String, value: Schema.Unknown }),
@@ -10,14 +7,8 @@ export const GraphqlRequestSchema = Schema.Struct({
   hash: Schema.optional(Schema.String),
 });
 
-/**
- * Type inferred from GraphqlRequestSchema.
- */
 export type GraphqlRequest = Schema.Schema.Type<typeof GraphqlRequestSchema>;
 
-/**
- * Collection of predefined GraphQL queries for the Twitch API.
- */
 export const GqlQueries = {
   dropsDashboard: {
     operationName: 'ViewerDropsDashboard',

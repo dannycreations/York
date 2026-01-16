@@ -30,4 +30,10 @@ const MainLayer = Layer.unwrapEffect(
   }),
 );
 
-runForkWithCleanUp(Effect.scoped(Effect.provide(MainWorkflow, MainLayer)));
+const run = () => {
+  const program = MainWorkflow.pipe(Effect.provide(MainLayer), Effect.scoped);
+
+  runForkWithCleanUp(program);
+};
+
+run();

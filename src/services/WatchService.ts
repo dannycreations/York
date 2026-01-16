@@ -28,9 +28,6 @@ export const WatchServiceLayer: Layer.Layer<WatchServiceTag, never, HttpClientTa
     const settingUrlRef = yield* Ref.make<string | undefined>(undefined);
     const spadeUrlRef = yield* Ref.make<string | undefined>(undefined);
 
-    /**
-     * Retrieves the Spade URL for minute-watched events.
-     */
     const getSpadeUrl = Effect.gen(function* () {
       const spadeUrl = yield* Ref.get(spadeUrlRef);
       if (spadeUrl) {
@@ -61,9 +58,6 @@ export const WatchServiceLayer: Layer.Layer<WatchServiceTag, never, HttpClientTa
       return foundSpadeUrl;
     });
 
-    /**
-     * Simulates watching a channel by sending minute-watched events and checking the stream.
-     */
     const watch = (channel: Channel) =>
       Effect.gen(function* () {
         const spadeUrl = yield* getSpadeUrl;
@@ -109,7 +103,6 @@ export const WatchServiceLayer: Layer.Layer<WatchServiceTag, never, HttpClientTa
           }
           const success = yield* checkStream(currentHlsUrl);
           if (!success) {
-            // Parity with Channel.ts:208 - handle 404 by checking if still live and refreshing HLS
             const live = yield* api.channelLive(channel.login);
             if (!live.user?.stream?.id) {
               return false;
@@ -130,11 +123,6 @@ export const WatchServiceLayer: Layer.Layer<WatchServiceTag, never, HttpClientTa
         };
       }).pipe(Effect.catchAll(() => Effect.succeed({ success: false })));
 
-    /**
-     * Retrieves the HLS master playlist URL for a given channel login.
-     *
-     * @param login - The channel login to fetch the HLS URL for.
-     */
     const getHlsUrl = (login: string) =>
       Effect.gen(function* () {
         const playback = yield* api.graphql(GqlQueries.playbackToken(login), PlaybackTokenSchema);
@@ -152,11 +140,6 @@ export const WatchServiceLayer: Layer.Layer<WatchServiceTag, never, HttpClientTa
         return found;
       }).pipe(Effect.catchAll((e) => Effect.fail(new WatchError({ message: 'Failed to get HLS URL', cause: e }))));
 
-    /**
-     * Verifies the availability of a stream by checking its HLS chunks.
-     *
-     * @param hlsUrl - The HLS URL to check.
-     */
     const checkStream = (hlsUrl: string) =>
       Effect.gen(function* () {
         const hls = yield* http.request({ url: hlsUrl });
@@ -168,7 +151,6 @@ export const WatchServiceLayer: Layer.Layer<WatchServiceTag, never, HttpClientTa
 
         const res = yield* http.request({ method: 'HEAD', url: chunkUrl });
         if (res.statusCode === 404) {
-          // Parity with Channel.ts:208 - handle 404 by clearing HLS URL
           return false;
         }
         return res.statusCode === 200;

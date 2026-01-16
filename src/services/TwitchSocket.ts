@@ -2,9 +2,6 @@ import { WebSocket } from '@vegapunk/struct';
 import { chalk, randomString } from '@vegapunk/utilities';
 import { Context, Data, Effect, Layer, PubSub, Ref, Runtime, Schema, Stream } from 'effect';
 
-/**
- * Schema for WebSocket messages received from Twitch PubSub.
- */
 export const SocketMessageSchema = Schema.Struct({
   topicType: Schema.String,
   topicId: Schema.String,
@@ -25,22 +22,13 @@ export const SocketMessageSchema = Schema.Struct({
   ),
 });
 
-/**
- * Type inferred from SocketMessageSchema.
- */
 export type SocketMessage = Schema.Schema.Type<typeof SocketMessageSchema>;
 
-/**
- * Represents errors occurring within the Twitch Socket service.
- */
 export class TwitchSocketError extends Data.TaggedError('TwitchSocketError')<{
   readonly message: string;
   readonly cause?: unknown;
 }> {}
 
-/**
- * Interface defining the Twitch Socket service operations.
- */
 export interface TwitchSocket {
   readonly listen: (topic: string, id: string) => Effect.Effect<void, TwitchSocketError>;
   readonly unlisten: (topic: string, id: string) => Effect.Effect<void, TwitchSocketError>;
@@ -48,16 +36,8 @@ export interface TwitchSocket {
   readonly disconnect: (reconnect?: boolean) => Effect.Effect<void>;
 }
 
-/**
- * Context tag for the TwitchSocket service.
- */
 export class TwitchSocketTag extends Context.Tag('@services/TwitchSocket')<TwitchSocketTag, TwitchSocket>() {}
 
-/**
- * Layer providing the Twitch Socket service for PubSub communication.
- *
- * @param authToken - The OAuth token for authentication.
- */
 export const TwitchSocketLayer = (authToken: string): Layer.Layer<TwitchSocketTag, TwitchSocketError, never> =>
   Layer.scoped(
     TwitchSocketTag,
@@ -68,9 +48,6 @@ export const TwitchSocketLayer = (authToken: string): Layer.Layer<TwitchSocketTa
       const isConnecting = yield* Ref.make(false);
       const lastPongReceivedAt = yield* Ref.make(Date.now());
 
-      /**
-       * Sends a LISTEN request to the Twitch PubSub server.
-       */
       const performListen = (ws: WebSocket<object>, topic: string, id: string, updateRef: boolean) =>
         Effect.gen(function* () {
           const topicKey = `${topic}.${id}`;
@@ -104,9 +81,6 @@ export const TwitchSocketLayer = (authToken: string): Layer.Layer<TwitchSocketTa
           });
         });
 
-      /**
-       * Handles incoming messages from the WebSocket.
-       */
       const onMessage = (data: Buffer) =>
         Effect.gen(function* () {
           const messageResult = yield* Schema.decodeUnknown(
@@ -239,9 +213,6 @@ export const TwitchSocketLayer = (authToken: string): Layer.Layer<TwitchSocketTa
 
       yield* connect;
 
-      /**
-       * Subscribes to a specific PubSub topic.
-       */
       const listen = (topic: string, id: string) =>
         Effect.gen(function* () {
           const topicKey = `${topic}.${id}`;
@@ -255,9 +226,6 @@ export const TwitchSocketLayer = (authToken: string): Layer.Layer<TwitchSocketTa
           }
         });
 
-      /**
-       * Unsubscribes from a previously registered PubSub topic.
-       */
       const unlisten = (topic: string, id: string) =>
         Effect.gen(function* () {
           const topicKey = `${topic}.${id}`;
@@ -292,9 +260,6 @@ export const TwitchSocketLayer = (authToken: string): Layer.Layer<TwitchSocketTa
           }
         });
 
-      /**
-       * Disconnects the current WebSocket instance.
-       */
       const disconnect = (reconnect: boolean = false) =>
         Effect.gen(function* () {
           const socket = yield* Ref.get(wsRef);

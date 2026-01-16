@@ -2,25 +2,14 @@ import { chalk } from '@vegapunk/utilities';
 import { isErrorLike } from '@vegapunk/utilities/result';
 import { Cause, Data, Effect, Fiber, Schedule, Scope } from 'effect';
 
-/**
- * Error indicating a scheduled application restart.
- */
 export class RuntimeRestart extends Data.TaggedError('RuntimeRestart') {}
 
-/**
- * Configuration options for the runtime lifecycle.
- */
 export interface RuntimeOptions {
   readonly maxRestarts?: number;
   readonly intervalMs?: number;
   readonly restartDelayMs?: number;
 }
 
-/**
- * Executes an effect in a fiber and ensures graceful cleanup on termination signals.
- *
- * @param effect - The effect to execute.
- */
 export const runForkWithCleanUp = <A, E>(effect: Effect.Effect<A, E>) => {
   const fiber = Effect.runFork(
     effect.pipe(
@@ -44,12 +33,6 @@ export const runForkWithCleanUp = <A, E>(effect: Effect.Effect<A, E>) => {
   });
 };
 
-/**
- * Executes a program in a loop, automatically restarting it on failure with a delay.
- *
- * @param program - The effect to execute repeatedly.
- * @param options - Configuration for restart behavior.
- */
 export const cycleWithRestart = <A, E, R>(program: Effect.Effect<A, E, R | Scope.Scope>, options: RuntimeOptions = {}) => {
   const { maxRestarts = 3, intervalMs = 60_000, restartDelayMs = 5_000 } = options;
   const restartTimes: number[] = [];
@@ -58,7 +41,6 @@ export const cycleWithRestart = <A, E, R>(program: Effect.Effect<A, E, R | Scope
     Effect.gen(function* () {
       const failures = Array.from(Cause.failures(cause));
 
-      // Identification of scheduled restarts or transient network failures allows the system to bypass fatal crash thresholds and maintain availability.
       if (failures.some((error) => isErrorLike<{ _tag: string }>(error) && error._tag === 'RuntimeRestart')) {
         return;
       }
@@ -84,9 +66,6 @@ export const cycleWithRestart = <A, E, R>(program: Effect.Effect<A, E, R | Scope
   return Effect.repeat(loop, Schedule.forever).pipe(Effect.asVoid);
 };
 
-/**
- * Effect that schedules a restart at the next midnight.
- */
 export const cycleMidnightRestart = Effect.gen(function* () {
   const now = new Date();
   const tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);

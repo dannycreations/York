@@ -1,23 +1,9 @@
 import { Schema } from 'effect';
 
-/**
- * Represents the status of a drop campaign.
- */
 export const DropStatus = Schema.Literal('ACTIVE', 'EXPIRED', 'UPCOMING');
 
-/**
- * The grace period in minutes for drop expiration checks.
- */
 export const GRACE_PERIOD_MINUTES = 10;
 
-/**
- * Calculates the status of a drop based on its start and end times.
- *
- * @param startAt - The start date of the drop.
- * @param endAt - The end date of the drop.
- * @param minutesLeft - Optional remaining minutes to check for early expiration.
- * @returns An object containing `isUpcoming` and `isExpired` flags.
- */
 export const getDropStatus = (startAt: Date, endAt: Date, minutesLeft?: number) => {
   const nowMs = Date.now();
   const startAtMs = startAt.getTime();
@@ -38,9 +24,6 @@ export const getDropStatus = (startAt: Date, endAt: Date, minutesLeft?: number) 
   };
 };
 
-/**
- * Schema for a Twitch game.
- */
 export const GameSchema = Schema.Struct({
   id: Schema.String,
   name: Schema.optional(Schema.String),
@@ -48,14 +31,8 @@ export const GameSchema = Schema.Struct({
   slug: Schema.optional(Schema.String),
 });
 
-/**
- * Type inferred from GameSchema.
- */
 export type Game = Schema.Schema.Type<typeof GameSchema>;
 
-/**
- * Constant defining Twitch PubSub event topics.
- */
 export const WsTopic = {
   UserDrop: 'user-drop-events',
   UserPoint: 'community-points-user-v1',
@@ -66,22 +43,13 @@ export const WsTopic = {
 
 export type WsTopic = (typeof WsTopic)[keyof typeof WsTopic];
 
-/**
- * Schema for a rewarded drop benefit.
- */
 export const RewardSchema = Schema.Struct({
   id: Schema.String,
   lastAwardedAt: Schema.Date,
 });
 
-/**
- * Type inferred from RewardSchema.
- */
 export type Reward = Schema.Schema.Type<typeof RewardSchema>;
 
-/**
- * Schema for a specific drop within a campaign.
- */
 export const DropSchema = Schema.Struct({
   id: Schema.String,
   name: Schema.String,
@@ -97,14 +65,8 @@ export const DropSchema = Schema.Struct({
   dropInstanceID: Schema.optional(Schema.String),
 });
 
-/**
- * Type inferred from DropSchema.
- */
 export type Drop = Schema.Schema.Type<typeof DropSchema>;
 
-/**
- * Schema for a Twitch drop campaign.
- */
 export const CampaignSchema = Schema.Struct({
   id: Schema.String,
   name: Schema.String,
@@ -117,14 +79,8 @@ export const CampaignSchema = Schema.Struct({
   allowChannels: Schema.Array(Schema.String),
 });
 
-/**
- * Type inferred from CampaignSchema.
- */
 export type Campaign = Schema.Schema.Type<typeof CampaignSchema>;
 
-/**
- * Schema for a Twitch channel.
- */
 export const ChannelSchema = Schema.Struct({
   id: Schema.String,
   login: Schema.String,
@@ -136,12 +92,8 @@ export const ChannelSchema = Schema.Struct({
   hlsUrl: Schema.optional(Schema.String),
 });
 
-/**
- * Type inferred from ChannelSchema.
- */
 export type Channel = Schema.Schema.Type<typeof ChannelSchema>;
 
-// Twitch API Response Schemas
 export const GqlErrorSchema = Schema.Struct({
   message: Schema.String,
   path: Schema.optional(Schema.Array(Schema.String)),
@@ -149,12 +101,6 @@ export const GqlErrorSchema = Schema.Struct({
 
 export type GqlError = Schema.Schema.Type<typeof GqlErrorSchema>;
 
-/**
- * Factory for creating a GraphQL response schema for a specific data type.
- *
- * @param data - The schema for the expected data field in the response.
- * @returns A schema representing the full GraphQL response.
- */
 export const GqlResponseSchema = <A, I, R>(data: Schema.Schema<A, I, R>) =>
   Schema.Struct({
     data,
@@ -168,11 +114,6 @@ export const GqlResponseSchema = <A, I, R>(data: Schema.Schema<A, I, R>) =>
     ),
   });
 
-/**
- * Type representing a generic GraphQL response.
- *
- * @template T - The type of the data field.
- */
 export interface GqlResponse<T = unknown> {
   readonly data: T;
   readonly errors?: ReadonlyArray<GqlError>;
@@ -183,9 +124,6 @@ export interface GqlResponse<T = unknown> {
   };
 }
 
-/**
- * Schema for the ViewerDropsDashboard GraphQL response.
- */
 export const ViewerDropsDashboardSchema = Schema.Struct({
   currentUser: Schema.Struct({
     id: Schema.String,
@@ -206,9 +144,6 @@ export const ViewerDropsDashboardSchema = Schema.Struct({
   rewardCampaignsAvailableToUser: Schema.optional(Schema.Array(Schema.Unknown)),
 });
 
-/**
- * Schema for the DropCampaignDetails GraphQL response.
- */
 export const CampaignDetailsSchema = Schema.Struct({
   user: Schema.Struct({
     dropCampaign: Schema.Struct({
@@ -248,9 +183,6 @@ export const CampaignDetailsSchema = Schema.Struct({
   }),
 });
 
-/**
- * Schema for the Inventory GraphQL response.
- */
 export const InventorySchema = Schema.Struct({
   currentUser: Schema.Struct({
     inventory: Schema.Struct({
@@ -295,9 +227,6 @@ export const InventorySchema = Schema.Struct({
   }),
 });
 
-/**
- * Schema for the ChannelPointsContext GraphQL response.
- */
 export const ChannelPointsSchema = Schema.Struct({
   community: Schema.Struct({
     channel: Schema.Struct({
@@ -316,9 +245,6 @@ export const ChannelPointsSchema = Schema.Struct({
   }),
 });
 
-/**
- * Schema for the UseLive GraphQL response.
- */
 export const ChannelLiveSchema = Schema.Struct({
   user: Schema.NullOr(
     Schema.Struct({
@@ -327,9 +253,6 @@ export const ChannelLiveSchema = Schema.Struct({
   ),
 });
 
-/**
- * Schema for the FFZ_StreamFetch GraphQL response.
- */
 export const ChannelStreamsSchema = Schema.Struct({
   users: Schema.Array(
     Schema.Struct({
@@ -340,9 +263,6 @@ export const ChannelStreamsSchema = Schema.Struct({
   ),
 });
 
-/**
- * Schema for the Helix streams API response.
- */
 export const HelixStreamsSchema = Schema.Struct({
   data: Schema.Array(
     Schema.Struct({
@@ -368,9 +288,6 @@ export const HelixStreamsSchema = Schema.Struct({
   }),
 });
 
-/**
- * Schema for the DropCurrentSessionContext GraphQL response.
- */
 export const CurrentDropsSchema = Schema.Struct({
   currentUser: Schema.Struct({
     id: Schema.String,
@@ -397,9 +314,6 @@ export const CurrentDropsSchema = Schema.Struct({
   }),
 });
 
-/**
- * Schema for the DirectoryPage_Game GraphQL response.
- */
 export const GameDirectorySchema = Schema.Struct({
   game: Schema.Struct({
     streams: Schema.Struct({
@@ -417,9 +331,6 @@ export const GameDirectorySchema = Schema.Struct({
   }),
 });
 
-/**
- * Schema for the DropsHighlightService_AvailableDrops GraphQL response.
- */
 export const ChannelDropsSchema = Schema.Struct({
   channel: Schema.Struct({
     id: Schema.String,
@@ -434,9 +345,6 @@ export const ChannelDropsSchema = Schema.Struct({
   }),
 });
 
-/**
- * Schema for the PlaybackAccessToken GraphQL response.
- */
 export const PlaybackTokenSchema = Schema.Struct({
   streamPlaybackAccessToken: Schema.Struct({
     value: Schema.String,
@@ -450,9 +358,6 @@ export const PlaybackTokenSchema = Schema.Struct({
   }),
 });
 
-/**
- * Schema for the DropsPage_ClaimDropRewards GraphQL response.
- */
 export const ClaimDropsSchema = Schema.Struct({
   claimDropRewards: Schema.NullOr(
     Schema.Struct({
@@ -461,9 +366,6 @@ export const ClaimDropsSchema = Schema.Struct({
   ),
 });
 
-/**
- * Schema for the ClaimCommunityPoints GraphQL response.
- */
 export const ClaimPointsSchema = Schema.Struct({
   claimCommunityPoints: Schema.NullOr(
     Schema.Struct({
@@ -475,9 +377,6 @@ export const ClaimPointsSchema = Schema.Struct({
   ),
 });
 
-/**
- * Schema for the CommunityMomentCallout_Claim GraphQL response.
- */
 export const ClaimMomentsSchema = Schema.Struct({
   claimCommunityMoment: Schema.Struct({
     moment: Schema.Struct({

@@ -29,17 +29,11 @@ import type { GraphqlRequest } from './TwitchQueries';
 export { GqlQueries };
 export type { GraphqlRequest };
 
-/**
- * Represents errors occurring within the Twitch API service.
- */
 export class TwitchApiError extends Data.TaggedError('TwitchApiError')<{
   readonly message: string;
   readonly cause?: unknown;
 }> {}
 
-/**
- * Interface defining the Twitch API service operations.
- */
 export interface TwitchApi {
   readonly userId: Effect.Effect<string, TwitchApiError>;
   readonly writeDebugFile: (data: string | object, name?: string) => Effect.Effect<void>;
@@ -71,17 +65,8 @@ export interface TwitchApi {
   readonly playbackToken: (login: string) => Effect.Effect<Schema.Schema.Type<typeof PlaybackTokenSchema>, TwitchApiError>;
 }
 
-/**
- * Context tag for the TwitchApi service.
- */
 export class TwitchApiTag extends Context.Tag('@services/TwitchApi')<TwitchApiTag, TwitchApi>() {}
 
-/**
- * Layer providing the Twitch API service.
- *
- * @param authToken - The OAuth token for authentication.
- * @param isDebug - Whether to enable debug logging and file output.
- */
 export const TwitchApiLayer = (authToken: string, isDebug: boolean = false): Layer.Layer<TwitchApiTag, never, HttpClientTag> =>
   Layer.effect(
     TwitchApiTag,
@@ -95,9 +80,6 @@ export const TwitchApiLayer = (authToken: string, isDebug: boolean = false): Lay
         'client-id': 'kd1unb4b3q4t58fwlpcbzcbnm76a8fp',
       });
 
-      /**
-       * Retrieves the authenticated user's ID, waiting for it to be set if necessary.
-       */
       const getUserId = Effect.gen(function* () {
         const id = yield* Ref.get(userIdRef);
         if (id) {
@@ -116,9 +98,6 @@ export const TwitchApiLayer = (authToken: string, isDebug: boolean = false): Lay
         return finalId;
       });
 
-      /**
-       * Writes data to a debug file for troubleshooting purposes.
-       */
       const writeDebugFile = (data: string | object, name?: string) =>
         Effect.tryPromise({
           try: async () => {
@@ -130,9 +109,6 @@ export const TwitchApiLayer = (authToken: string, isDebug: boolean = false): Lay
           catch: (e) => new TwitchApiError({ message: 'Failed to write debug file', cause: e }),
         }).pipe(Effect.catchAll(() => Effect.void));
 
-      /**
-       * Executes an HTTP request with Twitch-specific headers and error handling.
-       */
       const request = <T>(options: string | DefaultOptions, isDebugOverride?: boolean) =>
         Effect.gen(function* () {
           const commonHeaders = yield* Ref.get(headersRef);
@@ -166,17 +142,13 @@ export const TwitchApiLayer = (authToken: string, isDebug: boolean = false): Lay
 
           return response;
         }).pipe(
-          Effect.mapError((e) => {
-            if (e instanceof HttpClientError) {
-              return new TwitchApiError({ message: e.message, cause: e });
-            }
-            return new TwitchApiError({ message: String(e), cause: e });
-          }),
+          Effect.mapError((e) =>
+            e instanceof HttpClientError
+              ? new TwitchApiError({ message: e.message, cause: e })
+              : new TwitchApiError({ message: String(e), cause: e }),
+          ),
         );
 
-      /**
-       * Fetches unique session identifiers from the Twitch homepage.
-       */
       const unique = Effect.gen(function* () {
         const response = yield* request<string>({
           url: 'https://www.twitch.tv',
@@ -214,9 +186,6 @@ export const TwitchApiLayer = (authToken: string, isDebug: boolean = false): Lay
         }
       });
 
-      /**
-       * Validates the provided OAuth token and retrieves the associated user ID.
-       */
       const validate = Effect.gen(function* () {
         const response = yield* request<{ user_id: string }>({
           url: 'https://id.twitch.tv/oauth2/validate',
@@ -241,9 +210,6 @@ export const TwitchApiLayer = (authToken: string, isDebug: boolean = false): Lay
 
       const init = Effect.zipRight(unique, validate);
 
-      /**
-       * Executes one or more GraphQL requests against the Twitch API.
-       */
       const graphql = <A, I, R>(
         requests: GraphqlRequest | ReadonlyArray<GraphqlRequest>,
         schema: Schema.Schema<A, I, R>,
