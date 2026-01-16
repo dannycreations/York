@@ -1,6 +1,6 @@
 import 'dotenv/config';
 
-import { Effect, Layer, Logger, LogLevel, Schema } from 'effect';
+import { Effect, Layer, Logger, Schema } from 'effect';
 
 import { ConfigStoreLayer, EnvSchema } from './core/Config';
 import { CampaignStoreLayer } from './services/CampaignStore';
@@ -12,18 +12,22 @@ import { createLogger, LoggerClientLayer } from './structures/LoggerClient';
 import { runForkWithCleanUp } from './structures/RuntimeClient';
 import { MainWorkflow } from './workflows/MainWorkflow';
 
-const MainLayer = Effect.gen(function* () {
-  const env = yield* Schema.decodeUnknown(EnvSchema)(process.env);
+const MainLayer = Layer.unwrapEffect(
+  Effect.gen(function* () {
+    const env = yield* Schema.decodeUnknown(EnvSchema)(process.env);
 
-  const logger = createLogger();
-  const LoggerLayer = LoggerClientLayer(Logger.defaultLogger, logger);
+    const logger = createLogger();
+    const LoggerLayer = LoggerClientLayer(Logger.defaultLogger, logger);
 
-  const TwitchApi = TwitchApiLayer(env.AUTH_TOKEN);
-  const TwitchSocket = TwitchSocketLayer(env.AUTH_TOKEN);
+    const TwitchApi = TwitchApiLayer(env.AUTH_TOKEN, env.IS_DEBUG);
+    const TwitchSocket = TwitchSocketLayer(env.AUTH_TOKEN);
 
-  return Layer.mergeAll(ConfigStoreLayer, HttpClientLayer, LoggerLayer, TwitchApi, TwitchSocket, CampaignStoreLayer, WatchServiceLayer);
-}).pipe(Layer.unwrapEffect);
+    const BaseLayer = Layer.mergeAll(ConfigStoreLayer, HttpClientLayer, LoggerLayer);
+    const ApiLayer = Layer.mergeAll(TwitchApi, TwitchSocket).pipe(Layer.provide(BaseLayer));
+    const ServiceLayer = Layer.mergeAll(CampaignStoreLayer, WatchServiceLayer).pipe(Layer.provide(ApiLayer), Layer.provide(BaseLayer));
 
-const program = MainWorkflow.pipe(Logger.withMinimumLogLevel(LogLevel.Info));
+    return Layer.mergeAll(BaseLayer, ApiLayer, ServiceLayer);
+  }),
+);
 
-runForkWithCleanUp(Effect.provide(program, MainLayer));
+runForkWithCleanUp(Effect.scoped(Effect.provide(MainWorkflow, MainLayer)));

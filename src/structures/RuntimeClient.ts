@@ -2,16 +2,36 @@ import { chalk } from '@vegapunk/utilities';
 import { isErrorLike } from '@vegapunk/utilities/result';
 import { Cause, Data, Effect, Fiber, Schedule, Scope } from 'effect';
 
+/**
+ * Error indicating a scheduled application restart.
+ */
 export class RuntimeRestart extends Data.TaggedError('RuntimeRestart') {}
 
+/**
+ * Configuration options for the runtime lifecycle.
+ */
 export interface RuntimeOptions {
   readonly maxRestarts?: number;
   readonly intervalMs?: number;
   readonly restartDelayMs?: number;
 }
 
-export const runForkWithCleanUp = <A, E, R>(effect: Effect.Effect<A, E, R>): void => {
-  const fiber = Effect.runFork(effect as Effect.Effect<A, E>);
+/**
+ * Executes an effect in a fiber and ensures graceful cleanup on termination signals.
+ *
+ * @param effect - The effect to execute.
+ */
+export const runForkWithCleanUp = <A, E>(effect: Effect.Effect<A, E>): void => {
+  const fiber = Effect.runFork(
+    effect.pipe(
+      Effect.catchAllCause((cause) =>
+        Effect.sync(() => {
+          Effect.logFatal('Fatal error in background process', cause);
+          process.exit(1);
+        }),
+      ),
+    ),
+  );
   process.on('SIGINT', () => {
     Effect.runPromise(Fiber.interrupt(fiber))
       .then(() => process.exit(0))
@@ -24,6 +44,12 @@ export const runForkWithCleanUp = <A, E, R>(effect: Effect.Effect<A, E, R>): voi
   });
 };
 
+/**
+ * Executes a program in a loop, automatically restarting it on failure with a delay.
+ *
+ * @param program - The effect to execute repeatedly.
+ * @param options - Configuration for restart behavior.
+ */
 export const cycleWithRestart = <A, E, R>(
   program: Effect.Effect<A, E, R | Scope.Scope>,
   options: RuntimeOptions = {},
@@ -61,6 +87,9 @@ export const cycleWithRestart = <A, E, R>(
   return Effect.repeat(loop, Schedule.forever).pipe(Effect.asVoid);
 };
 
+/**
+ * Effect that schedules a restart at the next midnight.
+ */
 export const cycleMidnightRestart = Effect.gen(function* () {
   const now = new Date();
   const tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);

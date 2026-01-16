@@ -140,5 +140,6 @@ vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
 
+debug/
 sessions/
 !sessions/settings.json.example
