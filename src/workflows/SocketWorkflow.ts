@@ -1,12 +1,12 @@
 import { chalk } from '@vegapunk/utilities';
 import { Effect, Option, Ref, Stream } from 'effect';
 
-import { WsTopic } from '../core/Types';
+import { WsTopic } from '../core/Schemas';
 import { TwitchApiError, TwitchApiTag } from '../services/TwitchApi';
 import { TwitchSocketError, TwitchSocketTag } from '../services/TwitchSocket';
 
 import type { ClientConfig } from '../core/Config';
-import type { Channel, Drop } from '../core/Types';
+import type { Channel, Drop } from '../core/Schemas';
 import type { TwitchApi } from '../services/TwitchApi';
 import type { SocketMessage } from '../services/TwitchSocket';
 import type { StoreClient } from '../structures/StoreClient';

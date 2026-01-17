@@ -2,7 +2,8 @@ import { chalk } from '@vegapunk/utilities';
 import { Data, Effect, Option, Ref, Schedule, Schema, Scope } from 'effect';
 
 import { ConfigStoreTag } from '../core/Config';
-import { getDropStatus, HelixStreamsSchema, WsTopic } from '../core/Types';
+import { HelixStreamsSchema, WsTopic } from '../core/Schemas';
+import { getDropStatus, isMinutesWatchedMet } from '../helpers/TwitchHelper';
 import { CampaignStoreTag } from '../services/CampaignStore';
 import { TwitchApiError, TwitchApiTag } from '../services/TwitchApi';
 import { TwitchSocketError, TwitchSocketTag } from '../services/TwitchSocket';
@@ -13,7 +14,7 @@ import { SocketWorkflow } from './SocketWorkflow';
 import { UpcomingWorkflow } from './UpcomingWorkflow';
 
 import type { ClientConfig } from '../core/Config';
-import type { Campaign, Channel, Drop } from '../core/Types';
+import type { Campaign, Channel, Drop } from '../core/Schemas';
 import type { CampaignStore } from '../services/CampaignStore';
 import type { TwitchApi } from '../services/TwitchApi';
 import type { TwitchSocket } from '../services/TwitchSocket';
@@ -98,7 +99,7 @@ const performWatchLoop = (
       return updated;
     });
 
-  const handleWatchSuccess = (chan: Channel): Effect.Effect<void> =>
+  const handleWatchSuccess = (chan: Channel): Effect.Effect<void, TwitchApiError> =>
     Effect.gen(function* () {
       yield* Ref.update(state.minutesWatched, (m) => m + 1);
       yield* Ref.set(state.nextWatch, Date.now() + 60_000);
@@ -106,50 +107,30 @@ const performWatchLoop = (
       const dropOpt = yield* Ref.get(state.currentDrop);
       if (Option.isSome(dropOpt)) {
         const drop = dropOpt.value;
-        yield* Effect.logInfo(
-          chalk`{green ${drop.name}} | {green ${chan.login}} | {green ${drop.currentMinutesWatched + 1}/${drop.requiredMinutesWatched}}`,
-        );
-        yield* Ref.update(state.currentDrop, (d) => Option.map(d, (dr) => ({ ...dr, currentMinutesWatched: dr.currentMinutesWatched + 1 })));
+        const localMinutesWatched = drop.currentMinutesWatched + 1;
+        yield* Effect.logInfo(chalk`{green ${drop.name}} | {green ${chan.login}} | {green ${localMinutesWatched}/${drop.requiredMinutesWatched}}`);
+        yield* Ref.update(state.currentDrop, (d) => Option.map(d, (dr) => ({ ...dr, currentMinutesWatched: localMinutesWatched })));
+
+        const minsWatched = yield* Ref.get(state.minutesWatched);
+        if (minsWatched >= 20) {
+          yield* Ref.set(state.minutesWatched, 0);
+          yield* campaignStore.updateProgress;
+          const drops = yield* campaignStore.getDropsForCampaign(drop.campaignId);
+          const updatedDrop = drops.find((d) => d.id === drop.id);
+          if (updatedDrop) {
+            if (localMinutesWatched - updatedDrop.currentMinutesWatched >= 20) {
+              yield* Ref.update(state.currentChannel, (c) => Option.map(c, (ch) => ({ ...ch, isOnline: false })));
+            }
+            yield* Ref.set(state.currentDrop, Option.some(updatedDrop));
+          }
+        }
       }
     });
 
   const handleWatchFailure = (_chan: Channel): Effect.Effect<void> =>
     Effect.gen(function* () {
-      const dropOpt = yield* Ref.get(state.currentDrop);
-      if (Option.isSome(dropOpt)) {
-        const drop = dropOpt.value;
-        if (drop.requiredMinutesWatched - drop.currentMinutesWatched >= 20) {
-          yield* Effect.logInfo(chalk`{green ${drop.name}} | {red Possible broken drops}`);
-          yield* Ref.update(state.currentChannel, (c) => Option.map(c, (ch) => ({ ...ch, isOnline: false })));
-        }
-      }
+      yield* Ref.update(state.currentChannel, (c) => Option.map(c, (ch) => ({ ...ch, isOnline: false })));
       yield* Ref.set(state.currentChannel, Option.none());
-    });
-
-  const checkProgressDesync = (campaign: Campaign, chan: Channel): Effect.Effect<void, TwitchApiError> =>
-    Effect.gen(function* () {
-      const mins = yield* Ref.get(state.minutesWatched);
-      if (mins < 20) return;
-
-      yield* Ref.set(state.minutesWatched, 0);
-      const oldDropOpt = yield* Ref.get(state.currentDrop);
-      yield* campaignStore.updateProgress;
-      yield* campaignStore.updateCampaigns;
-
-      if (Option.isSome(oldDropOpt)) {
-        const oldDrop = oldDropOpt.value;
-        const drops = yield* campaignStore.getDropsForCampaign(campaign.id);
-        const newDrop = drops.find((p) => p.id === oldDrop.id);
-        if (newDrop) {
-          if (oldDrop.currentMinutesWatched - newDrop.currentMinutesWatched >= 20) {
-            yield* Effect.logInfo(chalk`{red ${chan.login}} | {red Possible broken drops}`);
-            yield* Ref.update(state.currentChannel, (c) => Option.map(c, (ch) => ({ ...ch, isOnline: false })));
-            yield* Ref.set(state.currentChannel, Option.none());
-            return;
-          }
-          yield* Ref.set(state.currentDrop, Option.some(newDrop));
-        }
-      }
     });
 
   return Effect.gen(function* () {
@@ -224,7 +205,6 @@ const performWatchLoop = (
                 return;
               }
 
-              yield* checkProgressDesync(campaign, chan);
               yield* Effect.sleep('1 minute');
             }),
             { until: () => Ref.get(state.currentChannel).pipe(Effect.map(Option.isNone)) },
@@ -282,11 +262,13 @@ const performClaimDrops = (
         const isBroken = currentDrop.requiredMinutesWatched - currentDrop.currentMinutesWatched >= 20;
         yield* Effect.logInfo(chalk`{green ${drop.name}} | {red ${isBroken ? 'Possible broken drops' : 'Minutes not met'}}`);
 
-        if (!isBroken) {
+        if (isBroken) {
           yield* Ref.update(state.currentChannel, (c) => Option.map(c, (ch) => ({ ...ch, isOnline: false })));
+          yield* Ref.set(state.currentChannel, Option.none());
+        } else {
+          yield* Ref.set(state.currentChannel, Option.none());
         }
 
-        yield* Ref.set(state.currentChannel, Option.none());
         isClaimed = true;
         continue;
       }
@@ -382,7 +364,8 @@ export const MainWorkflow: Effect.Effect<
       return;
     }
 
-    if (getDropStatus(campaign.startAt, campaign.endAt).isExpired) {
+    const campaignStatus = getDropStatus(campaign.startAt, campaign.endAt);
+    if (campaignStatus.isExpired) {
       yield* Effect.logInfo(chalk`${campaign.name} | {red Campaigns expired}`);
       yield* campaignStore.updateCampaigns.pipe(Effect.orDie);
       return;
@@ -397,7 +380,7 @@ export const MainWorkflow: Effect.Effect<
       return;
     }
 
-    if (drop.currentMinutesWatched >= drop.requiredMinutesWatched + 1) {
+    if (isMinutesWatchedMet(drop)) {
       if ((yield* configStore.get).isClaimDrops) {
         yield* performClaimDrops(state, api, campaignStore, campaign, drop).pipe(Effect.orDie);
       } else {

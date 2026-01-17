@@ -18,11 +18,11 @@ import {
   InventorySchema,
   PlaybackTokenSchema,
   ViewerDropsDashboardSchema,
-} from '../core/Types';
+} from '../core/Schemas';
 import { HttpClientError, HttpClientTag } from '../structures/HttpClient';
 import { GqlQueries } from './TwitchQueries';
 
-import type { GqlResponse } from '../core/Types';
+import type { GqlResponse } from '../core/Schemas';
 import type { DefaultOptions } from '../structures/HttpClient';
 import type { GraphqlRequest } from './TwitchQueries';
 

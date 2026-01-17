@@ -2,11 +2,12 @@ import { truncate } from '@vegapunk/utilities/common';
 import { Array as ArrayEffect, Context, Effect, Layer, Option, Ref, Schema } from 'effect';
 
 import { ConfigStoreTag } from '../core/Config';
-import { ChannelDropsSchema, getDropStatus, InventorySchema, ViewerDropsDashboardSchema, WsTopic } from '../core/Types';
+import { ChannelDropsSchema, InventorySchema, ViewerDropsDashboardSchema, WsTopic } from '../core/Schemas';
+import { getDropStatus, isMinutesWatchedMet } from '../helpers/TwitchHelper';
 import { GqlQueries, TwitchApiTag } from './TwitchApi';
 import { TwitchSocketTag } from './TwitchSocket';
 
-import type { Campaign, Channel, Drop, Reward } from '../core/Types';
+import type { Campaign, Channel, Drop, Reward } from '../core/Schemas';
 import type { TwitchApiError } from './TwitchApi';
 import type { TwitchSocketError } from './TwitchSocket';
 
@@ -141,14 +142,15 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
           const endAt = new Date(data.endAt);
 
           const isClaimed = (data.requiredSubs ?? 0) > 0 || (data.self?.isClaimed ?? false);
-          const isWatched = data.self ? data.self.currentMinutesWatched >= data.requiredMinutesWatched + 1 : false;
+          const isWatched = data.self ? isMinutesWatchedMet({ ...data.self, requiredMinutesWatched: data.requiredMinutesWatched }) : false;
 
           const alreadyClaimed = benefits.some((id: string) => currentRewards.some((r) => r.id === id && r.lastAwardedAt >= startAt));
           if ((isWatched && !config.isClaimDrops) || alreadyClaimed || isClaimed) {
             return Option.none();
           }
 
-          const status = getDropStatus(startAt, endAt);
+          const minutesLeft = data.requiredMinutesWatched - (data.self?.currentMinutesWatched ?? 0);
+          const status = getDropStatus(startAt, endAt, minutesLeft);
           if (status.isExpired || status.isUpcoming) {
             return Option.none();
           }
@@ -196,7 +198,7 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
           const endAt = new Date(data.endAt);
 
           const isClaimed = (data.requiredSubs ?? 0) > 0 || (data.self?.isClaimed ?? false);
-          const isWatched = data.self ? data.self.currentMinutesWatched >= data.requiredMinutesWatched + 1 : false;
+          const isWatched = data.self ? isMinutesWatchedMet({ ...data.self, requiredMinutesWatched: data.requiredMinutesWatched }) : false;
 
           const alreadyClaimed = benefits.some((id) => currentRewards.some((r) => r.id === id && r.lastAwardedAt >= startAt));
           if (alreadyClaimed || isClaimed) {
@@ -207,7 +209,8 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
             return Option.none();
           }
 
-          const status = getDropStatus(startAt, endAt);
+          const minutesLeft = data.requiredMinutesWatched - (data.self?.currentMinutesWatched ?? 0);
+          const status = getDropStatus(startAt, endAt, minutesLeft);
           if (status.isExpired || status.isUpcoming) {
             return Option.none();
           }
@@ -241,21 +244,32 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
 
       const activeCampaigns = ArrayEffect.fromIterable(map.values()).filter((c) => {
         if (c.isOffline) return false;
-        if (getDropStatus(c.startAt, c.endAt).isExpired) return false;
+        const status = getDropStatus(c.startAt, c.endAt);
+        if (status.isExpired) return false;
         if (state === 'PriorityOnly' && !config.priorityList.has(c.game.displayName)) return false;
         return true;
       });
 
-      return [...activeCampaigns].sort((a, b) => {
-        if (a.priority !== b.priority) return b.priority - a.priority;
-        return a.endAt.getTime() - b.endAt.getTime();
-      });
+      const dropCampaigns = [...activeCampaigns].sort((a, b) => a.endAt.getTime() - b.endAt.getTime());
+      for (let i = 0; i < dropCampaigns.length; i++) {
+        for (let j = i + 1; j < dropCampaigns.length; j++) {
+          const left = dropCampaigns[i];
+          const right = dropCampaigns[j];
+          if (left.game.id !== right.game.id) continue;
+          if (left.startAt <= right.startAt) continue;
+
+          const campaign = dropCampaigns.splice(j, 1)[0];
+          dropCampaigns.splice(i, 0, campaign);
+        }
+      }
+
+      return dropCampaigns.sort((a, b) => b.priority - a.priority);
     });
 
     const getSortedUpcoming = Effect.gen(function* () {
       const map = yield* Ref.get(campaignsRef);
       return ArrayEffect.fromIterable(map.values())
-        .filter((c) => c.startAt > new Date())
+        .filter((c) => getDropStatus(c.startAt, c.endAt).isUpcoming)
         .sort((a, b) => a.startAt.getTime() - b.startAt.getTime());
     });
 

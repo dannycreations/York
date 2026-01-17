@@ -19,7 +19,9 @@ export interface SocketClientOptions {
   readonly url: string;
   readonly pingIntervalMs?: number;
   readonly pingTimeoutMs?: number;
-  readonly reconnectDelayMs?: number;
+  readonly reconnectBaseMs?: number;
+  readonly reconnectMaxMs?: number;
+  readonly reconnectMaxAttempts?: number;
   readonly socketOptions?: ClientOptions | ClientRequestArgs;
 }
 
@@ -27,43 +29,57 @@ export interface SocketClient {
   readonly send: (payload: string | object) => Effect.Effect<void, SocketClientError>;
   readonly events: Stream.Stream<SocketEvent, never, never>;
   readonly connect: Effect.Effect<void, SocketClientError>;
-  readonly disconnect: (reconnect?: boolean) => Effect.Effect<void>;
+  readonly disconnect: (graceful?: boolean) => Effect.Effect<void>;
 }
 
 export const createSocketClient = (options: SocketClientOptions) =>
   Effect.gen(function* () {
-    const { url, pingIntervalMs = 30_000, pingTimeoutMs = 10_000, reconnectDelayMs = 5_000, socketOptions = {} } = options;
+    const {
+      url,
+      pingIntervalMs = 30_000,
+      pingTimeoutMs = 10_000,
+      reconnectBaseMs = 1_000,
+      reconnectMaxMs = 60_000,
+      reconnectMaxAttempts = Infinity,
+      socketOptions = {},
+    } = options;
 
     const eventsPubSub = yield* PubSub.unbounded<SocketEvent>();
     const wsRef = yield* Ref.make<Option.Option<WsClient>>(Option.none());
     const lastPongReceivedAt = yield* Ref.make(Date.now());
+    const reconnectAttempts = yield* Ref.make(0);
 
-    const disconnect = (reconnect: boolean = false): Effect.Effect<void> =>
+    const disconnect = (graceful: boolean = false): Effect.Effect<void> =>
       Effect.gen(function* () {
         const wsOpt = yield* Ref.get(wsRef);
         if (Option.isSome(wsOpt)) {
           const ws = wsOpt.value;
           yield* Effect.sync(() => {
             ws.removeAllListeners();
-            ws.terminate();
+            if (graceful) {
+              ws.close(1000);
+            } else {
+              ws.terminate();
+            }
           });
           yield* Ref.set(wsRef, Option.none());
           yield* PubSub.publish(eventsPubSub, { _tag: 'Close' });
         }
-        if (reconnect) {
-          yield* connect.pipe(Effect.ignore);
-        }
       });
 
     const connect: Effect.Effect<void, SocketClientError> = Effect.gen(function* () {
+      const wsOpt = yield* Ref.get(wsRef);
+      if (Option.isSome(wsOpt)) return;
+
       const ws = new WsClient(url, socketOptions);
       yield* Ref.set(wsRef, Option.some(ws));
 
       yield* Effect.async<void, SocketClientError>((resume) => {
-        ws.on('open', () => {
+        ws.once('open', () => {
           Effect.runFork(
             Effect.gen(function* () {
               yield* Ref.set(lastPongReceivedAt, Date.now());
+              yield* Ref.set(reconnectAttempts, 0);
               yield* Effect.logDebug(`SocketClient: Connected to ${url}`);
               yield* PubSub.publish(eventsPubSub, { _tag: 'Open' });
               resume(Effect.void);
@@ -73,11 +89,7 @@ export const createSocketClient = (options: SocketClientOptions) =>
 
         ws.on('message', (data) => {
           const message = data.toString();
-          Effect.runFork(
-            Effect.gen(function* () {
-              yield* PubSub.publish(eventsPubSub, { _tag: 'Message', data: message });
-            }),
-          );
+          Effect.runFork(PubSub.publish(eventsPubSub, { _tag: 'Message', data: message }));
         });
 
         ws.on('error', (cause) => {
@@ -89,12 +101,30 @@ export const createSocketClient = (options: SocketClientOptions) =>
           );
         });
 
-        ws.on('close', () => {
+        ws.on('close', (code) => {
           Effect.runFork(
             Effect.gen(function* () {
-              yield* Effect.logWarning(`SocketClient: Connection closed on ${url}, reconnecting in ${reconnectDelayMs / 1000}s`);
               yield* PubSub.publish(eventsPubSub, { _tag: 'Close' });
-              yield* Effect.sleep(`${reconnectDelayMs} millis`);
+              yield* Ref.set(wsRef, Option.none());
+
+              if (code === 1000) {
+                yield* Effect.logInfo(`SocketClient: Connection closed gracefully on ${url}`);
+                return;
+              }
+
+              const attempts = yield* Ref.get(reconnectAttempts);
+              if (attempts >= reconnectMaxAttempts) {
+                yield* Effect.logError(`SocketClient: Max reconnect attempts reached for ${url}`);
+                return;
+              }
+
+              yield* Ref.update(reconnectAttempts, (n) => n + 1);
+              const baseDelay = reconnectBaseMs * 1.5 ** attempts;
+              const jitter = baseDelay * 0.4 * (Math.random() - 0.5);
+              const delay = Math.min(reconnectMaxMs, Math.floor(baseDelay + jitter));
+
+              yield* Effect.logWarning(`SocketClient: Connection lost on ${url}, reconnecting in ${delay}ms (attempt ${attempts + 1})`);
+              yield* Effect.sleep(`${delay} millis`);
               yield* connect.pipe(Effect.ignore);
             }),
           );
@@ -111,7 +141,8 @@ export const createSocketClient = (options: SocketClientOptions) =>
       const now = Date.now();
       if (now - lastPong > pingIntervalMs + pingTimeoutMs) {
         yield* Effect.logWarning(`SocketClient: Ping timeout on ${url}, reconnecting`);
-        yield* disconnect(true);
+        yield* disconnect(false);
+        yield* connect.pipe(Effect.ignore);
         return;
       }
       const wsOpt = yield* Ref.get(wsRef);
@@ -126,7 +157,7 @@ export const createSocketClient = (options: SocketClientOptions) =>
     yield* Effect.addFinalizer(() =>
       Effect.gen(function* () {
         yield* Fiber.interrupt(pingFiber);
-        yield* disconnect(false);
+        yield* disconnect(true);
       }),
     );
 

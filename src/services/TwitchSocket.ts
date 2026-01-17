@@ -1,10 +1,10 @@
 import { randomString } from '@vegapunk/utilities';
 import { Context, Data, Effect, Layer, Option, Ref, Schema, Stream } from 'effect';
 
-import { SocketMessageSchema } from '../core/Types';
+import { SocketMessageSchema } from '../core/Schemas';
 import { createSocketClient } from '../structures/SocketClient';
 
-import type { SocketMessage } from '../core/Types';
+import type { SocketMessage } from '../core/Schemas';
 
 export type { SocketMessage };
 
@@ -17,7 +17,7 @@ export interface TwitchSocket {
   readonly listen: (topic: string, id: string) => Effect.Effect<void, TwitchSocketError>;
   readonly unlisten: (topic: string, id: string) => Effect.Effect<void, TwitchSocketError>;
   readonly messages: Stream.Stream<SocketMessage, never, never>;
-  readonly disconnect: (reconnect?: boolean) => Effect.Effect<void>;
+  readonly disconnect: (graceful?: boolean) => Effect.Effect<void>;
 }
 
 export class TwitchSocketTag extends Context.Tag('@services/TwitchSocket')<TwitchSocketTag, TwitchSocket>() {}
@@ -30,7 +30,9 @@ export const TwitchSocketLayer = (authToken: string): Layer.Layer<TwitchSocketTa
         url: 'wss://pubsub-edge.twitch.tv/v1',
         pingIntervalMs: 180_000,
         pingTimeoutMs: 10_000,
-        reconnectDelayMs: 5_000,
+        reconnectBaseMs: 1_000,
+        reconnectMaxMs: 60_000,
+        reconnectMaxAttempts: Infinity,
       }).pipe(Effect.mapError((e) => new TwitchSocketError({ message: 'TwitchSocket: Failed to initialize client', cause: e })));
 
       const subscribedTopics = yield* Ref.make<ReadonlySet<string>>(new Set());
@@ -102,7 +104,13 @@ export const TwitchSocketLayer = (authToken: string): Layer.Layer<TwitchSocketTa
               });
             }
             if (raw.type === 'RECONNECT') {
-              Effect.runFork(client.disconnect(true));
+              Effect.runFork(
+                Effect.gen(function* () {
+                  yield* Effect.logWarning('TwitchSocket: Received RECONNECT instruction from server');
+                  yield* client.disconnect(false);
+                  yield* client.connect.pipe(Effect.ignore);
+                }),
+              );
             }
           } catch (e) {
             // Ignore parse errors
@@ -124,6 +132,7 @@ export const TwitchSocketLayer = (authToken: string): Layer.Layer<TwitchSocketTa
         Stream.runForEach(() =>
           Effect.gen(function* () {
             const topics = yield* Ref.get(subscribedTopics);
+            if (topics.size === 0) return;
             yield* Effect.logInfo(`TwitchSocket: Reconnected, resubscribing to ${topics.size} topics`);
             yield* Effect.forEach(topics, (topicKey) => performListen(topicKey), { discard: true });
           }),
@@ -135,7 +144,7 @@ export const TwitchSocketLayer = (authToken: string): Layer.Layer<TwitchSocketTa
         listen,
         unlisten,
         messages,
-        disconnect: (reconnect) => client.disconnect(reconnect),
+        disconnect: (graceful) => client.disconnect(graceful),
       } satisfies TwitchSocket;
     }),
   );

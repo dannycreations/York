@@ -1,10 +1,10 @@
 import { Context, Data, Effect, Layer, Option, Ref } from 'effect';
 
-import { PlaybackTokenSchema } from '../core/Types';
+import { PlaybackTokenSchema } from '../core/Schemas';
 import { HttpClientTag } from '../structures/HttpClient';
 import { GqlQueries, TwitchApiTag } from './TwitchApi';
 
-import type { Channel } from '../core/Types';
+import type { Channel } from '../core/Schemas';
 
 export class WatchError extends Data.TaggedError('WatchError')<{
   readonly message: string;
@@ -118,11 +118,13 @@ export const WatchServiceLayer: Layer.Layer<WatchServiceTag, never, HttpClientTa
           return success;
         }).pipe(Effect.catchAll(() => Effect.succeed(false)));
 
-        const [eventSuccess, streamSuccess] = yield* Effect.all([sendEvent, sendStream], { concurrency: 2 }).pipe(
-          Effect.annotateLogs({ service: 'WatchService', channel: channel.login }),
-        );
+        const eventSuccess = yield* sendEvent;
+        const streamSuccess = yield* sendStream;
+
+        yield* Effect.annotateLogs({ service: 'WatchService', channel: channel.login })(Effect.void);
+
         return {
-          success: eventSuccess && streamSuccess,
+          success: eventSuccess || streamSuccess,
           hlsUrl: currentHlsUrl,
         };
       }).pipe(Effect.catchAll(() => Effect.succeed({ success: false })));
