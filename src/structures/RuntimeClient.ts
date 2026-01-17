@@ -75,7 +75,7 @@ export const cycleWithRestart = <A, E, R>(
   return Effect.repeat(loop, Schedule.forever).pipe(Effect.asVoid);
 };
 
-export const cycleMidnightRestart = Effect.gen(function* () {
+export const cycleMidnightRestart: Effect.Effect<never, RuntimeRestart> = Effect.gen(function* () {
   const now = new Date();
   const tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
   const msUntilMidnight = tomorrow.getTime() - now.getTime();

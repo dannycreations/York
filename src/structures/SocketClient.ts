@@ -53,22 +53,26 @@ export const createSocketClient = (options: SocketClientOptions): Effect.Effect<
     const reconnectAttempts = yield* Ref.make(0);
 
     const disconnect = (graceful: boolean = false): Effect.Effect<void> =>
-      Effect.gen(function* () {
-        const wsOpt = yield* Ref.get(wsRef);
-        if (Option.isSome(wsOpt)) {
-          const ws = wsOpt.value;
-          yield* Effect.sync(() => {
-            ws.removeAllListeners();
-            if (graceful) {
-              ws.close(1000);
-            } else {
-              ws.terminate();
-            }
-          });
-          yield* Ref.set(wsRef, Option.none());
-          yield* PubSub.publish(eventsPubSub, { _tag: 'Close' });
-        }
-      });
+      Ref.get(wsRef).pipe(
+        Effect.flatMap(
+          Option.match({
+            onNone: () => Effect.void,
+            onSome: (ws) =>
+              Effect.gen(function* () {
+                yield* Effect.sync(() => {
+                  ws.removeAllListeners();
+                  if (graceful) {
+                    ws.close(1000);
+                  } else {
+                    ws.terminate();
+                  }
+                });
+                yield* Ref.set(wsRef, Option.none());
+                yield* PubSub.publish(eventsPubSub, { _tag: 'Close' });
+              }),
+          }),
+        ),
+      );
 
     const makeRawStream = (ws: WsClient): Stream.Stream<SocketInternalEvent, never, never> =>
       Stream.async<SocketInternalEvent, never>((emit) => {
@@ -116,8 +120,10 @@ export const createSocketClient = (options: SocketClientOptions): Effect.Effect<
                   yield* Effect.logDebug(
                     `SocketClient: Reconnect attempt ${attempts + 1}/${reconnectMaxAttempts === Infinity ? '∞' : reconnectMaxAttempts} in ${delay}ms`,
                   );
-                  yield* Effect.sleep(`${delay} millis`);
-                  yield* connect.pipe(Effect.ignore);
+                  yield* Effect.sleep(`${delay} millis`).pipe(
+                    Effect.flatMap(() => connect.pipe(Effect.ignore)),
+                    Effect.fork,
+                  );
                 } else {
                   yield* Effect.logError(`SocketClient: Max reconnect attempts reached for ${url}`);
                 }

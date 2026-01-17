@@ -14,7 +14,7 @@ export const GqlQueries = {
     operationName: 'ViewerDropsDashboard',
     hash: '5a4da2ab3d5b47c9f9ce864e727b2cb346af1e3ea8b897fe8f704a97ff017619',
     variables: { fetchRewardCampaigns: true },
-  },
+  } satisfies GraphqlRequest,
   campaignDetails: (dropID: string, channelLogin?: string): GraphqlRequest => ({
     operationName: 'DropCampaignDetails',
     hash: '039277bf98f3130929262cc7c6efd9c141ca3749cb6dca442fc8ead9a53f77c1',
@@ -45,21 +45,21 @@ export const GqlQueries = {
     operationName: 'Inventory',
     hash: 'd86775d0ef16a63a33ad52e80eaff963b2d5b72fada7c991504a57496e1d8e4b',
     variables: { fetchRewardCampaigns: true },
-  },
+  } satisfies GraphqlRequest,
   currentDrops: {
     operationName: 'DropCurrentSessionContext',
     hash: '4d06b702d25d652afb9ef835d2a550031f1cf762b193523a92166f40ea3d142b',
     variables: {},
-  },
+  } satisfies GraphqlRequest,
   channelLive: (channelLogin: string): GraphqlRequest => ({
     operationName: 'UseLive',
     hash: '639d5f11bfb8bf3053b424d9ef650d04c4ebb7d94711d644afb08fe9a0fad5d9',
     variables: { channelLogin },
   }),
-  channelStreams: (logins: string[]): GraphqlRequest => ({
+  channelStreams: (logins: readonly string[]): GraphqlRequest => ({
     operationName: 'FFZ_StreamFetch',
     hash: 'e3dbb5d8509ff2ef9d6518bf6749d2112bf6fc3ee2886248579bd7db0feb6504',
-    variables: { logins },
+    variables: { logins: logins as string[] },
   }),
   channelDrops: (channelID: string): GraphqlRequest => ({
     operationName: 'DropsHighlightService_AvailableDrops',

@@ -28,7 +28,7 @@ export const WatchServiceLayer: Layer.Layer<WatchServiceTag, never, HttpClientTa
     const settingUrlRef = yield* Ref.make<Option.Option<string>>(Option.none());
     const spadeUrlRef = yield* Ref.make<Option.Option<string>>(Option.none());
 
-    const getSpadeUrl = () =>
+    const getSpadeUrl = (): Effect.Effect<string, WatchError> =>
       Effect.gen(function* () {
         const spadeUrl = yield* Ref.get(spadeUrlRef);
         if (Option.isSome(spadeUrl)) {
@@ -63,7 +63,7 @@ export const WatchServiceLayer: Layer.Layer<WatchServiceTag, never, HttpClientTa
         return foundSpadeUrl;
       });
 
-    const watch = (channel: Channel) =>
+    const watch = (channel: Channel): Effect.Effect<{ success: boolean; hlsUrl?: string }, WatchError> =>
       Effect.gen(function* () {
         const spadeUrl = yield* getSpadeUrl();
         const userId = yield* api.userId;
@@ -129,7 +129,7 @@ export const WatchServiceLayer: Layer.Layer<WatchServiceTag, never, HttpClientTa
         };
       }).pipe(Effect.catchAll(() => Effect.succeed({ success: false })));
 
-    const getHlsUrl = (login: string) =>
+    const getHlsUrl = (login: string): Effect.Effect<string, WatchError> =>
       Effect.gen(function* () {
         const playback = yield* api.graphql(GqlQueries.playbackToken(login), PlaybackTokenSchema);
         const token = playback[0].streamPlaybackAccessToken;
@@ -146,7 +146,7 @@ export const WatchServiceLayer: Layer.Layer<WatchServiceTag, never, HttpClientTa
         return found;
       }).pipe(Effect.catchAll((e) => Effect.fail(new WatchError({ message: 'Failed to get HLS URL', cause: e }))));
 
-    const checkStream = (hlsUrl: string) =>
+    const checkStream = (hlsUrl: string): Effect.Effect<boolean, WatchError> =>
       Effect.gen(function* () {
         const hls = yield* http.request({ url: hlsUrl });
         const hlsFilter = hls.body.split('\n').filter(Boolean).reverse();

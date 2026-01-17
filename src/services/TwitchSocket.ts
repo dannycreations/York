@@ -88,47 +88,52 @@ export const TwitchSocketLayer = (authToken: string): Layer.Layer<TwitchSocketTa
         });
 
       const messages: Stream.Stream<SocketMessage, never, never> = client.events.pipe(
-        Stream.tap((event) => {
-          if (event._tag !== 'Message') return Effect.void;
-          try {
-            const raw = JSON.parse(event.data);
-            if (raw.type === 'RECONNECT') {
-              return Effect.gen(function* () {
-                yield* Effect.logWarning('TwitchSocket: Received RECONNECT instruction from server');
-                yield* client.disconnect(false);
-                yield* client.connect.pipe(Effect.ignore);
-              });
-            }
-          } catch {
-            // Ignore parse errors in tap
+        Stream.filterMap((event) => (event._tag === 'Message' ? Option.some(event.data) : Option.none())),
+        Stream.mapEffect((data) => Effect.try(() => JSON.parse(data) as unknown).pipe(Effect.catchAll(() => Effect.succeed(null)))),
+        Stream.tap((raw) => {
+          if (raw && typeof raw === 'object' && 'type' in raw && raw.type === 'RECONNECT') {
+            return Effect.gen(function* () {
+              yield* Effect.logWarning('TwitchSocket: Received RECONNECT instruction from server');
+              yield* client.disconnect(false);
+              yield* client.connect.pipe(Effect.ignore);
+            });
           }
           return Effect.void;
         }),
-        Stream.filterMap((event) => {
-          if (event._tag !== 'Message') return Option.none();
-
-          const parseJson = (data: string) => {
-            try {
-              return JSON.parse(data);
-            } catch {
-              return null;
-            }
-          };
-
-          const raw = parseJson(event.data);
-          if (!raw || raw.type !== 'MESSAGE' || !raw.data?.topic || !raw.data?.message) return Option.none();
+        Stream.filterMap((raw) => {
+          if (
+            !raw ||
+            typeof raw !== 'object' ||
+            !('type' in raw) ||
+            raw.type !== 'MESSAGE' ||
+            !('data' in raw) ||
+            typeof raw.data !== 'object' ||
+            !raw.data ||
+            !('topic' in raw.data) ||
+            typeof raw.data.topic !== 'string' ||
+            !('message' in raw.data) ||
+            typeof raw.data.message !== 'string'
+          ) {
+            return Option.none();
+          }
 
           const [topicType, topicId] = raw.data.topic.split('.');
-          const content = parseJson(raw.data.message);
-          if (!content) return Option.none();
+          let content: unknown;
+          try {
+            content = JSON.parse(raw.data.message);
+          } catch {
+            return Option.none();
+          }
+
+          if (!content || typeof content !== 'object') return Option.none();
 
           return Option.some({
             topicType,
             topicId,
             payload: {
               ...content,
-              ...(content.data && typeof content.data === 'object' ? content.data : {}),
-              topic_id: content.topic_id ?? topicId,
+              ...('data' in content && content.data && typeof content.data === 'object' ? content.data : {}),
+              topic_id: ('topic_id' in content && typeof content.topic_id === 'string' ? content.topic_id : undefined) ?? topicId,
             },
           });
         }),
