@@ -39,11 +39,8 @@ export const SocketWorkflow = (
 
         yield* api.writeDebugFile(msg, `${msg.topicType}-${msg.payload.type ?? Date.now()}`);
 
-        const logEmit = (topic: string) => Effect.logDebug(chalk`AppSocket: Emitted ${topic}.${msg.topicId}`, msg);
-
         switch (msg.topicType) {
           case WsTopic.ChannelStream: {
-            yield* logEmit(WsTopic.ChannelStream);
             if (msg.payload.type === 'stream-down') {
               yield* Ref.update(state.currentChannel, (c) => Option.map(c, (ch) => ({ ...ch, isOnline: false })));
               yield* Effect.logInfo(chalk`{red ${channel.login}} | {red Stream down}`);
@@ -51,12 +48,10 @@ export const SocketWorkflow = (
             break;
           }
           case WsTopic.UserPoint: {
-            yield* logEmit(WsTopic.UserPoint);
             yield* handleUserPoint(msg.payload, channel, state, api, configStore);
             break;
           }
           case WsTopic.ChannelMoment: {
-            yield* logEmit(WsTopic.ChannelMoment);
             if (msg.payload.type === 'active' && msg.payload.moment_id) {
               const config = yield* configStore.get;
               if (config.isClaimMoments) {
@@ -67,7 +62,6 @@ export const SocketWorkflow = (
             break;
           }
           case WsTopic.ChannelUpdate: {
-            yield* logEmit(WsTopic.ChannelUpdate);
             if (msg.payload.type === 'broadcast_settings_update' && channel.gameId) {
               const currentGameId = String(msg.payload.game_id);
               if (currentGameId !== channel.gameId) {
@@ -85,7 +79,6 @@ export const SocketWorkflow = (
             break;
           }
           case WsTopic.UserDrop: {
-            yield* logEmit(WsTopic.UserDrop);
             yield* handleUserDrop(msg.payload, currentDrop, state);
             break;
           }

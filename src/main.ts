@@ -12,13 +12,14 @@ import { createLogger, LoggerClientLayer } from './structures/LoggerClient';
 import { cycleWithRestart, runForkWithCleanUp } from './structures/RuntimeClient';
 import { MainWorkflow } from './workflows/MainWorkflow';
 
-const env = Schema.decodeUnknownSync(EnvSchema)(process.env);
-const logger = createLogger();
+const logger = createLogger({ exception: false, rejection: false });
 
 const BaseLayer = Layer.mergeAll(ConfigStoreLayer, HttpClientLayer, LoggerClientLayer(Logger.defaultLogger, logger));
 
 const AppLayer = Layer.unwrapEffect(
   Effect.gen(function* () {
+    const env = yield* Schema.decodeUnknown(EnvSchema)(process.env).pipe(Effect.orDieWith((error) => new Error(`Invalid Environment: ${error}`)));
+
     const TwitchApi = TwitchApiLayer(env.AUTH_TOKEN, env.IS_DEBUG);
     const TwitchSocket = TwitchSocketLayer(env.AUTH_TOKEN);
 
@@ -29,4 +30,4 @@ const AppLayer = Layer.unwrapEffect(
   }),
 );
 
-runForkWithCleanUp(cycleWithRestart(MainWorkflow.pipe(Effect.provide(AppLayer))).pipe(Effect.provide(BaseLayer)));
+runForkWithCleanUp(cycleWithRestart(MainWorkflow.pipe(Effect.provide(AppLayer), Effect.provide(BaseLayer))));

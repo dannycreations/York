@@ -123,7 +123,7 @@ export const createLogger = (options: LoggerOptions = {}): pino.Logger => {
   return instance;
 };
 
-export const LoggerClientLayer = (self: Logger.Logger<unknown, void>, logger: pino.Logger) =>
+export const LoggerClientLayer = (self: Logger.Logger<unknown, void>, logger: pino.Logger): Layer.Layer<never> =>
   Layer.merge(
     Logger.replace(
       self,
@@ -142,7 +142,8 @@ export const LoggerClientLayer = (self: Logger.Logger<unknown, void>, logger: pi
           }
         }
 
-        (logger[level] as Function)(...payload);
+        const logMethod = logger[level].bind(logger) as (...args: unknown[]) => void;
+        logMethod(...payload);
       }),
     ),
     Logger.minimumLogLevel(PINO_LEVEL_MAP[logger.level] ?? LogLevel.Info),

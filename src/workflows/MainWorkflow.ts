@@ -349,6 +349,7 @@ export const MainWorkflow: Effect.Effect<
       }
       yield* Ref.set(campaignStore.state, 'Initial');
       yield* Effect.logInfo(chalk`{yellow No active campaigns. Checking upcoming...}`);
+      yield* Effect.logInfo('');
       yield* Effect.sleep('10 minutes');
       return;
     }

@@ -52,10 +52,10 @@ const userAgent = new UserAgent({ deviceCategory: 'desktop' });
 export const isErrorTimeout = (error: unknown): boolean =>
   isErrorLike<{ _tag: string; code?: string }>(error) && (error._tag === 'TimeoutException' || error.code === 'ETIMEDOUT');
 
-const requestFn = <T = string>(options: string | DefaultOptions) =>
+const requestFn = <T = string>(options: string | DefaultOptions): Effect.Effect<Response<T>, HttpClientError> =>
   Effect.gen(function* () {
     const isString = typeof options === 'string';
-    const payload = defaultsDeep({} as DefaultOptions, isString ? { url: options } : options, {
+    const payload: DefaultOptions = defaultsDeep({}, isString ? { url: options } : options, {
       headers: { 'user-agent': userAgent.toString() },
       http2: true,
     });
@@ -78,19 +78,19 @@ const requestFn = <T = string>(options: string | DefaultOptions) =>
             request: total,
           },
           resolveBodyOnly: false,
-        });
+        }) as CancelableRequest<Response<T>>;
 
         signal.addEventListener(
           'abort',
           () => {
-            if ('cancel' in promise) {
-              (promise as CancelableRequest<Response<T>>).cancel();
+            if (typeof promise.cancel === 'function') {
+              promise.cancel();
             }
           },
           { once: true },
         );
 
-        return promise as unknown as Promise<Response<T>>;
+        return promise;
       },
       catch: (error) => {
         if (isErrorLike<{ message?: string; code?: string; response?: { statusCode?: number } }>(error)) {
@@ -120,8 +120,9 @@ const requestFn = <T = string>(options: string | DefaultOptions) =>
     );
   });
 
-const waitForConnectionFn = (retryMs: number = 10_000) =>
+const waitForConnectionFn = (total?: number): Effect.Effect<void, HttpClientError> =>
   Effect.gen(function* () {
+    const retryMs = total ?? 10_000;
     const checkGoogle = Effect.tryPromise({
       try: () => lookup('google.com'),
       catch: (error) =>
@@ -138,8 +139,11 @@ const waitForConnectionFn = (retryMs: number = 10_000) =>
       timeout: { total: retryMs },
     });
 
-    return yield* Effect.raceAll([checkGoogle, checkApple]).pipe(Effect.retry({ schedule: Schedule.spaced(`${retryMs} millis`) }), Effect.asVoid);
-  });
+    yield* Effect.raceAll([checkGoogle, checkApple]).pipe(
+      Effect.retry({ schedule: Schedule.spaced(`${retryMs} millis`) }),
+      Effect.mapError((e) => (e instanceof HttpClientError ? e : new HttpClientError({ message: String(e), cause: e }))),
+    );
+  }).pipe(Effect.asVoid);
 
 export const request = <T = string>(options: string | DefaultOptions) => Effect.flatMap(HttpClientTag, (service) => service.request<T>(options));
 

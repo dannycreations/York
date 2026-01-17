@@ -1,4 +1,4 @@
-import { randomString } from '@vegapunk/utilities';
+import { chalk, randomString } from '@vegapunk/utilities';
 import { Context, Data, Effect, Layer, Option, Ref, Schema, Stream } from 'effect';
 
 import { SocketMessageSchema } from '../core/Schemas';
@@ -69,6 +69,7 @@ export const TwitchSocketLayer = (authToken: string): Layer.Layer<TwitchSocketTa
 
           yield* Ref.update(subscribedTopics, (s) => new Set([...s, topicKey]));
           yield* performListen(topicKey);
+          yield* Effect.logDebug(`AppSocket: Subscribed ${topicKey}`);
         });
 
       const unlisten = (topic: string, id: string) =>
@@ -83,6 +84,7 @@ export const TwitchSocketLayer = (authToken: string): Layer.Layer<TwitchSocketTa
             return next;
           });
           yield* performUnlisten(topicKey);
+          yield* Effect.logDebug(`AppSocket: Unsubscribed ${topicKey}`);
         });
 
       const messages: Stream.Stream<SocketMessage, never, never> = client.events.pipe(
@@ -117,6 +119,7 @@ export const TwitchSocketLayer = (authToken: string): Layer.Layer<TwitchSocketTa
           }
           return Option.none();
         }),
+        Stream.tap((payload) => Effect.logDebug(chalk`AppSocket: Emitted ${payload.topicType}.${payload.topicId}`, payload.payload)),
         Stream.mapEffect((payload) =>
           Schema.decodeUnknown(SocketMessageSchema)(payload).pipe(
             Effect.map(Option.some),

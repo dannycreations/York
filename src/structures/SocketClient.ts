@@ -1,4 +1,4 @@
-import { Context, Data, Effect, Fiber, Layer, Option, PubSub, Ref, Schedule, Stream } from 'effect';
+import { Context, Data, Effect, Fiber, Layer, Option, PubSub, Ref, Schedule, Scope, Stream } from 'effect';
 import { WebSocket as WsClient } from 'ws';
 
 import type { ClientRequestArgs } from 'node:http';
@@ -32,7 +32,7 @@ export interface SocketClient {
   readonly disconnect: (graceful?: boolean) => Effect.Effect<void>;
 }
 
-export const createSocketClient = (options: SocketClientOptions) =>
+export const createSocketClient = (options: SocketClientOptions): Effect.Effect<SocketClient, SocketClientError, Scope.Scope> =>
   Effect.gen(function* () {
     const {
       url,
@@ -71,6 +71,7 @@ export const createSocketClient = (options: SocketClientOptions) =>
       const wsOpt = yield* Ref.get(wsRef);
       if (Option.isSome(wsOpt)) return;
 
+      yield* Effect.logDebug(`SocketClient: Connecting to ${url}`);
       const ws = new WsClient(url, socketOptions);
       yield* Ref.set(wsRef, Option.some(ws));
 
@@ -80,7 +81,7 @@ export const createSocketClient = (options: SocketClientOptions) =>
             Effect.gen(function* () {
               yield* Ref.set(lastPongReceivedAt, Date.now());
               yield* Ref.set(reconnectAttempts, 0);
-              yield* Effect.logDebug(`SocketClient: Connected to ${url}`);
+              yield* Effect.logDebug(`SocketClient: Connection established`);
               yield* PubSub.publish(eventsPubSub, { _tag: 'Open' });
               resume(Effect.void);
             }),
@@ -123,7 +124,9 @@ export const createSocketClient = (options: SocketClientOptions) =>
               const jitter = baseDelay * 0.4 * (Math.random() - 0.5);
               const delay = Math.min(reconnectMaxMs, Math.floor(baseDelay + jitter));
 
-              yield* Effect.logWarning(`SocketClient: Connection lost on ${url}, reconnecting in ${delay}ms (attempt ${attempts + 1})`);
+              yield* Effect.logDebug(
+                `SocketClient: Reconnect attempt ${attempts + 1}/${reconnectMaxAttempts === Infinity ? '∞' : reconnectMaxAttempts} in ${delay}ms`,
+              );
               yield* Effect.sleep(`${delay} millis`);
               yield* connect.pipe(Effect.ignore);
             }),
@@ -161,7 +164,7 @@ export const createSocketClient = (options: SocketClientOptions) =>
       }),
     );
 
-    const send = (payload: string | object) =>
+    const send = (payload: string | object): Effect.Effect<void, SocketClientError> =>
       Effect.gen(function* () {
         const wsOpt = yield* Ref.get(wsRef);
         if (Option.isNone(wsOpt)) {
@@ -169,9 +172,14 @@ export const createSocketClient = (options: SocketClientOptions) =>
         }
         const ws = wsOpt.value;
         const data = typeof payload === 'string' ? payload : JSON.stringify(payload);
-        yield* Effect.try({
-          try: () => ws.send(data),
-          catch: (e) => new SocketClientError({ message: 'SocketClient: Failed to send message', cause: e }),
+        yield* Effect.async<void, SocketClientError>((resume) => {
+          ws.send(data, (err) => {
+            if (err) {
+              resume(Effect.fail(new SocketClientError({ message: 'SocketClient: Failed to send message', cause: err })));
+            } else {
+              resume(Effect.void);
+            }
+          });
         });
       });
 

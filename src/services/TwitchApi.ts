@@ -207,7 +207,7 @@ export const TwitchApiLayer = (authToken: string, isDebug: boolean = false): Lay
               : undefined,
           }));
 
-        const processGqlResult = (res: GqlResponse) =>
+        const processGqlResult = (res: GqlResponse): Effect.Effect<A, TwitchApiError, R> =>
           Effect.gen(function* () {
             if (res.errors && res.errors.length > 0) {
               const retryableErrors = ['service unavailable', 'service timeout', 'context deadline exceeded'];
