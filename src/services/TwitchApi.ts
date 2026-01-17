@@ -205,24 +205,26 @@ export const TwitchApiLayer = (authToken: string, isDebug: boolean = false): Lay
               : r,
           );
 
-          const body = preparedRequests.map((r) => ({
-            operationName: r.operationName,
-            variables: r.variables,
-            query: r.query,
-            extensions: r.hash
-              ? {
-                  persistedQuery: {
-                    version: 1,
-                    sha256Hash: r.hash,
-                  },
-                }
-              : undefined,
-          }));
+          const body = JSON.stringify(
+            preparedRequests.map((r) => ({
+              operationName: r.operationName,
+              variables: r.variables,
+              query: r.query,
+              extensions: r.hash
+                ? {
+                    persistedQuery: {
+                      version: 1,
+                      sha256Hash: r.hash,
+                    },
+                  }
+                : undefined,
+            })),
+          );
 
           const response = yield* request<ReadonlyArray<GqlResponse<unknown>>>({
             method: 'POST',
             url: 'https://gql.twitch.tv/gql',
-            body: JSON.stringify(body),
+            body,
             responseType: 'json',
           });
 

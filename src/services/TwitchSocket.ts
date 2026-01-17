@@ -30,6 +30,7 @@ export const TwitchSocketLayer = (authToken: string): Layer.Layer<TwitchSocketTa
         url: 'wss://pubsub-edge.twitch.tv/v1',
         pingIntervalMs: 180_000,
         pingTimeoutMs: 10_000,
+        pingPayload: { type: 'PING' },
         reconnectBaseMs: 1_000,
         reconnectMaxMs: 60_000,
         reconnectMaxAttempts: Infinity,

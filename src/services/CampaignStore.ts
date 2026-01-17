@@ -197,16 +197,15 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
       });
 
       yield* Ref.update(progressRef, (current) => {
-        const next = [...current];
-        for (const drop of newProgress) {
-          const index = next.findIndex((d) => d.id === drop.id);
+        return Array.reduce(newProgress, [...current], (acc, drop) => {
+          const index = acc.findIndex((d) => d.id === drop.id);
           if (index !== -1) {
-            next[index] = drop;
+            acc[index] = drop;
           } else {
-            next.push(drop);
+            acc.push(drop);
           }
-        }
-        return next;
+          return acc;
+        });
       });
     });
 
@@ -246,9 +245,7 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
         );
 
         const config = yield* configStore.get;
-        const activeDrops: Drop[] = [];
-
-        for (const data of sortedDrops) {
+        const activeDrops = Array.filterMap(sortedDrops, (data) => {
           const benefits = data.benefitEdges.map((e) => e.benefit.id);
           const startAt = data.startAt;
           const endAt = data.endAt;
@@ -257,21 +254,14 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
           const isWatched = data.self ? isMinutesWatchedMet({ ...data.self, requiredMinutesWatched: data.requiredMinutesWatched }) : false;
 
           const alreadyClaimed = benefits.some((id) => currentRewards.some((r) => r.id === id && r.lastAwardedAt >= startAt));
-          if (alreadyClaimed || isClaimed) {
-            continue;
-          }
-
-          if (isWatched && !config.isClaimDrops) {
-            continue;
-          }
+          if (alreadyClaimed || isClaimed) return Option.none();
+          if (isWatched && !config.isClaimDrops) return Option.none();
 
           const minutesLeft = data.requiredMinutesWatched - (data.self?.currentMinutesWatched ?? 0);
           const status = getDropStatus(startAt, endAt, minutesLeft);
-          if (status.isExpired || status.isUpcoming) {
-            continue;
-          }
+          if (status.isExpired || status.isUpcoming) return Option.none();
 
-          activeDrops.push({
+          return Option.some({
             id: data.id,
             name: truncate(data.benefitEdges[0].benefit.name?.trim() ?? data.name.trim()),
             benefits,
@@ -284,26 +274,25 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
             hasPreconditionsMet: data.self?.hasPreconditionsMet ?? true,
             currentMinutesWatched: data.self?.currentMinutesWatched ?? 0,
             dropInstanceID: data.self?.dropInstanceID || undefined,
-          });
-        }
+          } satisfies Drop);
+        });
 
         const result = activeDrops.map((drop, i) => ({
           ...drop,
           name: truncate(`${i + 1}/${activeDrops.length}, ${drop.name}`),
         }));
 
-        yield* Ref.update(progressRef, (current) => {
-          const next = [...current];
-          for (const drop of result) {
-            const index = next.findIndex((d) => d.id === drop.id);
+        yield* Ref.update(progressRef, (current) =>
+          Array.reduce(result, [...current], (acc, drop) => {
+            const index = acc.findIndex((d) => d.id === drop.id);
             if (index !== -1) {
-              next[index] = drop;
+              acc[index] = drop;
             } else {
-              next.push(drop);
+              acc.push(drop);
             }
-          }
-          return next;
-        });
+            return acc;
+          }),
+        );
 
         return result;
       });
@@ -326,17 +315,19 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
         Order.mapInput(Order.number, (c: Campaign) => c.endAt.getTime()),
       );
 
-      const dropCampaigns = [...sortedByEndAt];
-      for (let i = 0; i < dropCampaigns.length; i++) {
-        for (let j = i + 1; j < dropCampaigns.length; j++) {
-          const left = dropCampaigns[i];
-          const right = dropCampaigns[j];
+      const dropCampaigns = Array.reduce(Array.range(0, sortedByEndAt.length - 1), [...sortedByEndAt], (acc, i) => {
+        return Array.reduce(Array.range(i + 1, acc.length - 1), acc, (innerAcc, j) => {
+          const left = innerAcc[i];
+          const right = innerAcc[j];
           if (left.game.id === right.game.id && left.startAt > right.startAt) {
-            const [campaign] = dropCampaigns.splice(j, 1);
-            dropCampaigns.splice(i, 0, campaign);
+            const next = [...innerAcc];
+            const [campaign] = next.splice(j, 1);
+            next.splice(i, 0, campaign);
+            return next;
           }
-        }
-      }
+          return innerAcc;
+        });
+      });
 
       return Array.sort(dropCampaigns, Order.reverse(Order.mapInput(Order.number, (c: Campaign) => c.priority)));
     });
@@ -421,18 +412,17 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
       });
 
     const addRewards = (rewards: ReadonlyArray<Reward>): Effect.Effect<void> =>
-      Ref.update(rewardsRef, (current) => {
-        const next = [...current];
-        for (const reward of rewards) {
-          const index = next.findIndex((r) => r.id === reward.id);
+      Ref.update(rewardsRef, (current) =>
+        Array.reduce(rewards, [...current], (acc, reward) => {
+          const index = acc.findIndex((r) => r.id === reward.id);
           if (index !== -1) {
-            next[index] = reward;
+            acc[index] = reward;
           } else {
-            next.push(reward);
+            acc.push(reward);
           }
-        }
-        return next;
-      });
+          return acc;
+        }),
+      );
 
     return {
       campaigns: campaignsRef,

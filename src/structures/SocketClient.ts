@@ -22,6 +22,7 @@ export interface SocketClientOptions {
   readonly url: string;
   readonly pingIntervalMs?: number;
   readonly pingTimeoutMs?: number;
+  readonly pingPayload?: string | object;
   readonly reconnectBaseMs?: number;
   readonly reconnectMaxMs?: number;
   readonly reconnectMaxAttempts?: number;
@@ -41,6 +42,7 @@ export const createSocketClient = (options: SocketClientOptions): Effect.Effect<
       url,
       pingIntervalMs = 30_000,
       pingTimeoutMs = 10_000,
+      pingPayload,
       reconnectBaseMs = 1_000,
       reconnectMaxMs = 60_000,
       reconnectMaxAttempts = Infinity,
@@ -149,7 +151,11 @@ export const createSocketClient = (options: SocketClientOptions): Effect.Effect<
       }
       const wsOpt = yield* Ref.get(wsRef);
       if (Option.isSome(wsOpt)) {
-        yield* Effect.sync(() => wsOpt.value.ping());
+        if (pingPayload) {
+          yield* send(pingPayload);
+        } else {
+          yield* Effect.sync(() => wsOpt.value.ping());
+        }
       }
     }).pipe(Effect.repeat(Schedule.spaced(`${pingIntervalMs} millis`)));
 

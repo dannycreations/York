@@ -116,6 +116,11 @@ const processMessage = (
       }
       case WsTopic.ChannelMoment: {
         if (msg.payload.type === 'active') {
+          if (msg.topicId !== channel.id) {
+            const socket = yield* TwitchSocketTag;
+            return yield* socket.unlisten(WsTopic.ChannelMoment, msg.topicId).pipe(Effect.ignore);
+          }
+
           const config = yield* configStore.get;
           if (config.isClaimMoments) {
             yield* api.claimMoments(msg.payload.data.moment_id).pipe(Effect.ignore);
