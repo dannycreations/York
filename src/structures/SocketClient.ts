@@ -4,14 +4,14 @@ import { WebSocket as WsClient } from 'ws';
 import type { ClientRequestArgs } from 'node:http';
 import type { ClientOptions } from 'ws';
 
-export type SocketEvent =
+type SocketInternalEvent =
   | { readonly _tag: 'Open' }
   | { readonly _tag: 'Message'; readonly data: string }
   | { readonly _tag: 'Error'; readonly cause: unknown }
   | { readonly _tag: 'Close' }
   | { readonly _tag: 'Pong' };
 
-export type SocketPublicEvent = Exclude<SocketEvent, { readonly _tag: 'Pong' }>;
+export type SocketEvent = Exclude<SocketInternalEvent, { readonly _tag: 'Pong' }>;
 
 export class SocketClientError extends Data.TaggedError('SocketClientError')<{
   readonly message: string;
@@ -30,7 +30,7 @@ export interface SocketClientOptions {
 
 export interface SocketClient {
   readonly send: (payload: string | object) => Effect.Effect<void, SocketClientError>;
-  readonly events: Stream.Stream<SocketPublicEvent, never, never>;
+  readonly events: Stream.Stream<SocketEvent, never, never>;
   readonly connect: Effect.Effect<void, SocketClientError>;
   readonly disconnect: (graceful?: boolean) => Effect.Effect<void>;
 }
@@ -47,7 +47,7 @@ export const createSocketClient = (options: SocketClientOptions): Effect.Effect<
       socketOptions = {},
     } = options;
 
-    const eventsPubSub = yield* PubSub.unbounded<SocketPublicEvent>();
+    const eventsPubSub = yield* PubSub.unbounded<SocketEvent>();
     const wsRef = yield* Ref.make<Option.Option<WsClient>>(Option.none());
     const lastPongReceivedAt = yield* Ref.make(Date.now());
     const reconnectAttempts = yield* Ref.make(0);
@@ -70,8 +70,8 @@ export const createSocketClient = (options: SocketClientOptions): Effect.Effect<
         }
       });
 
-    const makeRawStream = (ws: WsClient) =>
-      Stream.async<SocketEvent, never>((emit) => {
+    const makeRawStream = (ws: WsClient): Stream.Stream<SocketInternalEvent, never, never> =>
+      Stream.async<SocketInternalEvent, never>((emit) => {
         ws.once('open', () => emit.single({ _tag: 'Open' }));
         ws.on('message', (data) => emit.single({ _tag: 'Message', data: data.toString() }));
         ws.on('error', (cause) => emit.single({ _tag: 'Error', cause }));
@@ -84,7 +84,7 @@ export const createSocketClient = (options: SocketClientOptions): Effect.Effect<
       if (Option.isSome(wsOpt)) return;
 
       yield* Effect.logDebug(`SocketClient: Connecting to ${url}`);
-      const ws = new WsClient(url, socketOptions);
+      const ws = yield* Effect.sync(() => new WsClient(url, socketOptions));
       yield* Ref.set(wsRef, Option.some(ws));
 
       const opened = yield* Deferred.make<void, SocketClientError>();

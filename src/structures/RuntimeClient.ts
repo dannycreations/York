@@ -14,7 +14,7 @@ export interface RuntimeOptions extends RuntimeRestartOptions {
   readonly runtimeBaseLayer?: Layer.Layer<any, any, any>;
 }
 
-export const runForkWithCleanUp = <A, E, R>(effect: Effect.Effect<A, E, R>, runtime: Runtime.Runtime<R>) => {
+export const runForkWithCleanUp = <A, E, R>(effect: Effect.Effect<A, E, R>, runtime: Runtime.Runtime<R>): void => {
   const runFork = Runtime.runFork(runtime);
   const runPromise = Runtime.runPromise(runtime);
 
@@ -29,7 +29,7 @@ export const runForkWithCleanUp = <A, E, R>(effect: Effect.Effect<A, E, R>, runt
     ),
   );
 
-  const cleanUp = () => {
+  const cleanUp = (): void => {
     runPromise(Fiber.interrupt(fiber))
       .then(() => process.exit(0))
       .catch(() => process.exit(1));
@@ -39,7 +39,10 @@ export const runForkWithCleanUp = <A, E, R>(effect: Effect.Effect<A, E, R>, runt
   process.on('SIGTERM', cleanUp);
 };
 
-export const cycleWithRestart = <A, E, R>(program: Effect.Effect<A, E, R | Scope.Scope>, options: RuntimeRestartOptions = {}) => {
+export const cycleWithRestart = <A, E, R>(
+  program: Effect.Effect<A, E, R | Scope.Scope>,
+  options: RuntimeRestartOptions = {},
+): Effect.Effect<void, never, R> => {
   const { maxRestarts = 3, intervalMs = 60_000, restartDelayMs = 5_000 } = options;
   const restartTimes: number[] = [];
 
@@ -82,7 +85,7 @@ export const cycleMidnightRestart = Effect.gen(function* () {
   return yield* Effect.fail(new RuntimeRestart());
 });
 
-export const runMain = async <A, E, R>(program: Effect.Effect<A, E, R | Scope.Scope>, options: RuntimeOptions = {}) => {
+export const runMain = async <A, E, R>(program: Effect.Effect<A, E, R | Scope.Scope>, options: RuntimeOptions = {}): Promise<void> => {
   const { runtimeBaseLayer, ...restartOptions } = options;
 
   const runtimeEffect = runtimeBaseLayer ? Effect.runtime().pipe(Effect.provide(runtimeBaseLayer)) : Effect.runtime();

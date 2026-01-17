@@ -28,7 +28,7 @@ export const WatchServiceLayer: Layer.Layer<WatchServiceTag, never, HttpClientTa
     const settingUrlRef = yield* Ref.make<Option.Option<string>>(Option.none());
     const spadeUrlRef = yield* Ref.make<Option.Option<string>>(Option.none());
 
-    const getSpadeUrl = (): Effect.Effect<string, WatchError> =>
+    const getSpadeUrl = () =>
       Effect.gen(function* () {
         const spadeUrl = yield* Ref.get(spadeUrlRef);
         if (Option.isSome(spadeUrl)) {
@@ -63,7 +63,7 @@ export const WatchServiceLayer: Layer.Layer<WatchServiceTag, never, HttpClientTa
         return foundSpadeUrl;
       });
 
-    const watch = (channel: Channel): Effect.Effect<{ success: boolean; hlsUrl?: string }, WatchError> =>
+    const watch = (channel: Channel) =>
       Effect.gen(function* () {
         const spadeUrl = yield* getSpadeUrl();
         const userId = yield* api.userId;

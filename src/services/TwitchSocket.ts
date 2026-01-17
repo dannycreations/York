@@ -37,7 +37,7 @@ export const TwitchSocketLayer = (authToken: string): Layer.Layer<TwitchSocketTa
 
       const subscribedTopics = yield* Ref.make<ReadonlySet<string>>(new Set());
 
-      const performListen = (topicKey: string) =>
+      const performListen = (topicKey: string): Effect.Effect<void, TwitchSocketError> =>
         client
           .send({
             type: 'LISTEN',
@@ -49,7 +49,7 @@ export const TwitchSocketLayer = (authToken: string): Layer.Layer<TwitchSocketTa
           })
           .pipe(Effect.mapError((e) => new TwitchSocketError({ message: `TwitchSocket: Failed to listen to ${topicKey}`, cause: e })));
 
-      const performUnlisten = (topicKey: string) =>
+      const performUnlisten = (topicKey: string): Effect.Effect<void, TwitchSocketError> =>
         client
           .send({
             type: 'UNLISTEN',
@@ -61,7 +61,7 @@ export const TwitchSocketLayer = (authToken: string): Layer.Layer<TwitchSocketTa
           })
           .pipe(Effect.mapError((e) => new TwitchSocketError({ message: `TwitchSocket: Failed to unlisten from ${topicKey}`, cause: e })));
 
-      const listen = (topic: string, id: string) =>
+      const listen = (topic: string, id: string): Effect.Effect<void, TwitchSocketError> =>
         Effect.gen(function* () {
           const topicKey = `${topic}.${id}`;
           const current = yield* Ref.get(subscribedTopics);
@@ -72,7 +72,7 @@ export const TwitchSocketLayer = (authToken: string): Layer.Layer<TwitchSocketTa
           yield* Effect.logDebug(`AppSocket: Subscribed ${topicKey}`);
         });
 
-      const unlisten = (topic: string, id: string) =>
+      const unlisten = (topic: string, id: string): Effect.Effect<void, TwitchSocketError> =>
         Effect.gen(function* () {
           const topicKey = `${topic}.${id}`;
           const current = yield* Ref.get(subscribedTopics);

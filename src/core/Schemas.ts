@@ -1,5 +1,11 @@
 import { Schema } from 'effect';
 
+export const DateFromAny = Schema.transform(Schema.Union(Schema.String, Schema.Number, Schema.Date), Schema.instanceOf(Date), {
+  decode: (u) => new Date(u),
+  encode: (d) => d,
+  strict: true,
+});
+
 export const DropStatus = Schema.Literal('ACTIVE', 'EXPIRED', 'UPCOMING');
 
 export type DropStatus = Schema.Schema.Type<typeof DropStatus>;
@@ -25,7 +31,7 @@ export type WsTopic = (typeof WsTopic)[keyof typeof WsTopic];
 
 export const RewardSchema = Schema.Struct({
   id: Schema.String,
-  lastAwardedAt: Schema.Date,
+  lastAwardedAt: DateFromAny,
 });
 
 export type Reward = Schema.Schema.Type<typeof RewardSchema>;
@@ -35,8 +41,8 @@ export const DropSchema = Schema.Struct({
   name: Schema.String,
   benefits: Schema.Array(Schema.String),
   campaignId: Schema.String,
-  startAt: Schema.Date,
-  endAt: Schema.Date,
+  startAt: DateFromAny,
+  endAt: DateFromAny,
   requiredMinutesWatched: Schema.Number,
   requiredSubs: Schema.optional(Schema.Number),
   isClaimed: Schema.Boolean,
@@ -51,8 +57,8 @@ export const CampaignSchema = Schema.Struct({
   id: Schema.String,
   name: Schema.String,
   game: GameSchema,
-  startAt: Schema.Date,
-  endAt: Schema.Date,
+  startAt: DateFromAny,
+  endAt: DateFromAny,
   isAccountConnected: Schema.Boolean,
   priority: Schema.Number,
   isOffline: Schema.Boolean,
@@ -113,8 +119,8 @@ export const ViewerDropsDashboardSchema = Schema.Struct({
         id: Schema.String,
         name: Schema.String,
         game: GameSchema,
-        startAt: Schema.String,
-        endAt: Schema.String,
+        startAt: DateFromAny,
+        endAt: DateFromAny,
         self: Schema.Struct({
           isAccountConnected: Schema.Boolean,
         }),
@@ -140,8 +146,8 @@ export const CampaignDetailsSchema = Schema.Struct({
           Schema.Struct({
             id: Schema.String,
             name: Schema.String,
-            startAt: Schema.String,
-            endAt: Schema.String,
+            startAt: DateFromAny,
+            endAt: DateFromAny,
             requiredMinutesWatched: Schema.Number,
             requiredSubs: Schema.optional(Schema.Number),
             benefitEdges: Schema.Array(
@@ -173,7 +179,7 @@ export const InventorySchema = Schema.Struct({
       gameEventDrops: Schema.Array(
         Schema.Struct({
           id: Schema.String,
-          lastAwardedAt: Schema.String,
+          lastAwardedAt: DateFromAny,
         }),
       ),
       dropCampaignsInProgress: Schema.Array(
@@ -183,8 +189,8 @@ export const InventorySchema = Schema.Struct({
             Schema.Struct({
               id: Schema.String,
               name: Schema.String,
-              startAt: Schema.String,
-              endAt: Schema.String,
+              startAt: DateFromAny,
+              endAt: DateFromAny,
               requiredMinutesWatched: Schema.Number,
               requiredSubs: Schema.optional(Schema.Number),
               benefitEdges: Schema.Array(
@@ -259,7 +265,7 @@ export const HelixStreamsSchema = Schema.Struct({
       type: Schema.String,
       title: Schema.String,
       viewer_count: Schema.Number,
-      started_at: Schema.String,
+      started_at: DateFromAny,
       language: Schema.String,
       thumbnail_url: Schema.String,
       tag_ids: Schema.Array(Schema.String),

@@ -3,9 +3,13 @@ import { dirname } from 'node:path';
 import { parseJsonc } from '@vegapunk/utilities';
 import { defaultsDeep } from '@vegapunk/utilities/common';
 import { isErrorLike } from '@vegapunk/utilities/result';
-import { Context, Data, Effect, Layer, Ref, Schedule, Schema } from 'effect';
+import { Context, Data, Effect, Layer, Ref, Schedule, Schema, Scope } from 'effect';
 
-const ensureDir = (path: string) => Effect.tryPromise(() => mkdir(dirname(path), { recursive: true }));
+const ensureDir = (path: string): Effect.Effect<void, StoreClientError> =>
+  Effect.tryPromise({
+    try: () => mkdir(dirname(path), { recursive: true }),
+    catch: (cause) => new StoreClientError({ message: `Failed to ensure directory: ${dirname(path)}`, cause }),
+  }).pipe(Effect.asVoid);
 
 export class StoreClientError extends Data.TaggedError('StoreClientError')<{
   readonly message: string;
@@ -19,8 +23,11 @@ export interface StoreClient<T> {
   readonly setDelay: (delayMs: number) => Effect.Effect<void>;
 }
 
-const loadStore = (filePath: string) =>
-  Effect.tryPromise(() => readFile(filePath, 'utf-8')).pipe(
+const loadStore = (filePath: string): Effect.Effect<unknown, StoreClientError> =>
+  Effect.tryPromise({
+    try: () => readFile(filePath, 'utf-8'),
+    catch: (error) => error,
+  }).pipe(
     Effect.flatMap((content) => Effect.sync(() => parseJsonc<unknown>(content))),
     Effect.catchAll((error) => {
       if (isErrorLike<{ code: string }>(error) && error.code === 'ENOENT') {
@@ -30,7 +37,7 @@ const loadStore = (filePath: string) =>
     }),
   );
 
-const saveStore = <A, I, R>(filePath: string, schema: Schema.Schema<A, I, R>, data: A) =>
+const saveStore = <A, I, R>(filePath: string, schema: Schema.Schema<A, I, R>, data: A): Effect.Effect<void, StoreClientError, R> =>
   Effect.gen(function* () {
     yield* ensureDir(filePath);
 
@@ -42,20 +49,23 @@ const saveStore = <A, I, R>(filePath: string, schema: Schema.Schema<A, I, R>, da
     const tempPath = `${filePath}.tmp`;
     const content = JSON.stringify(encoded);
 
-    yield* Effect.tryPromise(() => writeFile(tempPath, content));
-    yield* Effect.tryPromise(() => rename(tempPath, filePath));
-  }).pipe(
-    Effect.mapError((error) =>
-      error instanceof StoreClientError
-        ? error
-        : new StoreClientError({
-            message: `Failed to save store: ${filePath}`,
-            cause: error,
-          }),
-    ),
-  );
+    yield* Effect.tryPromise({
+      try: () => writeFile(tempPath, content),
+      catch: (cause) => new StoreClientError({ message: `Failed to write temp store: ${tempPath}`, cause }),
+    });
 
-export const createStore = <A extends object, I, R>(filePath: string, schema: Schema.Schema<A, I, R>, initialData: A, initialDelay: number = 1000) =>
+    yield* Effect.tryPromise({
+      try: () => rename(tempPath, filePath),
+      catch: (cause) => new StoreClientError({ message: `Failed to rename store: ${tempPath} -> ${filePath}`, cause }),
+    });
+  });
+
+export const createStore = <A extends object, I, R>(
+  filePath: string,
+  schema: Schema.Schema<A, I, R>,
+  initialData: A,
+  initialDelay: number = 1000,
+): Effect.Effect<StoreClient<A>, never, Scope.Scope | R> =>
   Effect.gen(function* () {
     const dataRef = yield* Ref.make(initialData);
     const delayRef = yield* Ref.make(initialDelay);
@@ -63,7 +73,7 @@ export const createStore = <A extends object, I, R>(filePath: string, schema: Sc
 
     const decode = Schema.decodeUnknown(schema);
 
-    const rawData = yield* loadStore(filePath);
+    const rawData = yield* loadStore(filePath).pipe(Effect.catchAll(() => Effect.succeed({})));
     const validatedData = yield* decode(rawData).pipe(
       Effect.catchAll((error) =>
         Effect.gen(function* () {
@@ -101,14 +111,12 @@ export const createStore = <A extends object, I, R>(filePath: string, schema: Sc
 
     yield* Effect.addFinalizer(() => save.pipe(Effect.catchAllCause(() => Effect.void)));
 
-    const client: StoreClient<A> = {
+    return {
       get: Ref.get(dataRef),
       set: (partial: Partial<A>) => Ref.update(dataRef, (current) => ({ ...current, ...partial })).pipe(Effect.zipRight(Ref.set(dirtyRef, true))),
       update: (f: (data: A) => A) => Ref.update(dataRef, f).pipe(Effect.zipRight(Ref.set(dirtyRef, true))),
       setDelay: (delayMs: number) => Ref.set(delayRef, Math.max(1000, delayMs)),
-    };
-
-    return client;
+    } satisfies StoreClient<A>;
   });
 
 export const StoreClientLayer = <S, A extends object, I, R>(
@@ -117,4 +125,4 @@ export const StoreClientLayer = <S, A extends object, I, R>(
   schema: Schema.Schema<A, I, R>,
   initialData: A,
   initialDelay: number = 1000,
-) => Layer.scoped(tag, createStore(filePath, schema, initialData, initialDelay));
+): Layer.Layer<S, never, Scope.Scope | R> => Layer.scoped(tag, createStore(filePath, schema, initialData, initialDelay));

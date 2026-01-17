@@ -142,8 +142,8 @@ export const LoggerClientLayer = (self: Logger.Logger<unknown, void>, logger: pi
           }
         }
 
-        const logMethod = logger[level].bind(logger) as (...args: unknown[]) => void;
-        logMethod(...payload);
+        const logMethod = logger[level] as (...args: unknown[]) => void;
+        logMethod.call(logger, ...payload);
       }),
     ),
     Logger.minimumLogLevel(PINO_LEVEL_MAP[logger.level] ?? LogLevel.Info),

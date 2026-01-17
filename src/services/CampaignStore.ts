@@ -1,5 +1,5 @@
 import { truncate } from '@vegapunk/utilities/common';
-import { Array as ArrayEffect, Context, Effect, Layer, Option, Ref, Schema } from 'effect';
+import { Array, Context, Effect, Layer, Option, Ref, Schema } from 'effect';
 
 import { ConfigStoreTag } from '../core/Config';
 import { ChannelDropsSchema, InventorySchema, ViewerDropsDashboardSchema, WsTopic } from '../core/Schemas';
@@ -44,16 +44,14 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
     const rewardsRef = yield* Ref.make<ReadonlyArray<Reward>>([]);
     const stateRef = yield* Ref.make<CampaignStoreState>('Initial');
 
-    const updateCampaigns = Effect.gen(function* () {
+    const updateCampaigns: Effect.Effect<void, TwitchApiError> = Effect.gen(function* () {
       const config = yield* configStore.get;
       const response = yield* api.dropsDashboard;
 
       const existingCampaigns = yield* Ref.get(campaignsRef);
       const newCampaigns = new Map<string, Campaign>();
 
-      const processCampaign = (
-        data: Schema.Schema.Type<typeof ViewerDropsDashboardSchema>['currentUser']['dropCampaigns'][number],
-      ): Effect.Effect<void, TwitchApiError> =>
+      const processCampaign = (data: Schema.Schema.Type<typeof ViewerDropsDashboardSchema>['currentUser']['dropCampaigns'][number]) =>
         Effect.gen(function* () {
           const gameName = data.game.displayName;
           if (config.exclusionList.has(gameName)) return;
@@ -74,8 +72,8 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
             id: data.id,
             name: truncate((existing?.name || data.name).trim()),
             game: existing?.game || data.game,
-            startAt: new Date(data.startAt),
-            endAt: new Date(data.endAt),
+            startAt: data.startAt,
+            endAt: data.endAt,
             isAccountConnected: data.self.isAccountConnected,
             priority: existing?.priority ?? 0,
             isOffline: existing?.isOffline ?? false,
@@ -87,7 +85,7 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
       yield* Ref.set(campaignsRef, newCampaigns);
     });
 
-    const updateProgress = Effect.gen(function* () {
+    const updateProgress: Effect.Effect<void, TwitchApiError> = Effect.gen(function* () {
       const config = yield* configStore.get;
       const response = yield* api.inventory;
 
@@ -99,7 +97,7 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
       const newRewards = gameEventDrops
         .map((d) => ({
           id: d.id,
-          lastAwardedAt: new Date(d.lastAwardedAt),
+          lastAwardedAt: d.lastAwardedAt,
         }))
         .filter((r) => now - r.lastAwardedAt.getTime() < REWARD_EXPIRED_MS);
 
@@ -136,10 +134,10 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
       const filterDrops = (
         drops: Schema.Schema.Type<typeof InventorySchema>['currentUser']['inventory']['dropCampaignsInProgress'][number]['timeBasedDrops'],
       ) =>
-        ArrayEffect.filterMap(drops, (data) => {
+        Array.filterMap(drops, (data) => {
           const benefits = data.benefitEdges.map((e) => e.benefit.id);
-          const startAt = new Date(data.startAt);
-          const endAt = new Date(data.endAt);
+          const startAt = data.startAt;
+          const endAt = data.endAt;
 
           const isClaimed = (data.requiredSubs ?? 0) > 0 || (data.self?.isClaimed ?? false);
           const isWatched = data.self ? isMinutesWatchedMet({ ...data.self, requiredMinutesWatched: data.requiredMinutesWatched }) : false;
@@ -158,7 +156,7 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
           return Option.some({ data, benefits, startAt, endAt, isClaimed });
         });
 
-      const newProgress = ArrayEffect.flatMap(dropCampaignsInProgress, (campaign) => {
+      const newProgress = Array.flatMap(dropCampaignsInProgress, (campaign) => {
         const sortedDrops = [...campaign.timeBasedDrops].sort((a, b) => a.requiredMinutesWatched - b.requiredMinutesWatched);
         const filtered = filterDrops(sortedDrops);
         return filtered.map(mapDropData(campaign.id, filtered.length));
@@ -199,10 +197,10 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
         const sortedDrops = [...dropDetail.timeBasedDrops].sort((a, b) => a.requiredMinutesWatched - b.requiredMinutesWatched);
 
         const config = yield* configStore.get;
-        const filteredDrops = ArrayEffect.filterMap(sortedDrops, (data) => {
+        const filteredDrops = Array.filterMap(sortedDrops, (data) => {
           const benefits = data.benefitEdges.map((e) => e.benefit.id);
-          const startAt = new Date(data.startAt);
-          const endAt = new Date(data.endAt);
+          const startAt = data.startAt;
+          const endAt = data.endAt;
 
           const isClaimed = (data.requiredSubs ?? 0) > 0 || (data.self?.isClaimed ?? false);
           const isWatched = data.self ? isMinutesWatchedMet({ ...data.self, requiredMinutesWatched: data.requiredMinutesWatched }) : false;
@@ -249,7 +247,7 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
       const state = yield* Ref.get(stateRef);
       const config = yield* configStore.get;
 
-      const activeCampaigns = ArrayEffect.fromIterable(map.values()).filter((c) => {
+      const activeCampaigns = Array.fromIterable(map.values()).filter((c) => {
         if (c.isOffline) return false;
         const status = getDropStatus(c.startAt, c.endAt);
         if (status.isExpired) return false;
@@ -258,15 +256,15 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
       });
 
       const dropCampaigns = [...activeCampaigns].sort((a, b) => a.endAt.getTime() - b.endAt.getTime());
+
       for (let i = 0; i < dropCampaigns.length; i++) {
         for (let j = i + 1; j < dropCampaigns.length; j++) {
           const left = dropCampaigns[i];
           const right = dropCampaigns[j];
-          if (left.game.id !== right.game.id) continue;
-          if (left.startAt <= right.startAt) continue;
-
-          const campaign = dropCampaigns.splice(j, 1)[0];
-          dropCampaigns.splice(i, 0, campaign);
+          if (left.game.id === right.game.id && left.startAt > right.startAt) {
+            const [campaign] = dropCampaigns.splice(j, 1);
+            dropCampaigns.splice(i, 0, campaign);
+          }
         }
       }
 
@@ -275,14 +273,14 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
 
     const getSortedUpcoming = Effect.gen(function* () {
       const map = yield* Ref.get(campaignsRef);
-      return ArrayEffect.fromIterable(map.values())
+      return Array.fromIterable(map.values())
         .filter((c) => getDropStatus(c.startAt, c.endAt).isUpcoming)
         .sort((a, b) => a.startAt.getTime() - b.startAt.getTime());
     });
 
     const getOffline = Effect.gen(function* () {
       const map = yield* Ref.get(campaignsRef);
-      return ArrayEffect.fromIterable(map.values()).filter((c) => c.isOffline);
+      return Array.fromIterable(map.values()).filter((c) => c.isOffline);
     });
 
     const setOffline = (id: string, isOffline: boolean) =>
@@ -342,7 +340,7 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
         if (campaign.allowChannels.length > 0) {
           const response = yield* api.channelStreams(campaign.allowChannels.slice(0, 30));
           const users = response.users;
-          const onlineChannels = ArrayEffect.filterMap(users, (user) => {
+          const onlineChannels = Array.filterMap(users, (user) => {
             if (!user.stream) {
               return Option.none();
             }
@@ -361,7 +359,7 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
           if (!response.game) return [];
 
           const edges = response.game.streams.edges;
-          const onlineChannels = ArrayEffect.filterMap(edges, (edge) => {
+          const onlineChannels = Array.filterMap(edges, (edge) => {
             if (!edge.node.broadcaster) {
               return Option.none();
             }

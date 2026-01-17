@@ -5,9 +5,9 @@ import { ConfigStoreTag } from '../core/Config';
 import { HelixStreamsSchema, WsTopic } from '../core/Schemas';
 import { getDropStatus, isMinutesWatchedMet } from '../helpers/TwitchHelper';
 import { CampaignStoreTag } from '../services/CampaignStore';
-import { TwitchApiError, TwitchApiTag } from '../services/TwitchApi';
-import { TwitchSocketError, TwitchSocketTag } from '../services/TwitchSocket';
-import { WatchError, WatchServiceTag } from '../services/WatchService';
+import { TwitchApiTag } from '../services/TwitchApi';
+import { TwitchSocketTag } from '../services/TwitchSocket';
+import { WatchServiceTag } from '../services/WatchService';
 import { cycleMidnightRestart, RuntimeRestart } from '../structures/RuntimeClient';
 import { OfflineWorkflow } from './OfflineWorkflow';
 import { SocketWorkflow } from './SocketWorkflow';
@@ -43,12 +43,8 @@ const performWatchLoop = (
   campaignStore: CampaignStore,
   watchService: WatchService,
   configStore: StoreClient<ClientConfig>,
-): Effect.Effect<
-  void,
-  MainWorkflowError | TwitchApiError | TwitchSocketError | WatchError,
-  TwitchApiTag | TwitchSocketTag | CampaignStoreTag | WatchServiceTag | ConfigStoreTag
-> => {
-  const checkHigherPriority = (campaign: Campaign): Effect.Effect<boolean> =>
+) => {
+  const checkHigherPriority = (campaign: Campaign) =>
     Effect.gen(function* () {
       const activeCampaigns = yield* campaignStore.getSortedActive;
       if (activeCampaigns.length === 0 || activeCampaigns[0].id === campaign.id) return false;
@@ -58,7 +54,7 @@ const performWatchLoop = (
       const isDifferentGame = higherPriority.game.id !== campaign.game.id;
       const shouldPrioritize = Option.isSome(currentDrop) && isDifferentGame && currentDrop.value.endAt >= higherPriority.endAt;
 
-      if (shouldPrioritize) {
+      if (shouldPrioritize || higherPriority.priority > campaign.priority) {
         yield* Effect.logInfo(chalk`{yellow Switching to higher priority campaign: ${higherPriority.name}}`);
         yield* Ref.set(state.currentChannel, Option.none());
         return true;
@@ -66,7 +62,7 @@ const performWatchLoop = (
       return false;
     });
 
-  const updateChannelInfo = (chan: Channel): Effect.Effect<Channel | null, MainWorkflowError> =>
+  const updateChannelInfo = (chan: Channel) =>
     Effect.gen(function* () {
       if (chan.currentSid && (yield* Ref.get(state.minutesWatched)) > 0) return chan;
 
@@ -99,7 +95,7 @@ const performWatchLoop = (
       return updated;
     });
 
-  const handleWatchSuccess = (chan: Channel): Effect.Effect<void, TwitchApiError> =>
+  const handleWatchSuccess = (chan: Channel) =>
     Effect.gen(function* () {
       yield* Ref.update(state.minutesWatched, (m) => m + 1);
       yield* Ref.set(state.nextWatch, Date.now() + 60_000);
@@ -127,7 +123,7 @@ const performWatchLoop = (
       }
     });
 
-  const handleWatchFailure = (_chan: Channel): Effect.Effect<void> =>
+  const handleWatchFailure = (_chan: Channel) =>
     Effect.gen(function* () {
       yield* Ref.update(state.currentChannel, (c) => Option.map(c, (ch) => ({ ...ch, isOnline: false })));
       yield* Ref.set(state.currentChannel, Option.none());
@@ -159,7 +155,7 @@ const performWatchLoop = (
           const channelData = yield* api.channelPoints(channel.login);
           const availableClaim = channelData.community.channel.self.communityPoints.availableClaim;
           if (availableClaim && config.isClaimPoints) {
-            yield* api.claimPoints(channel.id, availableClaim.id);
+            yield* api.claimPoints(channel.id, availableClaim.id).pipe(Effect.ignore);
             yield* Effect.logInfo(chalk`{green ${channel.login}} | {yellow Points claimed}`);
           }
 
@@ -221,70 +217,63 @@ const performWatchLoop = (
   });
 };
 
-const performClaimDrops = (
-  state: MainState,
-  api: TwitchApi,
-  campaignStore: CampaignStore,
-  campaign: Campaign,
-  drop: Drop,
-): Effect.Effect<void, TwitchApiError> =>
+const performClaimDrops = (state: MainState, api: TwitchApi, campaignStore: CampaignStore, campaign: Campaign, drop: Drop) =>
   Effect.gen(function* () {
     yield* Ref.set(state.isClaiming, true);
 
     const totalAttempts = 5;
-    let isClaimed = false;
 
-    for (let attempt = 0; attempt < totalAttempts; attempt++) {
-      if (isClaimed) break;
+    yield* Effect.iterate(0, {
+      while: (attempt) => attempt < totalAttempts,
+      body: (attempt) =>
+        Effect.gen(function* () {
+          if (attempt > 0 || !drop.dropInstanceID) {
+            yield* campaignStore.updateProgress;
+            const drops = yield* campaignStore.getDropsForCampaign(campaign.id);
+            const updatedDrop = drops.find((p) => p.id === drop.id);
+            if (updatedDrop) {
+              yield* Ref.set(state.currentDrop, Option.some(updatedDrop));
+            }
+          }
 
-      if (attempt > 0 || !drop.dropInstanceID) {
-        yield* campaignStore.updateProgress;
-        const drops = yield* campaignStore.getDropsForCampaign(campaign.id);
-        const updatedDrop = drops.find((p) => p.id === drop.id);
-        if (updatedDrop) {
-          yield* Ref.set(state.currentDrop, Option.some(updatedDrop));
-        }
-      }
+          const currentDropOpt = yield* Ref.get(state.currentDrop);
+          if (Option.isNone(currentDropOpt)) return totalAttempts;
 
-      const currentDropOpt = yield* Ref.get(state.currentDrop);
-      if (Option.isNone(currentDropOpt)) break;
+          const currentDrop = currentDropOpt.value;
+          const claimRes = yield* api.claimDrops(currentDrop.dropInstanceID ?? '').pipe(Effect.option);
 
-      const currentDrop = currentDropOpt.value;
-      const claimRes = yield* api.claimDrops(currentDrop.dropInstanceID ?? '');
+          if (Option.isSome(claimRes) && claimRes.value.claimDropRewards) {
+            yield* Effect.logInfo(chalk`{green ${drop.name}} | {yellow Drops claimed}`);
+            return totalAttempts;
+          }
 
-      if (claimRes.claimDropRewards) {
-        yield* Effect.logInfo(chalk`{green ${drop.name}} | {yellow Drops claimed}`);
-        isClaimed = true;
-        continue;
-      }
+          if (currentDrop.currentMinutesWatched < currentDrop.requiredMinutesWatched) {
+            const isBroken = currentDrop.requiredMinutesWatched - currentDrop.currentMinutesWatched >= 20;
+            yield* Effect.logInfo(chalk`{green ${drop.name}} | {red ${isBroken ? 'Possible broken drops' : 'Minutes not met'}}`);
 
-      if (currentDrop.currentMinutesWatched < currentDrop.requiredMinutesWatched) {
-        const isBroken = currentDrop.requiredMinutesWatched - currentDrop.currentMinutesWatched >= 20;
-        yield* Effect.logInfo(chalk`{green ${drop.name}} | {red ${isBroken ? 'Possible broken drops' : 'Minutes not met'}}`);
+            if (isBroken) {
+              yield* Ref.update(state.currentChannel, (c) => Option.map(c, (ch) => ({ ...ch, isOnline: false })));
+              yield* Ref.set(state.currentChannel, Option.none());
+            } else {
+              yield* Ref.set(state.currentChannel, Option.none());
+            }
 
-        if (isBroken) {
-          yield* Ref.update(state.currentChannel, (c) => Option.map(c, (ch) => ({ ...ch, isOnline: false })));
-          yield* Ref.set(state.currentChannel, Option.none());
-        } else {
-          yield* Ref.set(state.currentChannel, Option.none());
-        }
+            return totalAttempts;
+          }
 
-        isClaimed = true;
-        continue;
-      }
+          if (attempt < totalAttempts - 1) {
+            if (attempt === 0) {
+              yield* Effect.logInfo(chalk`{green ${drop.name}} | {red Award not found}`);
+            }
+            yield* Effect.logInfo(chalk`{yellow Waiting for ${attempt + 1}/${totalAttempts} minutes}`);
+            yield* Effect.sleep('1 minute');
+          } else {
+            yield* Effect.logInfo(chalk`{green ${drop.name}} | {red Award not found after ${totalAttempts} minutes}`);
+          }
 
-      if (attempt < totalAttempts - 1) {
-        if (attempt === 0) {
-          yield* Effect.logInfo(chalk`{green ${drop.name}} | {red Award not found}`);
-        }
-        yield* Effect.logInfo(chalk`{yellow Waiting for ${attempt + 1}/${totalAttempts} minutes}`);
-        yield* Effect.sleep('1 minute');
-      }
-    }
-
-    if (!isClaimed) {
-      yield* Effect.logInfo(chalk`{green ${drop.name}} | {red Award not found after ${totalAttempts} minutes}`);
-    }
+          return attempt + 1;
+        }),
+    });
 
     yield* Ref.set(state.isClaiming, false);
   });
@@ -414,7 +403,7 @@ export const MainWorkflow: Effect.Effect<
     });
   });
 
-  const mainTaskLoop = () =>
+  const mainTaskLoop = (): Effect.Effect<void, never, CampaignStoreTag | TwitchApiTag | ConfigStoreTag | TwitchSocketTag | WatchServiceTag> =>
     Effect.repeat(
       Effect.gen(function* () {
         yield* updatePriorities;

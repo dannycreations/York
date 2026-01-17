@@ -134,7 +134,7 @@ export const TwitchApiLayer = (authToken: string, isDebug: boolean = false): Lay
           ),
         );
 
-      const parseUniqueCookies = (setCookie: readonly string[]): Record<string, string> =>
+      const parseUniqueCookies = (setCookie: readonly string[]) =>
         setCookie.reduce<Record<string, string>>((acc, cookie) => {
           const clean = cookie.match(/(?<=\=)\w+(?=\;)/g);
           if (clean && clean[0]) {
@@ -185,14 +185,14 @@ export const TwitchApiLayer = (authToken: string, isDebug: boolean = false): Lay
         schema: Schema.Schema<A, I, R>,
         waitForUserId: boolean = true,
       ) => {
-        const prepareGqlRequests = (userId: string): ReadonlyArray<GraphqlRequest> =>
+        const prepareGqlRequests = (userId: string) =>
           (Array.isArray(requests) ? requests : [requests]).map((r) =>
             r.operationName === 'DropCampaignDetails' && !r.variables.channelLogin && userId
               ? { ...r, variables: { ...r.variables, channelLogin: userId } }
               : r,
           );
 
-        const buildGqlBody = (preparedRequests: ReadonlyArray<GraphqlRequest>): ReadonlyArray<unknown> =>
+        const buildGqlBody = (preparedRequests: ReadonlyArray<GraphqlRequest>) =>
           preparedRequests.map((r) => ({
             operationName: r.operationName,
             variables: r.variables,
@@ -207,7 +207,7 @@ export const TwitchApiLayer = (authToken: string, isDebug: boolean = false): Lay
               : undefined,
           }));
 
-        const processGqlResult = (res: GqlResponse): Effect.Effect<A, TwitchApiError, R> =>
+        const processGqlResult = (res: GqlResponse) =>
           Effect.gen(function* () {
             if (res.errors && res.errors.length > 0) {
               const retryableErrors = ['service unavailable', 'service timeout', 'context deadline exceeded'];

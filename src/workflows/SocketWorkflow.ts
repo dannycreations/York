@@ -2,8 +2,8 @@ import { chalk } from '@vegapunk/utilities';
 import { Effect, Option, Ref, Stream } from 'effect';
 
 import { WsTopic } from '../core/Schemas';
-import { TwitchApiError, TwitchApiTag } from '../services/TwitchApi';
-import { TwitchSocketError, TwitchSocketTag } from '../services/TwitchSocket';
+import { TwitchApiTag } from '../services/TwitchApi';
+import { TwitchSocketTag } from '../services/TwitchSocket';
 
 import type { ClientConfig } from '../core/Config';
 import type { Channel, Drop } from '../core/Schemas';
@@ -20,7 +20,7 @@ export const SocketWorkflow = (
     const api = yield* TwitchApiTag;
     const socket = yield* TwitchSocketTag;
 
-    const processMessage = (msg: SocketMessage): Effect.Effect<void, TwitchSocketError | TwitchApiError> =>
+    const processMessage = (msg: SocketMessage): Effect.Effect<void, never, TwitchApiTag | TwitchSocketTag> =>
       Effect.gen(function* () {
         const currentCampaign = yield* Ref.get(state.currentCampaign);
         const currentChannel = yield* Ref.get(state.currentChannel);
@@ -29,10 +29,10 @@ export const SocketWorkflow = (
         if (Option.isNone(currentCampaign) || Option.isNone(currentChannel)) return;
 
         const channel = currentChannel.value;
-        const userId = yield* api.userId;
+        const userId = yield* api.userId.pipe(Effect.orDie);
 
         if (msg.topicType === WsTopic.ChannelStream && msg.topicId !== channel.id) {
-          return yield* socket.unlisten(WsTopic.ChannelStream, msg.topicId);
+          return yield* socket.unlisten(WsTopic.ChannelStream, msg.topicId).pipe(Effect.ignore);
         }
 
         if (msg.topicId !== channel.id && msg.topicId !== userId) return;
@@ -55,7 +55,7 @@ export const SocketWorkflow = (
             if (msg.payload.type === 'active' && msg.payload.moment_id) {
               const config = yield* configStore.get;
               if (config.isClaimMoments) {
-                yield* api.claimMoments(msg.payload.moment_id);
+                yield* api.claimMoments(msg.payload.moment_id).pipe(Effect.ignore);
                 yield* Effect.logInfo(chalk`{green ${channel.login}} | {yellow Moments claimed}`);
               }
             }
@@ -99,7 +99,7 @@ const handleUserPoint = (
   state: MainState,
   api: TwitchApi,
   configStore: StoreClient<ClientConfig>,
-): Effect.Effect<void, TwitchApiError> =>
+): Effect.Effect<void, never, TwitchApiTag> =>
   Effect.gen(function* () {
     const config = yield* configStore.get;
     if (!config.isClaimPoints) {
@@ -110,7 +110,7 @@ const handleUserPoint = (
       if (payload.claim.channel_id !== channel.id) {
         return;
       }
-      yield* api.claimPoints(channel.id, payload.claim.id);
+      yield* api.claimPoints(channel.id, payload.claim.id).pipe(Effect.ignore);
       yield* Effect.logInfo(chalk`{green ${channel.login}} | {yellow Points claimed}`);
       yield* Ref.set(state.nextPointClaim, Date.now() + 900_000);
     } else if (payload.type === 'points-earned') {
@@ -120,12 +120,14 @@ const handleUserPoint = (
       const now = Date.now();
       const nextClaim = yield* Ref.get(state.nextPointClaim);
       if (now >= nextClaim) {
-        const channelData = yield* api.channelPoints(channel.login);
-        const points = channelData.community.channel.self.communityPoints;
-        const availableClaim = points.availableClaim;
-        if (availableClaim) {
-          yield* api.claimPoints(channel.id, availableClaim.id);
-          yield* Effect.logInfo(chalk`{green ${channel.login}} | {yellow Points claimed}`);
+        const channelData = yield* api.channelPoints(channel.login).pipe(Effect.option);
+        if (Option.isSome(channelData)) {
+          const points = channelData.value.community.channel.self.communityPoints;
+          const availableClaim = points.availableClaim;
+          if (availableClaim) {
+            yield* api.claimPoints(channel.id, availableClaim.id).pipe(Effect.ignore);
+            yield* Effect.logInfo(chalk`{green ${channel.login}} | {yellow Points claimed}`);
+          }
         }
         yield* Ref.set(state.nextPointClaim, Date.now() + 900_000);
       }
