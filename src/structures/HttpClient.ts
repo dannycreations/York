@@ -55,7 +55,7 @@ export const isErrorTimeout = (error: unknown): boolean =>
 const requestFn = <T = string>(options: string | DefaultOptions) =>
   Effect.gen(function* () {
     const isString = typeof options === 'string';
-    const payload = defaultsDeep({}, isString ? { url: options } : options, {
+    const payload = defaultsDeep({} as DefaultOptions, isString ? { url: options } : options, {
       headers: { 'user-agent': userAgent.toString() },
       http2: true,
     });

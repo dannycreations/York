@@ -1,7 +1,7 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { chalk } from '@vegapunk/utilities';
-import { Context, Data, Effect, Layer, Option, Ref, Schedule, Schema } from 'effect';
+import { Context, Data, Deferred, Effect, Layer, Ref, Schedule, Schema } from 'effect';
 import UserAgent from 'user-agents';
 
 import {
@@ -72,7 +72,7 @@ export const TwitchApiLayer = (authToken: string, isDebug: boolean = false): Lay
     TwitchApiTag,
     Effect.gen(function* () {
       const http = yield* HttpClientTag;
-      const userIdRef = yield* Ref.make<Option.Option<string>>(Option.none());
+      const userIdDeferred = yield* Deferred.make<string>();
       const userAgent = new UserAgent({ deviceCategory: 'mobile' });
       const headersRef = yield* Ref.make<Record<string, string>>({
         'user-agent': userAgent.toString(),
@@ -80,34 +80,17 @@ export const TwitchApiLayer = (authToken: string, isDebug: boolean = false): Lay
         'client-id': 'kd1unb4b3q4t58fwlpcbzcbnm76a8fp',
       });
 
-      const getUserId = Effect.gen(function* () {
-        const id = yield* Ref.get(userIdRef);
-        if (Option.isSome(id)) {
-          return id.value;
-        }
-
-        yield* Effect.repeat(
-          Effect.void,
-          Schedule.recurWhileEffect(() => Ref.get(userIdRef).pipe(Effect.map(Option.isNone))),
-        );
-
-        const finalId = yield* Ref.get(userIdRef);
-        if (Option.isNone(finalId)) {
-          return yield* Effect.dieMessage('UserId vanished');
-        }
-        return finalId.value;
-      });
+      const getUserId = Deferred.await(userIdDeferred);
 
       const writeDebugFile = (data: string | object, name?: string) =>
         Effect.gen(function* () {
           const content = typeof data === 'object' ? JSON.stringify(data, null, 2) : data;
           const debugDir = join(process.cwd(), 'debug');
           yield* Effect.tryPromise({
-            try: () => mkdir(debugDir, { recursive: true }),
-            catch: (e) => new TwitchApiError({ message: 'Failed to create debug directory', cause: e }),
-          });
-          yield* Effect.tryPromise({
-            try: () => writeFile(join(debugDir, `${name ?? Date.now()}.json`), content),
+            try: async () => {
+              await mkdir(debugDir, { recursive: true });
+              await writeFile(join(debugDir, `${name ?? Date.now()}.json`), content);
+            },
             catch: (e) => new TwitchApiError({ message: 'Failed to write debug file', cause: e }),
           });
         }).pipe(Effect.catchAll(() => Effect.void));
@@ -168,7 +151,7 @@ export const TwitchApiLayer = (authToken: string, isDebug: boolean = false): Lay
         const response = yield* request<string>({
           url: 'https://www.twitch.tv',
           headers: { accept: 'text/html' },
-        }).pipe(Effect.catchAll((e) => Effect.dieMessage(chalk`{red Could not fetch your unique: ${e.message}}`)));
+        }).pipe(Effect.catchAll((e) => Effect.dieMessage(chalk`{red Could not fetch your unique (client-version/cookies): ${e.message}}`)));
 
         const setCookie = response.headers['set-cookie'];
         if (setCookie && Array.isArray(setCookie)) {
@@ -191,7 +174,7 @@ export const TwitchApiLayer = (authToken: string, isDebug: boolean = false): Lay
         if (response.statusCode === 401) {
           return yield* Effect.dieMessage('Unauthorized: Invalid OAuth token detected during validation');
         }
-        yield* Ref.set(userIdRef, Option.some(response.body.user_id));
+        yield* Deferred.succeed(userIdDeferred, response.body.user_id);
         return response.body.user_id;
       });
 

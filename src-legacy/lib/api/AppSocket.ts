@@ -1,10 +1,10 @@
 import { container } from '@vegapunk/core';
-import { WebSocket, WebSocketState } from '@vegapunk/struct';
 import { randomString } from '@vegapunk/utilities';
 import { attempt } from '@vegapunk/utilities/common';
 
 import { Twitch } from '../constants/Enum';
 import { RequestTopic, RequestType, ResponseContent, ResponseMessage, ResponseTopic, ResponseType } from './types/WebSocket';
+import { WebSocket, WebSocketState } from './WebSocket';
 
 import type { ClientEvents } from '@vegapunk/core';
 import type { WsEvents } from '../constants/Enum';

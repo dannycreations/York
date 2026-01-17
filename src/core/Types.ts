@@ -152,34 +152,38 @@ export const CampaignDetailsSchema = Schema.Struct({
       id: Schema.String,
       name: Schema.String,
       game: GameSchema,
-      allow: Schema.Struct({
-        channels: Schema.NullOr(Schema.Array(Schema.Struct({ name: Schema.String }))),
-      }),
-      timeBasedDrops: Schema.Array(
+      allow: Schema.optional(
         Schema.Struct({
-          id: Schema.String,
-          name: Schema.String,
-          startAt: Schema.String,
-          endAt: Schema.String,
-          requiredMinutesWatched: Schema.Number,
-          requiredSubs: Schema.optional(Schema.Number),
-          benefitEdges: Schema.Array(
-            Schema.Struct({
-              benefit: Schema.Struct({
-                id: Schema.String,
-                name: Schema.String,
-              }),
-            }),
-          ),
-          self: Schema.optional(
-            Schema.Struct({
-              isClaimed: Schema.Boolean,
-              hasPreconditionsMet: Schema.Boolean,
-              currentMinutesWatched: Schema.Number,
-              dropInstanceID: Schema.NullOr(Schema.String),
-            }),
-          ),
+          channels: Schema.NullOr(Schema.Array(Schema.Struct({ name: Schema.String }))),
         }),
+      ),
+      timeBasedDrops: Schema.optional(
+        Schema.Array(
+          Schema.Struct({
+            id: Schema.String,
+            name: Schema.String,
+            startAt: Schema.String,
+            endAt: Schema.String,
+            requiredMinutesWatched: Schema.Number,
+            requiredSubs: Schema.optional(Schema.Number),
+            benefitEdges: Schema.Array(
+              Schema.Struct({
+                benefit: Schema.Struct({
+                  id: Schema.String,
+                  name: Schema.optional(Schema.String),
+                }),
+              }),
+            ),
+            self: Schema.optional(
+              Schema.Struct({
+                isClaimed: Schema.Boolean,
+                hasPreconditionsMet: Schema.Boolean,
+                currentMinutesWatched: Schema.Number,
+                dropInstanceID: Schema.NullOr(Schema.String),
+              }),
+            ),
+          }),
+        ),
       ),
     }),
   }),
@@ -317,20 +321,22 @@ export const CurrentDropsSchema = Schema.Struct({
 });
 
 export const GameDirectorySchema = Schema.Struct({
-  game: Schema.Struct({
-    streams: Schema.Struct({
-      edges: Schema.Array(
-        Schema.Struct({
-          node: Schema.Struct({
-            broadcaster: Schema.Struct({
-              id: Schema.String,
-              login: Schema.String,
+  game: Schema.NullOr(
+    Schema.Struct({
+      streams: Schema.Struct({
+        edges: Schema.Array(
+          Schema.Struct({
+            node: Schema.Struct({
+              broadcaster: Schema.Struct({
+                id: Schema.String,
+                login: Schema.String,
+              }),
             }),
           }),
-        }),
-      ),
+        ),
+      }),
     }),
-  }),
+  ),
 });
 
 export const ChannelDropsSchema = Schema.Struct({
@@ -386,3 +392,65 @@ export const ClaimMomentsSchema = Schema.Struct({
     }),
   }),
 });
+
+export const SocketMessageDropProgressSchema = Schema.Struct({
+  type: Schema.Literal('drop-progress'),
+  drop_id: Schema.String,
+  current_progress_min: Schema.Number,
+  required_progress_min: Schema.Number,
+});
+
+export const SocketMessageDropClaimSchema = Schema.Struct({
+  type: Schema.Literal('drop-claim'),
+  drop_id: Schema.String,
+  drop_instance_id: Schema.String,
+});
+
+export const SocketMessagePointClaimSchema = Schema.Struct({
+  type: Schema.Literal('claim-available'),
+  claim: Schema.Struct({
+    id: Schema.String,
+    channel_id: Schema.String,
+  }),
+});
+
+export const SocketMessagePointsEarnedSchema = Schema.Struct({
+  type: Schema.Literal('points-earned'),
+  channel_id: Schema.String,
+  point_gain: Schema.Struct({
+    total_points: Schema.Number,
+  }),
+});
+
+export const SocketMessageStreamDownSchema = Schema.Struct({
+  type: Schema.Literal('stream-down'),
+});
+
+export const SocketMessageMomentActiveSchema = Schema.Struct({
+  type: Schema.Literal('active'),
+  moment_id: Schema.String,
+});
+
+export const SocketMessageBroadcastUpdateSchema = Schema.Struct({
+  type: Schema.Literal('broadcast_settings_update'),
+  game_id: Schema.Union(Schema.String, Schema.Number),
+  game: Schema.String,
+});
+
+export const SocketMessagePayloadSchema = Schema.Union(
+  SocketMessageDropProgressSchema,
+  SocketMessageDropClaimSchema,
+  SocketMessagePointClaimSchema,
+  SocketMessagePointsEarnedSchema,
+  SocketMessageStreamDownSchema,
+  SocketMessageMomentActiveSchema,
+  SocketMessageBroadcastUpdateSchema,
+);
+
+export const SocketMessageSchema = Schema.Struct({
+  topicType: Schema.String,
+  topicId: Schema.String,
+  payload: SocketMessagePayloadSchema,
+});
+
+export type SocketMessage = Schema.Schema.Type<typeof SocketMessageSchema>;

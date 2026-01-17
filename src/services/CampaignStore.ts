@@ -184,6 +184,8 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
           return next;
         });
 
+        if (!dropDetail.timeBasedDrops) return [];
+
         const currentRewards = yield* Ref.get(rewardsRef);
         const sortedDrops = [...dropDetail.timeBasedDrops].sort((a, b) => a.requiredMinutesWatched - b.requiredMinutesWatched);
 
@@ -217,7 +219,7 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
           ({ data, benefits, startAt, endAt, isClaimed }, i) =>
             ({
               id: data.id,
-              name: truncate(`${i + 1}/${filteredDrops.length}, ${data.benefitEdges[0].benefit.name.trim()}`),
+              name: truncate(`${i + 1}/${filteredDrops.length}, ${data.benefitEdges[0].benefit.name?.trim() ?? 'Unknown'}`),
               benefits,
               campaignId,
               startAt,
@@ -335,6 +337,8 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
           return filtered;
         } else {
           const response = yield* api.gameDirectory(campaign.game.slug || '');
+          if (!response.game) return [];
+
           const edges = response.game.streams.edges;
           const onlineChannels = ArrayEffect.filterMap(edges, (edge) => {
             if (!edge.node.broadcaster) {

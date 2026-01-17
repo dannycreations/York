@@ -73,7 +73,7 @@ export const createStore = <A extends object, I, R>(filePath: string, schema: Sc
           const partialDecode = Schema.decodeUnknown(Schema.partial(schema));
           const partial = yield* partialDecode(rawData).pipe(Effect.catchAll(() => Effect.succeed({})));
 
-          return defaultsDeep({}, partial, initialData);
+          return defaultsDeep({} as A, partial, initialData);
         }),
       ),
     );

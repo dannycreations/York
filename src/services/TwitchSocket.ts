@@ -1,28 +1,12 @@
-import { WebSocket } from '@vegapunk/struct';
-import { chalk, randomString } from '@vegapunk/utilities';
-import { Context, Data, Effect, Layer, Option, PubSub, Ref, Runtime, Schema, Stream } from 'effect';
+import { randomString } from '@vegapunk/utilities';
+import { Context, Data, Effect, Layer, Option, Ref, Schema, Stream } from 'effect';
 
-export const SocketMessageSchema = Schema.Struct({
-  topicType: Schema.String,
-  topicId: Schema.String,
-  type: Schema.optional(Schema.String),
-  data: Schema.optional(Schema.Unknown),
-  channel_id: Schema.optional(Schema.String),
-  game: Schema.optional(Schema.String),
-  game_id: Schema.optional(Schema.Union(Schema.String, Schema.Number)),
-  moment_id: Schema.optional(Schema.String),
-  drop_id: Schema.optional(Schema.String),
-  drop_instance_id: Schema.optional(Schema.String),
-  current_progress_min: Schema.optional(Schema.Number),
-  claim: Schema.optional(
-    Schema.Struct({
-      id: Schema.String,
-      channel_id: Schema.String,
-    }),
-  ),
-});
+import { SocketMessageSchema } from '../core/Types';
+import { createSocketClient } from '../structures/SocketClient';
 
-export type SocketMessage = Schema.Schema.Type<typeof SocketMessageSchema>;
+import type { SocketMessage } from '../core/Types';
+
+export type { SocketMessage };
 
 export class TwitchSocketError extends Data.TaggedError('TwitchSocketError')<{
   readonly message: string;
@@ -42,241 +26,116 @@ export const TwitchSocketLayer = (authToken: string): Layer.Layer<TwitchSocketTa
   Layer.scoped(
     TwitchSocketTag,
     Effect.gen(function* () {
-      const messagesPubSub = yield* PubSub.unbounded<SocketMessage>();
-      const subscribedTopics = yield* Ref.make<ReadonlySet<string>>(new Set());
-      const wsRef = yield* Ref.make<Option.Option<WebSocket<object>>>(Option.none());
-      const isConnecting = yield* Ref.make(false);
-      const lastPongReceivedAt = yield* Ref.make(Date.now());
-
-      const performListen = (ws: WebSocket<object>, topic: string, id: string, updateRef: boolean): Effect.Effect<void, TwitchSocketError> =>
-        Effect.gen(function* () {
-          const topicKey = `${topic}.${id}`;
-          if (updateRef) {
-            yield* Ref.update(subscribedTopics, (s) => new Set([...s, topicKey]));
-          }
-          yield* Effect.tryPromise({
-            try: () =>
-              ws.sendRequest({
-                description: `listen ${topicKey}`,
-                payload: JSON.stringify({
-                  type: 'LISTEN',
-                  nonce: randomString(30),
-                  data: {
-                    topics: [topicKey],
-                    auth_token: authToken,
-                  },
-                }),
-              }),
-            catch: (e) => new TwitchSocketError({ message: 'Failed to listen', cause: e }),
-          });
-        });
-
-      const onOpen = (ws: WebSocket<object>) =>
-        Effect.gen(function* () {
-          yield* Ref.set(lastPongReceivedAt, Date.now());
-          const topics = yield* Ref.get(subscribedTopics);
-          yield* Effect.forEach(topics, (topicKey) => {
-            const [topic, id] = topicKey.split('.');
-            return performListen(ws, topic, id, false);
-          });
-        });
-
-      const onMessage = (data: Buffer) =>
-        Effect.gen(function* () {
-          const raw = JSON.parse(data.toString('utf8'));
-          const messageResult = yield* Schema.decodeUnknown(
-            Schema.Struct({
-              type: Schema.optional(Schema.String),
-              data: Schema.optional(Schema.Unknown),
-              error: Schema.optional(Schema.String),
-              nonce: Schema.optional(Schema.String),
-            }),
-          )(raw).pipe(Effect.catchAll(() => Effect.succeed(undefined)));
-
-          if (!messageResult) return;
-
-          switch (messageResult.type) {
-            case 'PONG': {
-              yield* Ref.set(lastPongReceivedAt, Date.now());
-              yield* Effect.logDebug('TwitchSocket: PONG received');
-              break;
-            }
-
-            case 'RESPONSE': {
-              if (messageResult.error && messageResult.error !== '') {
-                yield* Effect.logWarning(chalk`{yellow TwitchSocket: Received RESPONSE with error: ${messageResult.error}}`);
-              }
-              break;
-            }
-
-            case 'RECONNECT': {
-              yield* Effect.logInfo('AppSocket: Received RECONNECT instruction from server');
-              const socket = yield* Ref.get(wsRef);
-              if (Option.isSome(socket)) {
-                yield* Effect.sync(() => socket.value.disconnect(false));
-              }
-              break;
-            }
-
-            case 'MESSAGE': {
-              const eventData = messageResult.data;
-              if (
-                !eventData ||
-                typeof eventData !== 'object' ||
-                !('message' in eventData) ||
-                typeof eventData.message !== 'string' ||
-                !('topic' in eventData) ||
-                typeof eventData.topic !== 'string'
-              ) {
-                return;
-              }
-
-              const content = yield* Schema.decodeUnknown(
-                Schema.Struct({
-                  data: Schema.optional(Schema.Unknown),
-                  topic_id: Schema.optional(Schema.String),
-                }),
-              )(JSON.parse(eventData.message)).pipe(Effect.catchAll(() => Effect.succeed(undefined)));
-
-              if (!content) return;
-
-              const [topicType, topicId] = eventData.topic.split('.');
-              const payload = {
-                topicType,
-                topicId,
-                ...content,
-                ...(content.data && typeof content.data === 'object' ? content.data : {}),
-                topic_id: content.topic_id ?? topicId,
-              };
-
-              const decoded = yield* Schema.decodeUnknown(SocketMessageSchema)(payload).pipe(Effect.orDie);
-              yield* PubSub.publish(messagesPubSub, decoded);
-              break;
-            }
-          }
-        });
-
-      const runtime = yield* Effect.runtime<never>();
-      const runFork = Runtime.runFork(runtime);
-
-      const ws = new (class extends WebSocket<object> {
-        protected override onOpen(): void {
-          runFork(onOpen(this));
-        }
-        protected override onClose(): void {}
-        protected override onError(): void {}
-        protected override onPing(): void {
-          runFork(
-            Effect.gen(function* () {
-              const lastPong = yield* Ref.get(lastPongReceivedAt);
-              const pongDeadline = lastPong + 180_000 + 10_000;
-              if (Date.now() > pongDeadline) {
-                yield* Effect.logWarning('TwitchSocket: Ping health check failed. Forcing reconnect');
-                ws.disconnect(false);
-                return;
-              }
-
-              yield* Effect.tryPromise({
-                try: () =>
-                  ws.sendRequest({
-                    description: 'ping',
-                    payload: JSON.stringify({ type: 'PING' }),
-                  }),
-                catch: () => undefined,
-              });
-              yield* Effect.logDebug('TwitchSocket: PING sent');
-            }),
-          );
-        }
-        protected override onMaxReconnects(): void {}
-        protected override onMessage(data: Buffer): void {
-          runFork(onMessage(data));
-        }
-      })({
+      const client = yield* createSocketClient({
         url: 'wss://pubsub-edge.twitch.tv/v1',
-        autoConnect: false,
         pingIntervalMs: 180_000,
-        requestTimeoutMs: 10_000,
-        logger: (...args: unknown[]) => Effect.logDebug(...args),
-      });
+        pingTimeoutMs: 10_000,
+        reconnectDelayMs: 5_000,
+      }).pipe(Effect.mapError((e) => new TwitchSocketError({ message: 'TwitchSocket: Failed to initialize client', cause: e })));
 
-      yield* Ref.set(wsRef, Option.some(ws));
-      yield* Effect.addFinalizer(() => Effect.sync(() => ws.dispose()));
+      const subscribedTopics = yield* Ref.make<ReadonlySet<string>>(new Set());
 
-      const connect = Effect.gen(function* () {
-        if (yield* Ref.get(isConnecting)) {
-          return;
-        }
+      const performListen = (topicKey: string) =>
+        client
+          .send({
+            type: 'LISTEN',
+            nonce: randomString(30),
+            data: {
+              topics: [topicKey],
+              auth_token: authToken,
+            },
+          })
+          .pipe(Effect.mapError((e) => new TwitchSocketError({ message: `TwitchSocket: Failed to listen to ${topicKey}`, cause: e })));
 
-        yield* Ref.set(isConnecting, true);
-        yield* Effect.tryPromise({
-          try: () => Promise.resolve(ws.connect()),
-          catch: (e) => new TwitchSocketError({ message: 'Failed to connect', cause: e }),
-        }).pipe(Effect.ensuring(Ref.set(isConnecting, false)));
-      });
-
-      yield* connect;
+      const performUnlisten = (topicKey: string) =>
+        client
+          .send({
+            type: 'UNLISTEN',
+            nonce: randomString(30),
+            data: {
+              topics: [topicKey],
+              auth_token: authToken,
+            },
+          })
+          .pipe(Effect.mapError((e) => new TwitchSocketError({ message: `TwitchSocket: Failed to unlisten from ${topicKey}`, cause: e })));
 
       const listen = (topic: string, id: string) =>
         Effect.gen(function* () {
           const topicKey = `${topic}.${id}`;
           const current = yield* Ref.get(subscribedTopics);
-          if (current.has(topicKey)) {
-            return;
-          }
-          const socket = yield* Ref.get(wsRef);
-          if (Option.isSome(socket)) {
-            yield* performListen(socket.value, topic, id, true);
-          }
+          if (current.has(topicKey)) return;
+
+          yield* Ref.update(subscribedTopics, (s) => new Set([...s, topicKey]));
+          yield* performListen(topicKey);
         });
 
       const unlisten = (topic: string, id: string) =>
         Effect.gen(function* () {
           const topicKey = `${topic}.${id}`;
           const current = yield* Ref.get(subscribedTopics);
-          if (!current.has(topicKey)) {
-            return;
-          }
+          if (!current.has(topicKey)) return;
 
           yield* Ref.update(subscribedTopics, (s) => {
             const next = new Set(s);
             next.delete(topicKey);
             return next;
           });
-
-          const socket = yield* Ref.get(wsRef);
-          if (Option.isSome(socket)) {
-            yield* Effect.tryPromise({
-              try: () =>
-                socket.value.sendRequest({
-                  description: `unlisten ${topicKey}`,
-                  payload: JSON.stringify({
-                    type: 'UNLISTEN',
-                    nonce: randomString(30),
-                    data: {
-                      topics: [topicKey],
-                      auth_token: authToken,
-                    },
-                  }),
-                }),
-              catch: (e) => new TwitchSocketError({ message: 'Failed to unlisten', cause: e }),
-            });
-          }
+          yield* performUnlisten(topicKey);
         });
 
-      const disconnect = (reconnect: boolean = false) =>
-        Effect.gen(function* () {
-          const socket = yield* Ref.get(wsRef);
-          if (Option.isSome(socket)) {
-            yield* Effect.sync(() => socket.value.disconnect(reconnect));
+      const messages: Stream.Stream<SocketMessage, never, never> = client.events.pipe(
+        Stream.filterMap((event) => {
+          if (event._tag !== 'Message') return Option.none();
+          try {
+            const raw = JSON.parse(event.data);
+            if (raw.type === 'MESSAGE' && raw.data?.topic && raw.data?.message) {
+              const [topicType, topicId] = raw.data.topic.split('.');
+              const content = JSON.parse(raw.data.message);
+              return Option.some({
+                topicType,
+                topicId,
+                payload: {
+                  ...content,
+                  ...(content.data && typeof content.data === 'object' ? content.data : {}),
+                  topic_id: content.topic_id ?? topicId,
+                },
+              });
+            }
+            if (raw.type === 'RECONNECT') {
+              Effect.runFork(client.disconnect(true));
+            }
+          } catch (e) {
+            // Ignore parse errors
           }
-        });
+          return Option.none();
+        }),
+        Stream.mapEffect((payload) =>
+          Schema.decodeUnknown(SocketMessageSchema)(payload).pipe(
+            Effect.map(Option.some),
+            Effect.catchAll(() => Effect.succeed(Option.none())),
+          ),
+        ),
+        Stream.filterMap((o) => o),
+      );
+
+      // Re-subscribe on reconnect
+      yield* client.events.pipe(
+        Stream.filter((e) => e._tag === 'Open'),
+        Stream.runForEach(() =>
+          Effect.gen(function* () {
+            const topics = yield* Ref.get(subscribedTopics);
+            yield* Effect.logInfo(`TwitchSocket: Reconnected, resubscribing to ${topics.size} topics`);
+            yield* Effect.forEach(topics, (topicKey) => performListen(topicKey), { discard: true });
+          }),
+        ),
+        Effect.fork,
+      );
 
       return {
         listen,
         unlisten,
-        messages: Stream.fromPubSub(messagesPubSub),
-        disconnect,
-      };
+        messages,
+        disconnect: (reconnect) => client.disconnect(reconnect),
+      } satisfies TwitchSocket;
     }),
   );

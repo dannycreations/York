@@ -91,11 +91,10 @@ export const WatchServiceLayer: Layer.Layer<WatchServiceTag, never, HttpClientTa
             },
           };
 
-          const body = Buffer.from(JSON.stringify([payload])).toString('base64');
           const res = yield* http.request({
             method: 'POST',
             url: spadeUrl,
-            body,
+            body: Buffer.from(JSON.stringify([payload])).toString('base64'),
           });
 
           return res.statusCode === 204;

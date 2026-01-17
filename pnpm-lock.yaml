@@ -8,15 +8,6 @@ importers:
 
   .:
     dependencies:
-      '@vegapunk/core':
-        specifier: ^1.0.55
-        version: 1.0.55(typescript@5.9.3)
-      '@vegapunk/request':
-        specifier: ^1.0.44
-        version: 1.0.44(typescript@5.9.3)
-      '@vegapunk/struct':
-        specifier: ^1.0.17
-        version: 1.0.17(typescript@5.9.3)
       '@vegapunk/utilities':
         specifier: ^1.0.78
         version: 1.0.78(typescript@5.9.3)
@@ -38,6 +29,9 @@ importers:
       user-agents:
         specifier: ^1.1.669
         version: 1.1.669
+      ws:
+        specifier: ^8.19.0
+        version: 8.19.0
     devDependencies:
       '@ianvs/prettier-plugin-sort-imports':
         specifier: ^4.7.0
@@ -51,6 +45,9 @@ importers:
       '@types/user-agents':
         specifier: ^1.0.4
         version: 1.0.4
+      '@types/ws':
+        specifier: ^8.18.1
+        version: 8.18.1
       husky:
         specifier: ^9.1.7
         version: 9.1.7
@@ -108,10 +105,6 @@ packages:
   '@babel/types@7.28.0':
     resolution: {integrity: sha512-jYnje+JyZG5YThjHiF28oT4SIZLnYOcSBb6+SDaFIyzDVSkXQmQQYclJ2R+YxcdmK0AX6x1E5OQNtuh3jHDrUg==}
     engines: {node: '>=6.9.0'}
-
-  '@discordjs/collection@2.1.1':
-    resolution: {integrity: sha512-LiSusze9Tc7qF03sLCujF5iZp7K+vRNEDBZ86FT9aQAv3vxMLihUvKvpsCWiQ2DJq1tVckopKm1rxomgNUc9hg==}
-    engines: {node: '>=18'}
 
   '@esbuild/aix-ppc64@0.27.1':
     resolution: {integrity: sha512-HHB50pdsBX6k47S4u5g/CaLjqS3qwaOVE5ILsq64jyzgMhLuCuZ8rGzM9yhsAjfjkbgUPMzZEPa7DAp7yz6vuA==}
@@ -311,25 +304,13 @@ packages:
   '@pinojs/redact@0.4.0':
     resolution: {integrity: sha512-k2ENnmBugE/rzQfEcdWHcCY+/FM3VLzH9cYEsbdsoqrvzAKRhUZeRNhAZvB8OitQJ1TBed3yqWtdjzS6wJKBwg==}
 
-  '@sapphire/pieces@4.4.1':
-    resolution: {integrity: sha512-2v49P++RzHGb23bdjSa9u7flkdvhrq94IUO9PneY538TILN5QiMxfaXVK+pDR2YR7jpQYBy9APwtFDes2Svykg==}
-    engines: {node: '>=v14.0.0', npm: '>=7.0.0'}
-
   '@sapphire/result@2.8.0':
     resolution: {integrity: sha512-693yWouX+hR9uJm1Jgq0uSSjbSD3UrblMaxiuGbHPjSwzLCSZTcm0h3kvdVhq3o/yl4+oeAWW3hiaJ0TELuRJQ==}
-    engines: {node: '>=v14.0.0', npm: '>=7.0.0'}
-
-  '@sapphire/snowflake@3.5.5':
-    resolution: {integrity: sha512-xzvBr1Q1c4lCe7i6sRnrofxeO1QTP/LKQ6A6qy0iB4x5yfiSfARMEQEghojzTNALDTcv8En04qYNIco9/K9eZQ==}
     engines: {node: '>=v14.0.0', npm: '>=7.0.0'}
 
   '@sapphire/ts-config@5.0.3':
     resolution: {integrity: sha512-bFyGYHFT3TpOf5Sg2P+zY2ad0t5IA2epc5HtewlghhL7MYvbZvxtKsdaNaMwAdNObBx7hpiQm5OcOhyzEwQvbQ==}
     engines: {node: '>=v16.0.0', npm: '>=8.0.0'}
-
-  '@sapphire/utilities@3.18.2':
-    resolution: {integrity: sha512-QGLdC9+pT74Zd7aaObqn0EUfq40c4dyTL65pFnkM6WO1QYN7Yg/s4CdH+CXmx0Zcu6wcfCWILSftXPMosJHP5A==}
-    engines: {node: '>=v14.0.0'}
 
   '@sindresorhus/is@4.6.0':
     resolution: {integrity: sha512-t09vSN3MdfsyCHoFcTRCH/iUtG7OJ0CsjzB8cjAmKc/va/kIgeDI/TxsigdncE/4be734m0cvIYwNaV4i2XqAw==}
@@ -360,25 +341,8 @@ packages:
   '@types/user-agents@1.0.4':
     resolution: {integrity: sha512-AjeFc4oX5WPPflgKfRWWJfkEk7Wu82fnj1rROPsiqFt6yElpdGFg8Srtm/4PU4rA9UiDUZlruGPgcwTMQlwq4w==}
 
-  '@vegapunk/core@1.0.55':
-    resolution: {integrity: sha512-pdiYl+C595b6ko+Gij/mYg14wdRIEyJWKeyb6gnKP3PulywxdJp9PxtjY1orXBhSevX8TfjccKNAZac0HoZ7oQ==}
-    engines: {node: '>=20'}
-
-  '@vegapunk/logger@1.0.31':
-    resolution: {integrity: sha512-NlOmvHNaP0fX/1LD0TmX4PfsFy9IlJelOUSqB2Rpjdsrgej30/BYSEx/4r9O2pztsq+Zg/n9lvrfdly/Jb538A==}
-    engines: {node: '>=20'}
-
-  '@vegapunk/request@1.0.44':
-    resolution: {integrity: sha512-+H0NG9sTItckCFCpVPocIbLjeOtlSdi9UiF6okCKH6s8TTnhl9BPCGMLbNqdQZ5b+lRdRrh3Rc9KxaSwXJl0Iw==}
-    engines: {node: '>=20'}
-    bundledDependencies:
-      - '@types/user-agents'
-
-  '@vegapunk/struct@1.0.17':
-    resolution: {integrity: sha512-gwYuNZw2tYXOLOnmxEU3MyYkqEvP1fJW8tYaGemfmiia41bdhSo75231UboDUaL3kZUyDhLmzceVY78OapGeVg==}
-    engines: {node: '>=20'}
-    bundledDependencies:
-      - '@types/ws'
+  '@types/ws@8.18.1':
+    resolution: {integrity: sha512-ThVF6DCVhA8kUGy+aazFQ4kXQ7E1Ty7A3ypFOe0IcJV8O/M511G99AW24irKrW56Wt44yG9+ij8FaqoBGkuBXg==}
 
   '@vegapunk/utilities@1.0.78':
     resolution: {integrity: sha512-IF4zSOopqrXHCEqxrxjB3M12c4rimM8r8lj8w68Yz5xa3RR2WqGr11xunQIkKx99/ck+kpxZSEw8CkWQP5dWEQ==}
@@ -720,8 +684,8 @@ packages:
   wrappy@1.0.2:
     resolution: {integrity: sha512-l4Sp/DRseor9wL6EvV2+TuQn63dMkPjZ/sp9XkghTEbV9KlPS1xUsZ3u7/IQO4wxtcFB4bgpQPRcR3QCvezPcQ==}
 
-  ws@8.18.3:
-    resolution: {integrity: sha512-PEIGCY5tSlUt50cqyMXfCzX+oOPqN0vuGqWzbcJ2xvnkzkq46oOpz7dQaTDBdfICb4N14+GARUDw2XV2N4tvzg==}
+  ws@8.19.0:
+    resolution: {integrity: sha512-blAT2mjOEIi0ZzruJfIhb3nps74PRWTCz1IjglWEEpQl5XS/UNama6u2/rjFkDDouqr4L67ry+1aGIALViWjDg==}
     engines: {node: '>=10.0.0'}
     peerDependencies:
       bufferutil: ^4.0.1
@@ -798,8 +762,6 @@ snapshots:
     dependencies:
       '@babel/helper-string-parser': 7.27.1
       '@babel/helper-validator-identifier': 7.27.1
-
-  '@discordjs/collection@2.1.1': {}
 
   '@esbuild/aix-ppc64@0.27.1':
     optional: true
@@ -912,22 +874,12 @@ snapshots:
 
   '@pinojs/redact@0.4.0': {}
 
-  '@sapphire/pieces@4.4.1':
-    dependencies:
-      '@discordjs/collection': 2.1.1
-      '@sapphire/utilities': 3.18.2
-      tslib: 2.8.1
-
   '@sapphire/result@2.8.0': {}
-
-  '@sapphire/snowflake@3.5.5': {}
 
   '@sapphire/ts-config@5.0.3':
     dependencies:
       tslib: 2.8.1
       typescript: 5.4.5
-
-  '@sapphire/utilities@3.18.2': {}
 
   '@sindresorhus/is@4.6.0': {}
 
@@ -960,48 +912,9 @@ snapshots:
 
   '@types/user-agents@1.0.4': {}
 
-  '@vegapunk/core@1.0.55(typescript@5.9.3)':
+  '@types/ws@8.18.1':
     dependencies:
-      '@sapphire/pieces': 4.4.1
-      '@sapphire/snowflake': 3.5.5
-      '@vegapunk/logger': 1.0.31
-      '@vegapunk/utilities': 1.0.78(typescript@5.9.3)
-    transitivePeerDependencies:
-      - '@types/react'
-      - immer
-      - react
-      - typescript
-      - use-sync-external-store
-
-  '@vegapunk/logger@1.0.31':
-    dependencies:
-      pino: 10.2.0
-      pino-pretty: 13.1.3
-
-  '@vegapunk/request@1.0.44(typescript@5.9.3)':
-    dependencies:
-      '@vegapunk/utilities': 1.0.78(typescript@5.9.3)
-      got: 11.8.6
-      user-agents: 1.1.669
-    transitivePeerDependencies:
-      - '@types/react'
-      - immer
-      - react
-      - typescript
-      - use-sync-external-store
-
-  '@vegapunk/struct@1.0.17(typescript@5.9.3)':
-    dependencies:
-      '@vegapunk/utilities': 1.0.78(typescript@5.9.3)
-      ws: 8.18.3
-    transitivePeerDependencies:
-      - '@types/react'
-      - bufferutil
-      - immer
-      - react
-      - typescript
-      - use-sync-external-store
-      - utf-8-validate
+      '@types/node': 22.16.0
 
   '@vegapunk/utilities@1.0.78(typescript@5.9.3)':
     dependencies:
@@ -1336,6 +1249,6 @@ snapshots:
 
   wrappy@1.0.2: {}
 
-  ws@8.18.3: {}
+  ws@8.19.0: {}
 
   zustand@5.0.9: {}
