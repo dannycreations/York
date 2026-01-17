@@ -29,39 +29,42 @@ export const WatchServiceLayer: Layer.Layer<WatchServiceTag, never, HttpClientTa
     const spadeUrlRef = yield* Ref.make<Option.Option<string>>(Option.none());
 
     const getSpadeUrl = (): Effect.Effect<string, WatchError> =>
-      Effect.gen(function* () {
-        const spadeUrl = yield* Ref.get(spadeUrlRef);
-        if (Option.isSome(spadeUrl)) {
-          return spadeUrl.value;
-        }
+      Ref.get(spadeUrlRef).pipe(
+        Effect.flatMap(
+          Option.match({
+            onNone: () =>
+              Effect.gen(function* () {
+                let settingUrl = yield* Ref.get(settingUrlRef);
+                if (Option.isNone(settingUrl)) {
+                  const webRes = yield* http
+                    .request({ url: 'https://www.twitch.tv' })
+                    .pipe(Effect.mapError((e) => new WatchError({ message: 'Failed to fetch Twitch home', cause: e })));
+                  const match = webRes.body.match(/https:\/\/(static\.twitchcdn\.net|assets\.twitch\.tv)\/config\/settings\.[0-9a-f]{32}\.js/);
+                  if (match && match[0]) {
+                    const foundSettingUrl = match[0];
+                    yield* Ref.set(settingUrlRef, Option.some(foundSettingUrl));
+                    settingUrl = Option.some(foundSettingUrl);
+                  } else {
+                    return yield* Effect.fail(new WatchError({ message: 'Could not parse Settings URL' }));
+                  }
+                }
 
-        let settingUrl = yield* Ref.get(settingUrlRef);
-        if (Option.isNone(settingUrl)) {
-          const webRes = yield* http
-            .request({ url: 'https://www.twitch.tv' })
-            .pipe(Effect.mapError((e) => new WatchError({ message: 'Failed to fetch Twitch home', cause: e })));
-          const match = webRes.body.match(/https:\/\/(static\.twitchcdn\.net|assets\.twitch\.tv)\/config\/settings\.[0-9a-f]{32}\.js/);
-          if (match && match[0]) {
-            const foundSettingUrl = match[0];
-            yield* Ref.set(settingUrlRef, Option.some(foundSettingUrl));
-            settingUrl = Option.some(foundSettingUrl);
-          } else {
-            return yield* Effect.fail(new WatchError({ message: 'Could not parse Settings URL' }));
-          }
-        }
+                const settingRes = yield* http
+                  .request({ url: Option.getOrThrow(settingUrl) })
+                  .pipe(Effect.mapError((e) => new WatchError({ message: 'Failed to fetch settings', cause: e })));
+                const spadeMatch = settingRes.body.match(/https:\/\/video-edge-[.\w\-/]+\.ts/);
+                if (!spadeMatch || !spadeMatch[0]) {
+                  return yield* Effect.fail(new WatchError({ message: 'Could not parse Spade URL' }));
+                }
 
-        const settingRes = yield* http
-          .request({ url: Option.getOrThrow(settingUrl) })
-          .pipe(Effect.mapError((e) => new WatchError({ message: 'Failed to fetch settings', cause: e })));
-        const spadeMatch = settingRes.body.match(/https:\/\/video-edge-[.\w\-/]+\.ts/);
-        if (!spadeMatch || !spadeMatch[0]) {
-          return yield* Effect.fail(new WatchError({ message: 'Could not parse Spade URL' }));
-        }
-
-        const foundSpadeUrl = spadeMatch[0];
-        yield* Ref.set(spadeUrlRef, Option.some(foundSpadeUrl));
-        return foundSpadeUrl;
-      });
+                const foundSpadeUrl = spadeMatch[0];
+                yield* Ref.set(spadeUrlRef, Option.some(foundSpadeUrl));
+                return foundSpadeUrl;
+              }),
+            onSome: (url) => Effect.succeed(url),
+          }),
+        ),
+      );
 
     const watch = (channel: Channel): Effect.Effect<{ success: boolean; hlsUrl?: string }, WatchError> =>
       Effect.gen(function* () {
@@ -121,12 +124,16 @@ export const WatchServiceLayer: Layer.Layer<WatchServiceTag, never, HttpClientTa
         const eventSuccess = yield* sendEvent;
         const streamSuccess = yield* sendStream;
 
-        yield* Effect.annotateLogs({ service: 'WatchService', channel: channel.login })(Effect.void);
-
-        return {
+        const result = {
           success: eventSuccess || streamSuccess,
           hlsUrl: currentHlsUrl,
         };
+
+        yield* Effect.logDebug(`Watch attempt: event=${eventSuccess}, stream=${streamSuccess}`).pipe(
+          Effect.annotateLogs({ service: 'WatchService', channel: channel.login }),
+        );
+
+        return result;
       }).pipe(Effect.catchAll(() => Effect.succeed({ success: false })));
 
     const getHlsUrl = (login: string): Effect.Effect<string, WatchError> =>

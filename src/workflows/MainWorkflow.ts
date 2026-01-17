@@ -1,13 +1,13 @@
 import { chalk } from '@vegapunk/utilities';
-import { Data, Effect, Option, Ref, Schedule, Schema, Scope } from 'effect';
+import { Data, Effect, Option, Ref, Schedule, Scope } from 'effect';
 
 import { ConfigStoreTag } from '../core/Config';
-import { HelixStreamsSchema, WsTopic } from '../core/Schemas';
+import { WsTopic } from '../core/Schemas';
 import { getDropStatus, isMinutesWatchedMet } from '../helpers/TwitchHelper';
-import { CampaignStoreTag } from '../services/CampaignStore';
 import { TwitchApiTag } from '../services/TwitchApi';
 import { TwitchSocketTag } from '../services/TwitchSocket';
 import { WatchServiceTag } from '../services/WatchService';
+import { CampaignStoreTag } from '../stores/CampaignStore';
 import { cycleMidnightRestart } from '../structures/RuntimeClient';
 import { OfflineWorkflow } from './OfflineWorkflow';
 import { SocketWorkflow } from './SocketWorkflow';
@@ -15,10 +15,10 @@ import { UpcomingWorkflow } from './UpcomingWorkflow';
 
 import type { ClientConfig } from '../core/Config';
 import type { Campaign, Channel, Drop } from '../core/Schemas';
-import type { CampaignStore } from '../services/CampaignStore';
 import type { TwitchApi, TwitchApiError } from '../services/TwitchApi';
 import type { TwitchSocket, TwitchSocketError } from '../services/TwitchSocket';
 import type { WatchError, WatchService } from '../services/WatchService';
+import type { CampaignStore } from '../stores/CampaignStore';
 import type { RuntimeRestart } from '../structures/RuntimeClient';
 import type { StoreClient } from '../structures/StoreClient';
 
@@ -59,17 +59,7 @@ const updateChannelInfo = (state: MainState, api: TwitchApi, chan: Channel): Eff
   Effect.gen(function* () {
     if (chan.currentSid && (yield* Ref.get(state.minutesWatched)) > 0) return chan;
 
-    const streamRes = yield* api
-      .request<unknown>({
-        url: 'https://api.twitch.tv/helix/streams',
-        headers: { 'client-id': 'uaw3vx1k0ttq74u9b2zfvt768eebh1' },
-        searchParams: { user_id: chan.id },
-        responseType: 'json',
-      })
-      .pipe(
-        Effect.flatMap((res) => Schema.decodeUnknown(HelixStreamsSchema)(res.body)),
-        Effect.mapError((e) => new MainWorkflowError({ message: `Helix validation failed: ${e}`, cause: e })),
-      );
+    const streamRes = yield* api.helixStreams(chan.id).pipe(Effect.mapError((e) => new MainWorkflowError({ message: e.message, cause: e })));
 
     const live = streamRes.data[0];
     if (!live) {

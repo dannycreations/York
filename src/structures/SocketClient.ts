@@ -102,14 +102,14 @@ export const createSocketClient = (options: SocketClientOptions): Effect.Effect<
               case 'Open':
                 yield* Ref.set(lastPongReceivedAt, Date.now());
                 yield* Ref.set(reconnectAttempts, 0);
-                yield* Effect.logDebug(`SocketClient: Connection established`);
+                yield* Effect.logDebug('SocketClient: Connection established');
                 yield* Deferred.succeed(opened, undefined);
                 break;
               case 'Pong':
                 yield* Ref.set(lastPongReceivedAt, Date.now());
                 break;
               case 'Error':
-                yield* Effect.logError(`SocketClient: WebSocket error on ${url}`, event.cause);
+                yield* Effect.logError('SocketClient: WebSocket error', event.cause);
                 break;
               case 'Close':
                 yield* Ref.set(wsRef, Option.none());
@@ -127,7 +127,7 @@ export const createSocketClient = (options: SocketClientOptions): Effect.Effect<
                     Effect.fork,
                   );
                 } else {
-                  yield* Effect.logError(`SocketClient: Max reconnect attempts reached for ${url}`);
+                  yield* Effect.logError('SocketClient: Max reconnect attempts reached');
                 }
                 break;
             }
@@ -144,7 +144,7 @@ export const createSocketClient = (options: SocketClientOptions): Effect.Effect<
       const lastPong = yield* Ref.get(lastPongReceivedAt);
       const now = Date.now();
       if (now - lastPong > pingIntervalMs + pingTimeoutMs) {
-        yield* Effect.logWarning(`SocketClient: Ping timeout on ${url}, reconnecting`);
+        yield* Effect.logWarning('SocketClient: Ping timeout, reconnecting');
         yield* disconnect(false);
         yield* connect.pipe(Effect.ignore);
         return;

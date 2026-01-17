@@ -99,21 +99,18 @@ export const HttpClientLayer: Layer.Layer<HttpClientTag> = Layer.effect(
 
             return promise;
           },
-          catch: (error) => {
-            if (isErrorLike<{ message?: string; code?: string; response?: { statusCode?: number } }>(error)) {
-              const response = error.response;
-              return new HttpClientError({
-                message: error.message || 'Request failed',
-                code: error.code,
-                status: response ? response.statusCode : undefined,
-                cause: error,
-              });
-            }
-            return new HttpClientError({
-              message: String(error),
-              cause: error,
-            });
-          },
+          catch: (error) =>
+            isErrorLike<{ message?: string; code?: string; response?: { statusCode?: number } }>(error)
+              ? new HttpClientError({
+                  message: error.message || 'Request failed',
+                  code: error.code,
+                  status: error.response?.statusCode,
+                  cause: error,
+                })
+              : new HttpClientError({
+                  message: String(error),
+                  cause: error,
+                }),
         }).pipe(
           Effect.retry({
             while: (error) => {

@@ -2,11 +2,11 @@ import { chalk } from '@vegapunk/utilities';
 import { Array, Effect, Option, Ref, Schedule } from 'effect';
 
 import { getDropStatus } from '../helpers/TwitchHelper';
-import { CampaignStoreTag } from '../services/CampaignStore';
+import { CampaignStoreTag } from '../stores/CampaignStore';
 
 import type { ClientConfig } from '../core/Config';
 import type { Campaign } from '../core/Schemas';
-import type { CampaignStore } from '../services/CampaignStore';
+import type { CampaignStore } from '../stores/CampaignStore';
 import type { StoreClient } from '../structures/StoreClient';
 import type { MainState } from './MainWorkflow';
 

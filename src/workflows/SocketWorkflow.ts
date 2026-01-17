@@ -85,13 +85,12 @@ const processMessage = (
   userId: string,
 ): Effect.Effect<void, never, TwitchApiTag | TwitchSocketTag> =>
   Effect.gen(function* () {
-    const currentCampaign = yield* Ref.get(state.currentCampaign);
-    const currentChannel = yield* Ref.get(state.currentChannel);
+    const currentChannelOpt = yield* Ref.get(state.currentChannel);
     const currentDrop = yield* Ref.get(state.currentDrop);
 
-    if (Option.isNone(currentCampaign) || Option.isNone(currentChannel)) return;
+    if (Option.isNone(currentChannelOpt)) return;
 
-    const channel = currentChannel.value;
+    const channel = currentChannelOpt.value;
 
     if (msg.topicType === WsTopic.ChannelStream && msg.topicId !== channel.id) {
       const socket = yield* TwitchSocketTag;
@@ -167,6 +166,13 @@ export const SocketWorkflow = (
     const userId = yield* api.userId.pipe(Effect.orDie);
 
     return yield* socket.messages.pipe(
+      Stream.filterEffect(() =>
+        Effect.gen(function* () {
+          const currentCampaign = yield* Ref.get(state.currentCampaign);
+          const currentChannel = yield* Ref.get(state.currentChannel);
+          return Option.isSome(currentCampaign) && Option.isSome(currentChannel);
+        }),
+      ),
       Stream.runForEach((msg) => processMessage(msg, state, api, configStore, userId)),
       Effect.annotateLogs({ workflow: 'SocketWorkflow' }),
       Effect.orDie,

@@ -1,10 +1,10 @@
 import { chalk } from '@vegapunk/utilities';
 import { Effect, Option, Ref, Schedule } from 'effect';
 
-import { CampaignStoreTag } from '../services/CampaignStore';
+import { CampaignStoreTag } from '../stores/CampaignStore';
 
 import type { Campaign } from '../core/Schemas';
-import type { CampaignStore } from '../services/CampaignStore';
+import type { CampaignStore } from '../stores/CampaignStore';
 import type { MainState } from './MainWorkflow';
 
 const processUpcomingCampaign = (

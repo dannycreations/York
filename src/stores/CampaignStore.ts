@@ -4,14 +4,14 @@ import { Array, Context, Effect, Layer, Option, Order, Ref, Schema } from 'effec
 import { ConfigStoreTag } from '../core/Config';
 import { ChannelDropsSchema, RewardExpiredMs, ViewerDropsDashboardSchema, WsTopic } from '../core/Schemas';
 import { getDropStatus, isMinutesWatchedMet } from '../helpers/TwitchHelper';
-import { GqlQueries, TwitchApiTag } from './TwitchApi';
-import { TwitchSocketTag } from './TwitchSocket';
+import { GqlQueries, TwitchApiTag } from '../services/TwitchApi';
+import { TwitchSocketTag } from '../services/TwitchSocket';
 
 import type { ClientConfig } from '../core/Config';
 import type { Campaign, Channel, Drop, Reward } from '../core/Schemas';
+import type { TwitchApi, TwitchApiError } from '../services/TwitchApi';
+import type { TwitchSocket, TwitchSocketError } from '../services/TwitchSocket';
 import type { StoreClient } from '../structures/StoreClient';
-import type { TwitchApi, TwitchApiError } from './TwitchApi';
-import type { TwitchSocket, TwitchSocketError } from './TwitchSocket';
 
 export type CampaignStoreState = 'Initial' | 'PriorityOnly' | 'All';
 
@@ -315,20 +315,22 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
         Order.mapInput(Order.number, (c: Campaign) => c.endAt.getTime()),
       );
 
-      const dropCampaigns = [...sortedByEndAt];
-      for (let i = 0; i < dropCampaigns.length; i++) {
-        for (let j = i + 1; j < dropCampaigns.length; j++) {
-          const left = dropCampaigns[i];
-          const right = dropCampaigns[j];
+      const dropCampaigns = Array.reduce(sortedByEndAt.length > 0 ? Array.range(0, sortedByEndAt.length - 1) : [], [...sortedByEndAt], (acc, i) =>
+        Array.reduce(i + 1 < acc.length ? Array.range(i + 1, acc.length - 1) : [], acc, (innerAcc, j) => {
+          const left = innerAcc[i];
+          const right = innerAcc[j];
 
-          if (!left || !right) continue;
+          if (!left || !right) return innerAcc;
 
           if (left.game.id === right.game.id && left.startAt > right.startAt) {
-            const [campaign] = dropCampaigns.splice(j, 1);
-            dropCampaigns.splice(i, 0, campaign);
+            const next = [...innerAcc];
+            const [campaign] = next.splice(j, 1);
+            next.splice(i, 0, campaign);
+            return next;
           }
-        }
-      }
+          return innerAcc;
+        }),
+      );
 
       return Array.sort(dropCampaigns, Order.reverse(Order.mapInput(Order.number, (c: Campaign) => c.priority)));
     });

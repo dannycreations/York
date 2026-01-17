@@ -15,6 +15,7 @@ import {
   ClaimPointsSchema,
   CurrentDropsSchema,
   GameDirectorySchema,
+  HelixStreamsSchema,
   InventorySchema,
   PlaybackTokenSchema,
   ViewerDropsDashboardSchema,
@@ -53,6 +54,7 @@ export interface TwitchApi {
   readonly gameDirectory: (slug: string) => Effect.Effect<Schema.Schema.Type<typeof GameDirectorySchema>, TwitchApiError>;
   readonly channelPoints: (channelLogin: string) => Effect.Effect<Schema.Schema.Type<typeof ChannelPointsSchema>, TwitchApiError>;
   readonly channelLive: (channelLogin: string) => Effect.Effect<Schema.Schema.Type<typeof ChannelLiveSchema>, TwitchApiError>;
+  readonly helixStreams: (userId: string) => Effect.Effect<Schema.Schema.Type<typeof HelixStreamsSchema>, TwitchApiError>;
   readonly channelStreams: (logins: readonly string[]) => Effect.Effect<Schema.Schema.Type<typeof ChannelStreamsSchema>, TwitchApiError>;
   readonly channelDrops: (channelID: string) => Effect.Effect<Schema.Schema.Type<typeof ChannelDropsSchema>, TwitchApiError>;
   readonly claimPoints: (channelID: string, claimID: string) => Effect.Effect<Schema.Schema.Type<typeof ClaimPointsSchema>, TwitchApiError>;
@@ -70,13 +72,12 @@ export class TwitchApiTag extends Context.Tag('@services/TwitchApi')<TwitchApiTa
 const parseUniqueCookies = (setCookie: readonly string[]): Record<string, string> =>
   setCookie.reduce<Record<string, string>>((acc, cookie) => {
     const clean = cookie.match(/(?<=\=)\w+(?=\;)/g);
-    if (clean && clean[0]) {
-      if (cookie.startsWith('server_session_id')) {
-        acc['client-session-id'] = clean[0];
-      } else if (cookie.startsWith('unique_id') && !cookie.startsWith('unique_id_durable')) {
-        acc['x-device-id'] = clean[0];
-      }
-    }
+    if (!clean || !clean[0]) return acc;
+
+    const value = clean[0];
+    if (cookie.startsWith('server_session_id')) return { ...acc, 'client-session-id': value };
+    if (cookie.startsWith('unique_id') && !cookie.startsWith('unique_id_durable')) return { ...acc, 'x-device-id': value };
+
     return acc;
   }, {});
 
@@ -277,6 +278,17 @@ export const TwitchApiLayer = (authToken: string, isDebug: boolean = false): Lay
       const channelLive = (channelLogin: string): Effect.Effect<Schema.Schema.Type<typeof ChannelLiveSchema>, TwitchApiError> =>
         graphql(GqlQueries.channelLive(channelLogin), ChannelLiveSchema).pipe(Effect.map((res) => res[0]));
 
+      const helixStreams = (userId: string): Effect.Effect<Schema.Schema.Type<typeof HelixStreamsSchema>, TwitchApiError> =>
+        request<unknown>({
+          url: 'https://api.twitch.tv/helix/streams',
+          headers: { 'client-id': 'uaw3vx1k0ttq74u9b2zfvt768eebh1' },
+          searchParams: { user_id: userId },
+          responseType: 'json',
+        }).pipe(
+          Effect.flatMap((res) => Schema.decodeUnknown(HelixStreamsSchema)(res.body)),
+          Effect.mapError((e) => new TwitchApiError({ message: `Helix validation failed: ${e}`, cause: e })),
+        );
+
       const channelStreams = (logins: readonly string[]): Effect.Effect<Schema.Schema.Type<typeof ChannelStreamsSchema>, TwitchApiError> =>
         graphql(GqlQueries.channelStreams(logins), ChannelStreamsSchema).pipe(Effect.map((res) => res[0]));
 
@@ -313,6 +325,7 @@ export const TwitchApiLayer = (authToken: string, isDebug: boolean = false): Lay
         gameDirectory,
         channelPoints,
         channelLive,
+        helixStreams,
         channelStreams,
         channelDrops,
         claimPoints,

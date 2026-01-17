@@ -70,7 +70,7 @@ export const TwitchSocketLayer = (authToken: string): Layer.Layer<TwitchSocketTa
 
           yield* Ref.update(subscribedTopics, (s) => new Set([...s, topicKey]));
           yield* performListen(topicKey);
-          yield* Effect.logDebug(`AppSocket: Subscribed ${topicKey}`);
+          yield* Effect.logDebug(`TwitchSocket: Subscribed ${topicKey}`);
         });
 
       const unlisten = (topic: string, id: string): Effect.Effect<void, TwitchSocketError> =>
@@ -85,7 +85,7 @@ export const TwitchSocketLayer = (authToken: string): Layer.Layer<TwitchSocketTa
             return next;
           });
           yield* performUnlisten(topicKey);
-          yield* Effect.logDebug(`AppSocket: Unsubscribed ${topicKey}`);
+          yield* Effect.logDebug(`TwitchSocket: Unsubscribed ${topicKey}`);
         });
 
       const messages: Stream.Stream<SocketMessage, never, never> = client.events.pipe(
@@ -108,49 +108,46 @@ export const TwitchSocketLayer = (authToken: string): Layer.Layer<TwitchSocketTa
         ),
         Stream.mapEffect((raw) =>
           Effect.gen(function* () {
-            const isMessage =
-              raw &&
-              typeof raw === 'object' &&
-              'type' in raw &&
-              raw.type === 'MESSAGE' &&
-              'data' in raw &&
-              typeof raw.data === 'object' &&
-              raw.data &&
-              'topic' in raw.data &&
-              typeof raw.data.topic === 'string' &&
-              'message' in raw.data &&
-              typeof raw.data.message === 'string';
+            const rawObj = raw as Record<string, unknown>;
+            if (rawObj.type !== 'MESSAGE') return Option.none();
 
-            if (!isMessage) return Option.none();
+            const data = rawObj.data as Record<string, unknown>;
+            const topic = data.topic;
+            const message = data.message;
 
-            const data = raw.data as { topic: string; message: string };
-            const [topicType, topicId] = data.topic.split('.');
+            if (typeof topic !== 'string' || typeof message !== 'string') return Option.none();
+
+            const [topicType, topicId] = topic.split('.');
 
             const content = yield* Effect.try({
-              try: () => JSON.parse(data.message) as unknown,
+              try: () => JSON.parse(message) as unknown,
               catch: (e) => new TwitchSocketError({ message: 'TwitchSocket: Failed to parse message content', cause: e }),
             }).pipe(Effect.option);
 
-            if (Option.isNone(content) || !content.value || typeof content.value !== 'object') {
-              return Option.none();
-            }
+            return Option.match(content, {
+              onNone: () => Option.none(),
+              onSome: (value) => {
+                if (!value || typeof value !== 'object') return Option.none();
 
-            const payload = content.value as Record<string, unknown>;
-            const innerData = 'data' in payload && payload.data && typeof payload.data === 'object' ? (payload.data as Record<string, unknown>) : {};
+                const payload = value as Record<string, unknown>;
+                const innerData =
+                  'data' in payload && payload.data && typeof payload.data === 'object' ? (payload.data as Record<string, unknown>) : {};
 
-            return Option.some({
-              topicType,
-              topicId,
-              payload: {
-                ...payload,
-                ...innerData,
-                topic_id: ('topic_id' in payload && typeof payload.topic_id === 'string' ? payload.topic_id : undefined) ?? topicId,
+                return Option.some({
+                  topicType,
+                  topicId,
+                  payload: {
+                    ...payload,
+                    ...innerData,
+                    topic_id: ('topic_id' in payload && typeof payload.topic_id === 'string' ? payload.topic_id : undefined) ?? topicId,
+                  },
+                });
               },
             });
           }),
         ),
         Stream.filterMap((o) => o),
-        Stream.tap((payload) => Effect.logDebug(chalk`AppSocket: Emitted ${payload.topicType}.${payload.topicId}`, payload.payload)),
+        Stream.tap((payload) => Effect.logDebug(chalk`TwitchSocket: Emitted ${payload.topicType}.${payload.topicId}`, payload.payload)),
         Stream.mapEffect((payload) =>
           Schema.decodeUnknown(SocketMessageSchema)(payload).pipe(
             Effect.map(Option.some),
