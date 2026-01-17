@@ -315,19 +315,20 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
         Order.mapInput(Order.number, (c: Campaign) => c.endAt.getTime()),
       );
 
-      const dropCampaigns = Array.reduce(Array.range(0, sortedByEndAt.length - 1), [...sortedByEndAt], (acc, i) => {
-        return Array.reduce(Array.range(i + 1, acc.length - 1), acc, (innerAcc, j) => {
-          const left = innerAcc[i];
-          const right = innerAcc[j];
+      const dropCampaigns = [...sortedByEndAt];
+      for (let i = 0; i < dropCampaigns.length; i++) {
+        for (let j = i + 1; j < dropCampaigns.length; j++) {
+          const left = dropCampaigns[i];
+          const right = dropCampaigns[j];
+
+          if (!left || !right) continue;
+
           if (left.game.id === right.game.id && left.startAt > right.startAt) {
-            const next = [...innerAcc];
-            const [campaign] = next.splice(j, 1);
-            next.splice(i, 0, campaign);
-            return next;
+            const [campaign] = dropCampaigns.splice(j, 1);
+            dropCampaigns.splice(i, 0, campaign);
           }
-          return innerAcc;
-        });
-      });
+        }
+      }
 
       return Array.sort(dropCampaigns, Order.reverse(Order.mapInput(Order.number, (c: Campaign) => c.priority)));
     });

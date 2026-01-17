@@ -115,12 +115,12 @@ const processMessage = (
         break;
       }
       case WsTopic.ChannelMoment: {
-        if (msg.payload.type === 'active') {
-          if (msg.topicId !== channel.id) {
-            const socket = yield* TwitchSocketTag;
-            return yield* socket.unlisten(WsTopic.ChannelMoment, msg.topicId).pipe(Effect.ignore);
-          }
+        if (msg.topicId !== channel.id) {
+          const socket = yield* TwitchSocketTag;
+          return yield* socket.unlisten(WsTopic.ChannelMoment, msg.topicId).pipe(Effect.ignore);
+        }
 
+        if (msg.payload.type === 'active') {
           const config = yield* configStore.get;
           if (config.isClaimMoments) {
             yield* api.claimMoments(msg.payload.data.moment_id).pipe(Effect.ignore);
@@ -130,17 +130,21 @@ const processMessage = (
         break;
       }
       case WsTopic.ChannelUpdate: {
-        if (msg.payload.type === 'broadcast_settings_update' && channel.gameId) {
-          const currentGameId = String(msg.payload.data.game_id);
-          if (currentGameId !== channel.gameId) {
+        if (msg.payload.type === 'broadcast_settings_update') {
+          const payload = msg.payload;
+          if (payload.channel_id && payload.channel_id !== channel.id) {
+            return;
+          }
+          const currentGameId = String(payload.data.game_id);
+          if (channel.gameId && currentGameId !== channel.gameId) {
             yield* Ref.update(state.currentChannel, (c) => Option.map(c, (ch) => ({ ...ch, isOnline: false })));
-            yield* Effect.logInfo(chalk`{red ${channel.login}} | {red Game changed to ${msg.payload.data.game}}`);
+            yield* Effect.logInfo(chalk`{red ${channel.login}} | {red Game changed to ${payload.data.game}}`);
           }
           yield* Ref.update(state.currentChannel, (c) =>
             Option.map(c, (ch) => ({
               ...ch,
               currentGameId,
-              currentGameName: msg.payload.type === 'broadcast_settings_update' ? msg.payload.data.game : ch.currentGameName,
+              currentGameName: payload.data.game,
             })),
           );
         }

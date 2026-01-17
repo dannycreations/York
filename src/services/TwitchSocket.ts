@@ -90,54 +90,66 @@ export const TwitchSocketLayer = (authToken: string): Layer.Layer<TwitchSocketTa
 
       const messages: Stream.Stream<SocketMessage, never, never> = client.events.pipe(
         Stream.filterMap((event) => (event._tag === 'Message' ? Option.some(event.data) : Option.none())),
-        Stream.mapEffect((data) => Effect.try(() => JSON.parse(data) as unknown).pipe(Effect.catchAll(() => Effect.succeed(null)))),
-        Stream.tap((raw) => {
-          if (raw && typeof raw === 'object' && 'type' in raw && raw.type === 'RECONNECT') {
-            return Effect.gen(function* () {
-              yield* Effect.logWarning('TwitchSocket: Received RECONNECT instruction from server');
-              yield* client.disconnect(false);
-              yield* client.connect.pipe(Effect.ignore);
+        Stream.mapEffect((data) =>
+          Effect.try({
+            try: () => JSON.parse(data) as unknown,
+            catch: (e) => new TwitchSocketError({ message: 'TwitchSocket: Failed to parse raw message', cause: e }),
+          }).pipe(Effect.option),
+        ),
+        Stream.filterMap((o) => o),
+        Stream.tap((raw) =>
+          raw && typeof raw === 'object' && 'type' in raw && raw.type === 'RECONNECT'
+            ? Effect.gen(function* () {
+                yield* Effect.logWarning('TwitchSocket: Received RECONNECT instruction from server');
+                yield* client.disconnect(false);
+                yield* client.connect.pipe(Effect.ignore);
+              })
+            : Effect.void,
+        ),
+        Stream.mapEffect((raw) =>
+          Effect.gen(function* () {
+            const isMessage =
+              raw &&
+              typeof raw === 'object' &&
+              'type' in raw &&
+              raw.type === 'MESSAGE' &&
+              'data' in raw &&
+              typeof raw.data === 'object' &&
+              raw.data &&
+              'topic' in raw.data &&
+              typeof raw.data.topic === 'string' &&
+              'message' in raw.data &&
+              typeof raw.data.message === 'string';
+
+            if (!isMessage) return Option.none();
+
+            const data = raw.data as { topic: string; message: string };
+            const [topicType, topicId] = data.topic.split('.');
+
+            const content = yield* Effect.try({
+              try: () => JSON.parse(data.message) as unknown,
+              catch: (e) => new TwitchSocketError({ message: 'TwitchSocket: Failed to parse message content', cause: e }),
+            }).pipe(Effect.option);
+
+            if (Option.isNone(content) || !content.value || typeof content.value !== 'object') {
+              return Option.none();
+            }
+
+            const payload = content.value as Record<string, unknown>;
+            const innerData = 'data' in payload && payload.data && typeof payload.data === 'object' ? (payload.data as Record<string, unknown>) : {};
+
+            return Option.some({
+              topicType,
+              topicId,
+              payload: {
+                ...payload,
+                ...innerData,
+                topic_id: ('topic_id' in payload && typeof payload.topic_id === 'string' ? payload.topic_id : undefined) ?? topicId,
+              },
             });
-          }
-          return Effect.void;
-        }),
-        Stream.filterMap((raw) => {
-          if (
-            !raw ||
-            typeof raw !== 'object' ||
-            !('type' in raw) ||
-            raw.type !== 'MESSAGE' ||
-            !('data' in raw) ||
-            typeof raw.data !== 'object' ||
-            !raw.data ||
-            !('topic' in raw.data) ||
-            typeof raw.data.topic !== 'string' ||
-            !('message' in raw.data) ||
-            typeof raw.data.message !== 'string'
-          ) {
-            return Option.none();
-          }
-
-          const [topicType, topicId] = raw.data.topic.split('.');
-          let content: unknown;
-          try {
-            content = JSON.parse(raw.data.message);
-          } catch {
-            return Option.none();
-          }
-
-          if (!content || typeof content !== 'object') return Option.none();
-
-          return Option.some({
-            topicType,
-            topicId,
-            payload: {
-              ...content,
-              ...('data' in content && content.data && typeof content.data === 'object' ? content.data : {}),
-              topic_id: ('topic_id' in content && typeof content.topic_id === 'string' ? content.topic_id : undefined) ?? topicId,
-            },
-          });
-        }),
+          }),
+        ),
+        Stream.filterMap((o) => o),
         Stream.tap((payload) => Effect.logDebug(chalk`AppSocket: Emitted ${payload.topicType}.${payload.topicId}`, payload.payload)),
         Stream.mapEffect((payload) =>
           Schema.decodeUnknown(SocketMessageSchema)(payload).pipe(

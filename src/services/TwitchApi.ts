@@ -199,16 +199,13 @@ export const TwitchApiLayer = (authToken: string, isDebug: boolean = false): Lay
       ): Effect.Effect<ReadonlyArray<A>, TwitchApiError, R> =>
         Effect.gen(function* () {
           const userId = waitForUserId ? yield* getUserId : '';
-          const preparedRequests = (Array.isArray(requests) ? requests : [requests]).map((r) =>
-            r.operationName === 'DropCampaignDetails' && !r.variables.channelLogin && userId
-              ? { ...r, variables: { ...r.variables, channelLogin: userId } }
-              : r,
-          );
-
           const body = JSON.stringify(
-            preparedRequests.map((r) => ({
+            (Array.isArray(requests) ? requests : [requests]).map((r) => ({
               operationName: r.operationName,
-              variables: r.variables,
+              variables:
+                r.operationName === 'DropCampaignDetails' && !r.variables.channelLogin && userId
+                  ? { ...r.variables, channelLogin: userId }
+                  : r.variables,
               query: r.query,
               extensions: r.hash
                 ? {

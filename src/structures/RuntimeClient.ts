@@ -10,8 +10,8 @@ export interface RuntimeRestartOptions {
   readonly restartDelayMs?: number;
 }
 
-export interface RuntimeOptions extends RuntimeRestartOptions {
-  readonly runtimeBaseLayer?: Layer.Layer<any, any, any>;
+export interface RuntimeOptions<ROut = any, E = any, RIn = any> extends RuntimeRestartOptions {
+  readonly runtimeBaseLayer?: Layer.Layer<ROut, E, RIn>;
 }
 
 export const runForkWithCleanUp = <A, E, R>(effect: Effect.Effect<A, E, R>, runtime: Runtime.Runtime<R>): void => {
@@ -85,7 +85,7 @@ export const cycleMidnightRestart: Effect.Effect<never, RuntimeRestart> = Effect
   return yield* Effect.fail(new RuntimeRestart());
 });
 
-export const runMain = async <A, E, R>(program: Effect.Effect<A, E, R | Scope.Scope>, options: RuntimeOptions = {}): Promise<void> => {
+export const runMain = async <A, E, R>(program: Effect.Effect<A, E, R | Scope.Scope>, options: RuntimeOptions<any, any, any> = {}): Promise<void> => {
   const { runtimeBaseLayer, ...restartOptions } = options;
 
   const runtimeEffect = runtimeBaseLayer ? Effect.runtime().pipe(Effect.provide(runtimeBaseLayer)) : Effect.runtime();

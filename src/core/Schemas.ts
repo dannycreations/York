@@ -104,11 +104,11 @@ export const GqlResponseSchema = <A, I, R>(data: Schema.Schema<A, I, R>) =>
     extensions: Schema.optional(GqlExtensionsSchema),
   });
 
-export type GqlResponse<T = unknown> = {
+export interface GqlResponse<T = unknown> {
   readonly data: T;
   readonly errors?: ReadonlyArray<GqlError>;
   readonly extensions?: GqlExtensions;
-};
+}
 
 export const ViewerDropsDashboardSchema = Schema.Struct({
   currentUser: Schema.Struct({
@@ -262,18 +262,10 @@ export const HelixStreamsSchema = Schema.Struct({
       id: Schema.String,
       user_id: Schema.String,
       user_login: Schema.String,
-      user_name: Schema.String,
       game_id: Schema.String,
       game_name: Schema.String,
       type: Schema.String,
-      title: Schema.String,
-      viewer_count: Schema.Number,
       started_at: DateFromAny,
-      language: Schema.String,
-      thumbnail_url: Schema.String,
-      tag_ids: Schema.Array(Schema.String),
-      tags: Schema.Array(Schema.String),
-      is_mature: Schema.Boolean,
     }),
   ),
 });
@@ -429,6 +421,7 @@ export const SocketMessageMomentActiveSchema = Schema.Struct({
 
 export const SocketMessageBroadcastUpdateSchema = Schema.Struct({
   type: Schema.Literal('broadcast_settings_update'),
+  channel_id: Schema.optional(Schema.String),
   data: Schema.Struct({
     game_id: Schema.Union(Schema.String, Schema.Number),
     game: Schema.String,
