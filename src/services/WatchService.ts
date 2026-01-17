@@ -108,6 +108,7 @@ export const WatchServiceLayer: Layer.Layer<WatchServiceTag, never, HttpClientTa
           if (!currentHlsUrl) {
             currentHlsUrl = yield* getHlsUrl(channel.login);
           }
+
           const success = yield* checkStream(currentHlsUrl);
           if (!success) {
             const live = yield* api.channelLive(channel.login);
@@ -121,19 +122,12 @@ export const WatchServiceLayer: Layer.Layer<WatchServiceTag, never, HttpClientTa
           return success;
         }).pipe(Effect.catchAll(() => Effect.succeed(false)));
 
-        const eventSuccess = yield* sendEvent;
-        const streamSuccess = yield* sendStream;
+        const [eventSuccess, streamSuccess] = yield* Effect.all([sendEvent, sendStream]);
 
-        const result = {
+        return {
           success: eventSuccess || streamSuccess,
           hlsUrl: currentHlsUrl,
         };
-
-        yield* Effect.logDebug(`Watch attempt: event=${eventSuccess}, stream=${streamSuccess}`).pipe(
-          Effect.annotateLogs({ service: 'WatchService', channel: channel.login }),
-        );
-
-        return result;
       }).pipe(Effect.catchAll(() => Effect.succeed({ success: false })));
 
     const getHlsUrl = (login: string): Effect.Effect<string, WatchError> =>
@@ -147,10 +141,11 @@ export const WatchServiceLayer: Layer.Layer<WatchServiceTag, never, HttpClientTa
 
         const hlsFilter = hls.body.split('\n').filter(Boolean).reverse();
         const found = hlsFilter.find((url) => url.startsWith('http'));
-        if (!found) {
-          return yield* Effect.fail(new WatchError({ message: 'HLS URL not found' }));
+        if (found) {
+          return found;
         }
-        return found;
+
+        return yield* Effect.fail(new WatchError({ message: 'HLS URL not found' }));
       }).pipe(Effect.catchAll((e) => Effect.fail(new WatchError({ message: 'Failed to get HLS URL', cause: e }))));
 
     const checkStream = (hlsUrl: string): Effect.Effect<boolean, WatchError> =>
@@ -163,12 +158,13 @@ export const WatchServiceLayer: Layer.Layer<WatchServiceTag, never, HttpClientTa
         }
 
         const res = yield* http.request({ method: 'HEAD', url: chunkUrl });
-        if (res.statusCode === 404) {
-          return false;
-        }
         return res.statusCode === 200;
       }).pipe(Effect.catchAll(() => Effect.succeed(false)));
 
-    return { watch, getHlsUrl, checkStream };
+    return {
+      watch,
+      getHlsUrl,
+      checkStream,
+    };
   }),
 );

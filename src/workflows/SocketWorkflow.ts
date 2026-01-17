@@ -66,7 +66,7 @@ const handleUserDrop = (payload: SocketMessage['payload'], currentDrop: Option.O
         const desync = progress - drop.currentMinutesWatched;
         if (desync !== 0) {
           yield* Ref.update(state.currentDrop, (d) => Option.map(d, (dr) => ({ ...dr, currentMinutesWatched: progress })));
-          yield* Ref.set(state.minutesWatched, 1);
+          yield* Ref.set(state.localMinutesWatched, 1);
           yield* Effect.logInfo(chalk`{green ${drop.name}} | {yellow Desync ${desync > 0 ? '+' : ''}${desync} minutes}`);
         }
       }

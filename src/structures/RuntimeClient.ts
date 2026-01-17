@@ -62,7 +62,7 @@ export const cycleWithRestart = <A, E, R>(
       restartTimes.push(...recentRestarts);
 
       if (restartTimes.length >= maxRestarts) {
-        yield* Effect.logFatal(chalk`{bold.red System crashed too many times (${maxRestarts}+ in ${intervalMs / 1000}s). Shutting down...}`, cause);
+        yield* Effect.logFatal(chalk`{bold.red System crashed too many times. Shutting down...}`, cause);
         yield* Effect.sync(() => process.exit(1));
       }
 

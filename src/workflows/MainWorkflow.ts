@@ -31,7 +31,7 @@ export interface MainState {
   readonly currentCampaign: Ref.Ref<Option.Option<Campaign>>;
   readonly currentChannel: Ref.Ref<Option.Option<Channel>>;
   readonly currentDrop: Ref.Ref<Option.Option<Drop>>;
-  readonly minutesWatched: Ref.Ref<number>;
+  readonly localMinutesWatched: Ref.Ref<number>;
   readonly nextPointClaim: Ref.Ref<number>;
   readonly nextWatch: Ref.Ref<number>;
   readonly isClaiming: Ref.Ref<boolean>;
@@ -57,7 +57,7 @@ const checkHigherPriority = (state: MainState, campaign: Campaign, campaignStore
 
 const updateChannelInfo = (state: MainState, api: TwitchApi, chan: Channel): Effect.Effect<Channel | null, MainWorkflowError> =>
   Effect.gen(function* () {
-    if (chan.currentSid && (yield* Ref.get(state.minutesWatched)) > 0) return chan;
+    if (chan.currentSid && (yield* Ref.get(state.localMinutesWatched)) > 0) return chan;
 
     const streamRes = yield* api.helixStreams(chan.id).pipe(Effect.mapError((e) => new MainWorkflowError({ message: e.message, cause: e })));
 
@@ -80,24 +80,23 @@ const updateChannelInfo = (state: MainState, api: TwitchApi, chan: Channel): Eff
 
 const handleWatchSuccess = (state: MainState, chan: Channel, campaignStore: CampaignStore): Effect.Effect<void, TwitchApiError> =>
   Effect.gen(function* () {
-    yield* Ref.update(state.minutesWatched, (m) => m + 1);
+    yield* Ref.update(state.localMinutesWatched, (m) => m + 1);
     yield* Ref.set(state.nextWatch, Date.now() + 60_000);
 
     const dropOpt = yield* Ref.get(state.currentDrop);
     if (Option.isSome(dropOpt)) {
       const drop = dropOpt.value;
-      const localMinutesWatched = drop.currentMinutesWatched + 1;
-      yield* Effect.logInfo(chalk`{green ${drop.name}} | {green ${chan.login}} | {green ${localMinutesWatched}/${drop.requiredMinutesWatched}}`);
-      yield* Ref.update(state.currentDrop, (d) => Option.map(d, (dr) => ({ ...dr, currentMinutesWatched: localMinutesWatched })));
+      const currentMinutesWatched = drop.currentMinutesWatched + 1;
+      yield* Effect.logInfo(chalk`{green ${drop.name}} | {green ${chan.login}} | {green ${currentMinutesWatched}/${drop.requiredMinutesWatched}}`);
+      yield* Ref.update(state.currentDrop, (d) => Option.map(d, (dr) => ({ ...dr, currentMinutesWatched })));
 
-      const minsWatched = yield* Ref.get(state.minutesWatched);
-      if (minsWatched >= 20) {
-        yield* Ref.set(state.minutesWatched, 0);
+      if ((yield* Ref.get(state.localMinutesWatched)) >= 20) {
+        yield* Ref.set(state.localMinutesWatched, 0);
         yield* campaignStore.updateProgress;
         const drops = yield* campaignStore.getDropsForCampaign(drop.campaignId);
         const updatedDrop = drops.find((d) => d.id === drop.id);
         if (updatedDrop) {
-          if (localMinutesWatched - updatedDrop.currentMinutesWatched >= 20) {
+          if (currentMinutesWatched - updatedDrop.currentMinutesWatched >= 20) {
             yield* Ref.update(state.currentChannel, (c) => Option.map(c, (ch) => ({ ...ch, isOnline: false })));
           }
           yield* Ref.set(state.currentDrop, Option.some(updatedDrop));
@@ -206,7 +205,7 @@ const performWatchLoop = (
             { concurrency: 'unbounded' },
           ).pipe(Effect.catchAllCause(() => Effect.void));
 
-          yield* Ref.set(state.minutesWatched, 0);
+          yield* Ref.set(state.localMinutesWatched, 0);
         }),
       { discard: true },
     );
@@ -402,7 +401,7 @@ export const MainWorkflow: Effect.Effect<
     currentCampaign: yield* Ref.make<Option.Option<Campaign>>(Option.none()),
     currentChannel: yield* Ref.make<Option.Option<Channel>>(Option.none()),
     currentDrop: yield* Ref.make<Option.Option<Drop>>(Option.none()),
-    minutesWatched: yield* Ref.make(0),
+    localMinutesWatched: yield* Ref.make(0),
     nextPointClaim: yield* Ref.make(0),
     nextWatch: yield* Ref.make(0),
     isClaiming: yield* Ref.make(false),
