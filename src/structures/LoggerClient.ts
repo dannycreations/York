@@ -37,7 +37,7 @@ export interface LoggerOptions {
   readonly rejection?: boolean;
 }
 
-export const createLogger = (options: LoggerOptions = {}) => {
+export const createLogger = (options: LoggerOptions = {}): pino.Logger => {
   const {
     dir = join(process.cwd(), 'logs'),
     level = process.env.NODE_ENV === 'development' ? 'debug' : 'info',
@@ -108,13 +108,13 @@ export const createLogger = (options: LoggerOptions = {}) => {
     pino.multistream(streams),
   );
 
-  if (exception) {
+  if (exception && process.listenerCount('uncaughtException') === 0) {
     process.on('uncaughtException', (error, origin) => {
       instance.fatal({ error, origin }, 'UncaughtException');
     });
   }
 
-  if (rejection) {
+  if (rejection && process.listenerCount('unhandledRejection') === 0) {
     process.on('unhandledRejection', (reason, promise) => {
       instance.fatal({ reason, promise }, 'UnhandledRejection');
     });
@@ -142,8 +142,7 @@ export const LoggerClientLayer = (self: Logger.Logger<unknown, void>, logger: pi
           }
         }
 
-        const logFn = logger[level] as (...args: unknown[]) => void;
-        logFn(...payload);
+        (logger[level] as Function)(...payload);
       }),
     ),
     Logger.minimumLogLevel(PINO_LEVEL_MAP[logger.level] ?? LogLevel.Info),

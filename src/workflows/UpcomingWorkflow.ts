@@ -5,7 +5,7 @@ import { CampaignStoreTag } from '../services/CampaignStore';
 
 import type { MainState } from './MainWorkflow';
 
-export const UpcomingWorkflow = (state: MainState) =>
+export const UpcomingWorkflow = (state: MainState): Effect.Effect<void, never, CampaignStoreTag> =>
   Effect.gen(function* () {
     const campaignStore = yield* CampaignStoreTag;
     const sleepTime = 7_200_000;

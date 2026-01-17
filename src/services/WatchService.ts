@@ -1,4 +1,4 @@
-import { Context, Data, Effect, Layer, Ref } from 'effect';
+import { Context, Data, Effect, Layer, Option, Ref } from 'effect';
 
 import { PlaybackTokenSchema } from '../core/Types';
 import { HttpClientTag } from '../structures/HttpClient';
@@ -25,42 +25,47 @@ export const WatchServiceLayer: Layer.Layer<WatchServiceTag, never, HttpClientTa
     const http = yield* HttpClientTag;
     const api = yield* TwitchApiTag;
 
-    const settingUrlRef = yield* Ref.make<string | undefined>(undefined);
-    const spadeUrlRef = yield* Ref.make<string | undefined>(undefined);
+    const settingUrlRef = yield* Ref.make<Option.Option<string>>(Option.none());
+    const spadeUrlRef = yield* Ref.make<Option.Option<string>>(Option.none());
 
-    const getSpadeUrl = Effect.gen(function* () {
-      const spadeUrl = yield* Ref.get(spadeUrlRef);
-      if (spadeUrl) {
-        return spadeUrl;
-      }
-
-      let settingUrl = yield* Ref.get(settingUrlRef);
-      if (!settingUrl) {
-        const webRes = yield* http.request({ url: 'https://www.twitch.tv' });
-        const match = webRes.body.match(/https:\/\/(static\.twitchcdn\.net|assets\.twitch\.tv)\/config\/settings\.[0-9a-f]{32}\.js/);
-        if (match && match[0]) {
-          settingUrl = match[0];
-          yield* Ref.set(settingUrlRef, settingUrl);
-        } else {
-          return yield* Effect.fail(new WatchError({ message: 'Could not parse Settings URL' }));
-        }
-        yield* Ref.set(settingUrlRef, settingUrl);
-      }
-
-      const settingRes = yield* http.request({ url: settingUrl });
-      const spadeMatch = settingRes.body.match(/https:\/\/video-edge-[.\w\-/]+\.ts/);
-      if (!spadeMatch || !spadeMatch[0]) {
-        return yield* Effect.fail(new WatchError({ message: 'Could not parse Spade URL' }));
-      }
-
-      const foundSpadeUrl = spadeMatch[0];
-      yield* Ref.set(spadeUrlRef, foundSpadeUrl);
-      return foundSpadeUrl;
-    });
-
-    const watch = (channel: Channel) =>
+    const getSpadeUrl = (): Effect.Effect<string, WatchError> =>
       Effect.gen(function* () {
-        const spadeUrl = yield* getSpadeUrl;
+        const spadeUrl = yield* Ref.get(spadeUrlRef);
+        if (Option.isSome(spadeUrl)) {
+          return spadeUrl.value;
+        }
+
+        let settingUrl = yield* Ref.get(settingUrlRef);
+        if (Option.isNone(settingUrl)) {
+          const webRes = yield* http
+            .request({ url: 'https://www.twitch.tv' })
+            .pipe(Effect.mapError((e) => new WatchError({ message: 'Failed to fetch Twitch home', cause: e })));
+          const match = webRes.body.match(/https:\/\/(static\.twitchcdn\.net|assets\.twitch\.tv)\/config\/settings\.[0-9a-f]{32}\.js/);
+          if (match && match[0]) {
+            const foundSettingUrl = match[0];
+            yield* Ref.set(settingUrlRef, Option.some(foundSettingUrl));
+            settingUrl = Option.some(foundSettingUrl);
+          } else {
+            return yield* Effect.fail(new WatchError({ message: 'Could not parse Settings URL' }));
+          }
+        }
+
+        const settingRes = yield* http
+          .request({ url: Option.getOrThrow(settingUrl) })
+          .pipe(Effect.mapError((e) => new WatchError({ message: 'Failed to fetch settings', cause: e })));
+        const spadeMatch = settingRes.body.match(/https:\/\/video-edge-[.\w\-/]+\.ts/);
+        if (!spadeMatch || !spadeMatch[0]) {
+          return yield* Effect.fail(new WatchError({ message: 'Could not parse Spade URL' }));
+        }
+
+        const foundSpadeUrl = spadeMatch[0];
+        yield* Ref.set(spadeUrlRef, Option.some(foundSpadeUrl));
+        return foundSpadeUrl;
+      });
+
+    const watch = (channel: Channel): Effect.Effect<{ success: boolean; hlsUrl?: string }, WatchError> =>
+      Effect.gen(function* () {
+        const spadeUrl = yield* getSpadeUrl();
         const userId = yield* api.userId;
 
         if (!channel.currentSid) {

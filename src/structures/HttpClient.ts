@@ -49,7 +49,7 @@ export class HttpClientTag extends Context.Tag('@structures/HttpClient')<HttpCli
 const gotInstance: Got = got.bind(got);
 const userAgent = new UserAgent({ deviceCategory: 'desktop' });
 
-export const isErrorTimeout = (error: unknown) =>
+export const isErrorTimeout = (error: unknown): boolean =>
   isErrorLike<{ _tag: string; code?: string }>(error) && (error._tag === 'TimeoutException' || error.code === 'ETIMEDOUT');
 
 const requestFn = <T = string>(options: string | DefaultOptions) =>

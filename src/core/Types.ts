@@ -2,6 +2,8 @@ import { Schema } from 'effect';
 
 export const DropStatus = Schema.Literal('ACTIVE', 'EXPIRED', 'UPCOMING');
 
+export type DropStatus = Schema.Schema.Type<typeof DropStatus>;
+
 export const GRACE_PERIOD_MINUTES = 10;
 
 export const getDropStatus = (startAt: Date, endAt: Date, minutesLeft?: number) => {

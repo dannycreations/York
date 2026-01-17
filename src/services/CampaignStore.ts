@@ -1,8 +1,8 @@
 import { truncate } from '@vegapunk/utilities/common';
-import { Array as ArrayEffect, Context, Effect, Layer, Option, Ref } from 'effect';
+import { Array as ArrayEffect, Context, Effect, Layer, Option, Ref, Schema } from 'effect';
 
 import { ConfigStoreTag } from '../core/Config';
-import { ChannelDropsSchema, getDropStatus, WsTopic } from '../core/Types';
+import { ChannelDropsSchema, getDropStatus, InventorySchema, ViewerDropsDashboardSchema, WsTopic } from '../core/Types';
 import { GqlQueries, TwitchApiTag } from './TwitchApi';
 import { TwitchSocketTag } from './TwitchSocket';
 
@@ -47,64 +47,42 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
       const config = yield* configStore.get;
       const response = yield* api.dropsDashboard;
 
-      const dropCampaigns = response.currentUser.dropCampaigns;
       const existingCampaigns = yield* Ref.get(campaignsRef);
       const newCampaigns = new Map<string, Campaign>();
 
-      yield* Effect.forEach(
-        dropCampaigns,
-        (data) =>
-          Effect.gen(function* () {
-            const gameName = data.game.displayName;
-            if (config.exclusionList.has(gameName)) {
-              return;
-            }
+      const processCampaign = (
+        data: Schema.Schema.Type<typeof ViewerDropsDashboardSchema>['currentUser']['dropCampaigns'][number],
+      ): Effect.Effect<void, TwitchApiError> =>
+        Effect.gen(function* () {
+          const gameName = data.game.displayName;
+          if (config.exclusionList.has(gameName)) return;
 
-            if (config.usePriorityConnected && data.self.isAccountConnected) {
-              if (!config.priorityList.has(gameName)) {
-                yield* configStore.update((c) => ({
-                  ...c,
-                  priorityList: new Set([...c.priorityList, gameName]),
-                }));
-              }
-            }
+          if (config.usePriorityConnected && data.self.isAccountConnected && !config.priorityList.has(gameName)) {
+            yield* configStore.update((c) => ({
+              ...c,
+              priorityList: new Set([...c.priorityList, gameName]),
+            }));
+          }
 
-            const latestConfig = yield* configStore.get;
-            if (latestConfig.isPriorityOnly && !latestConfig.priorityList.has(gameName)) {
-              return;
-            }
+          const latestConfig = yield* configStore.get;
+          if (latestConfig.isPriorityOnly && !latestConfig.priorityList.has(gameName)) return;
 
-            const existing = existingCampaigns.get(data.id);
-            let allowChannels: ReadonlyArray<string> = existing?.allowChannels ?? [];
-            let campaignName = data.name;
-            let game = data.game;
+          const existing = existingCampaigns.get(data.id);
 
-            if (allowChannels.length === 0) {
-              const detailRes = yield* api.campaignDetails(data.id);
-              const dropDetail = detailRes.user?.dropCampaign;
-              if (dropDetail) {
-                allowChannels = dropDetail.allow?.channels?.map((c) => c.name) ?? [];
-                campaignName = dropDetail.name;
-                game = dropDetail.game;
-              }
-            }
+          newCampaigns.set(data.id, {
+            id: data.id,
+            name: truncate((existing?.name || data.name).trim()),
+            game: existing?.game || data.game,
+            startAt: new Date(data.startAt),
+            endAt: new Date(data.endAt),
+            isAccountConnected: data.self.isAccountConnected,
+            priority: existing?.priority ?? 0,
+            isOffline: existing?.isOffline ?? false,
+            allowChannels: existing?.allowChannels ?? [],
+          });
+        });
 
-            const campaign: Campaign = {
-              id: data.id,
-              name: truncate(campaignName.trim()),
-              game,
-              startAt: new Date(data.startAt),
-              endAt: new Date(data.endAt),
-              isAccountConnected: data.self.isAccountConnected,
-              priority: existing?.priority ?? 0,
-              isOffline: existing?.isOffline ?? false,
-              allowChannels,
-            };
-
-            newCampaigns.set(campaign.id, campaign);
-          }),
-        { discard: true },
-      );
+      yield* Effect.forEach(response.currentUser.dropCampaigns, processCampaign, { discard: true, concurrency: 10 });
       yield* Ref.set(campaignsRef, newCampaigns);
     });
 
@@ -128,10 +106,36 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
 
       const currentRewards = yield* Ref.get(rewardsRef);
 
-      const newProgress = ArrayEffect.flatMap(dropCampaignsInProgress, (campaign) => {
-        const sortedDrops = [...campaign.timeBasedDrops].sort((a, b) => a.requiredMinutesWatched - b.requiredMinutesWatched);
+      const mapDropData =
+        (campaignId: string, total: number) =>
+        (
+          item: {
+            data: Schema.Schema.Type<typeof InventorySchema>['currentUser']['inventory']['dropCampaignsInProgress'][number]['timeBasedDrops'][number];
+            benefits: string[];
+            startAt: Date;
+            endAt: Date;
+            isClaimed: boolean;
+          },
+          i: number,
+        ): Drop => ({
+          id: item.data.id,
+          name: truncate(`${i + 1}/${total}, ${item.data.benefitEdges[0].benefit.name?.trim() ?? item.data.name.trim()}`),
+          benefits: item.benefits,
+          campaignId,
+          startAt: item.startAt,
+          endAt: item.endAt,
+          requiredMinutesWatched: item.data.requiredMinutesWatched,
+          requiredSubs: (item.data.requiredSubs ?? 0) > 0 ? item.data.requiredSubs! : undefined,
+          isClaimed: item.isClaimed,
+          hasPreconditionsMet: item.data.self?.hasPreconditionsMet ?? true,
+          currentMinutesWatched: item.data.self?.currentMinutesWatched ?? 0,
+          dropInstanceID: item.data.self?.dropInstanceID || undefined,
+        });
 
-        const filteredDrops = ArrayEffect.filterMap(sortedDrops, (data) => {
+      const filterDrops = (
+        drops: Schema.Schema.Type<typeof InventorySchema>['currentUser']['inventory']['dropCampaignsInProgress'][number]['timeBasedDrops'],
+      ) =>
+        ArrayEffect.filterMap(drops, (data) => {
           const benefits = data.benefitEdges.map((e) => e.benefit.id);
           const startAt = new Date(data.startAt);
           const endAt = new Date(data.endAt);
@@ -139,11 +143,8 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
           const isClaimed = (data.requiredSubs ?? 0) > 0 || (data.self?.isClaimed ?? false);
           const isWatched = data.self ? data.self.currentMinutesWatched >= data.requiredMinutesWatched + 1 : false;
 
-          const alreadyClaimed = benefits.some((id) => currentRewards.some((r) => r.id === id && r.lastAwardedAt >= startAt));
-          if (isWatched && !config.isClaimDrops) {
-            return Option.none();
-          }
-          if (alreadyClaimed || isClaimed) {
+          const alreadyClaimed = benefits.some((id: string) => currentRewards.some((r) => r.id === id && r.lastAwardedAt >= startAt));
+          if ((isWatched && !config.isClaimDrops) || alreadyClaimed || isClaimed) {
             return Option.none();
           }
 
@@ -155,23 +156,10 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
           return Option.some({ data, benefits, startAt, endAt, isClaimed });
         });
 
-        return filteredDrops.map(
-          ({ data, benefits, startAt, endAt, isClaimed }, i) =>
-            ({
-              id: data.id,
-              name: truncate(`${i + 1}/${filteredDrops.length}, ${data.benefitEdges[0].benefit.name?.trim() ?? data.name.trim()}`),
-              benefits,
-              campaignId: campaign.id,
-              startAt,
-              endAt,
-              requiredMinutesWatched: data.requiredMinutesWatched,
-              requiredSubs: data.requiredSubs || undefined,
-              isClaimed,
-              hasPreconditionsMet: data.self?.hasPreconditionsMet ?? true,
-              currentMinutesWatched: data.self?.currentMinutesWatched ?? 0,
-              dropInstanceID: data.self?.dropInstanceID || undefined,
-            }) satisfies Drop,
-        );
+      const newProgress = ArrayEffect.flatMap(dropCampaignsInProgress, (campaign) => {
+        const sortedDrops = [...campaign.timeBasedDrops].sort((a, b) => a.requiredMinutesWatched - b.requiredMinutesWatched);
+        const filtered = filterDrops(sortedDrops);
+        return filtered.map(mapDropData(campaign.id, filtered.length));
       });
       yield* Ref.set(progressRef, newProgress);
     });
@@ -181,6 +169,20 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
         const detailRes = yield* api.campaignDetails(campaignId);
         const dropDetail = detailRes.user?.dropCampaign;
         if (!dropDetail) return [];
+
+        yield* Ref.update(campaignsRef, (map) => {
+          const next = new Map(map);
+          const existing = next.get(campaignId);
+          if (existing) {
+            next.set(campaignId, {
+              ...existing,
+              name: truncate(dropDetail.name.trim()),
+              game: dropDetail.game,
+              allowChannels: dropDetail.allow?.channels?.map((c) => c.name) ?? [],
+            });
+          }
+          return next;
+        });
 
         const currentRewards = yield* Ref.get(rewardsRef);
         const sortedDrops = [...dropDetail.timeBasedDrops].sort((a, b) => a.requiredMinutesWatched - b.requiredMinutesWatched);
@@ -235,36 +237,17 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
       const state = yield* Ref.get(stateRef);
       const config = yield* configStore.get;
 
-      const dropCampaigns = ArrayEffect.fromIterable(map.values()).filter((c) => {
-        if (c.isOffline) {
-          return false;
-        }
-        if (getDropStatus(c.startAt, c.endAt).isExpired) {
-          return false;
-        }
-        if (state === 'PriorityOnly' && !config.priorityList.has(c.game.displayName)) {
-          return false;
-        }
+      const activeCampaigns = ArrayEffect.fromIterable(map.values()).filter((c) => {
+        if (c.isOffline) return false;
+        if (getDropStatus(c.startAt, c.endAt).isExpired) return false;
+        if (state === 'PriorityOnly' && !config.priorityList.has(c.game.displayName)) return false;
         return true;
       });
 
-      const sorted = [...dropCampaigns].sort((a, b) => a.endAt.getTime() - b.endAt.getTime());
-      for (let i = 0; i < sorted.length; i++) {
-        for (let j = i + 1; j < sorted.length; j++) {
-          const left = sorted[i];
-          const right = sorted[j];
-          if (left.game.id !== right.game.id) {
-            continue;
-          }
-          if (left.startAt.getTime() <= right.startAt.getTime()) {
-            continue;
-          }
-
-          const campaign = sorted.splice(j, 1)[0];
-          sorted.splice(i, 0, campaign);
-        }
-      }
-      return sorted;
+      return [...activeCampaigns].sort((a, b) => {
+        if (a.priority !== b.priority) return b.priority - a.priority;
+        return a.endAt.getTime() - b.endAt.getTime();
+      });
     });
 
     const getSortedUpcoming = Effect.gen(function* () {
@@ -301,7 +284,7 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
 
     const getChannelsForCampaign = (campaign: Campaign) =>
       Effect.gen(function* () {
-        const filterChannelsByCampaign = (channels: readonly Channel[], campaignId: string) =>
+        const filterChannelsByCampaign = (channels: readonly Channel[], campaignId: string): Effect.Effect<ReadonlyArray<Channel>, TwitchApiError> =>
           Effect.gen(function* () {
             if (channels.length === 0) {
               return [];
@@ -316,7 +299,7 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
             });
           });
 
-        const cleanup = (channels: readonly Channel[]) =>
+        const cleanup = (channels: readonly Channel[]): Effect.Effect<void, TwitchSocketError> =>
           Effect.gen(function* () {
             if (!socket) {
               return;

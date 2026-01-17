@@ -1,6 +1,6 @@
 import { WebSocket } from '@vegapunk/struct';
 import { chalk, randomString } from '@vegapunk/utilities';
-import { Context, Data, Effect, Layer, PubSub, Ref, Runtime, Schema, Stream } from 'effect';
+import { Context, Data, Effect, Layer, Option, PubSub, Ref, Runtime, Schema, Stream } from 'effect';
 
 export const SocketMessageSchema = Schema.Struct({
   topicType: Schema.String,
@@ -44,11 +44,11 @@ export const TwitchSocketLayer = (authToken: string): Layer.Layer<TwitchSocketTa
     Effect.gen(function* () {
       const messagesPubSub = yield* PubSub.unbounded<SocketMessage>();
       const subscribedTopics = yield* Ref.make<ReadonlySet<string>>(new Set());
-      const wsRef = yield* Ref.make<WebSocket<object> | undefined>(undefined);
+      const wsRef = yield* Ref.make<Option.Option<WebSocket<object>>>(Option.none());
       const isConnecting = yield* Ref.make(false);
       const lastPongReceivedAt = yield* Ref.make(Date.now());
 
-      const performListen = (ws: WebSocket<object>, topic: string, id: string, updateRef: boolean) =>
+      const performListen = (ws: WebSocket<object>, topic: string, id: string, updateRef: boolean): Effect.Effect<void, TwitchSocketError> =>
         Effect.gen(function* () {
           const topicKey = `${topic}.${id}`;
           if (updateRef) {
@@ -83,6 +83,7 @@ export const TwitchSocketLayer = (authToken: string): Layer.Layer<TwitchSocketTa
 
       const onMessage = (data: Buffer) =>
         Effect.gen(function* () {
+          const raw = JSON.parse(data.toString('utf8'));
           const messageResult = yield* Schema.decodeUnknown(
             Schema.Struct({
               type: Schema.optional(Schema.String),
@@ -90,66 +91,68 @@ export const TwitchSocketLayer = (authToken: string): Layer.Layer<TwitchSocketTa
               error: Schema.optional(Schema.String),
               nonce: Schema.optional(Schema.String),
             }),
-          )(JSON.parse(data.toString('utf8'))).pipe(Effect.catchAll(() => Effect.succeed(undefined)));
+          )(raw).pipe(Effect.catchAll(() => Effect.succeed(undefined)));
 
-          if (!messageResult) {
-            return;
-          }
+          if (!messageResult) return;
 
-          if (messageResult.type === 'PONG') {
-            yield* Ref.set(lastPongReceivedAt, Date.now());
-            yield* Effect.logDebug('TwitchSocket: PONG received');
-            return;
-          }
-
-          if (messageResult.type === 'RESPONSE') {
-            if (messageResult.error && messageResult.error !== '') {
-              yield* Effect.logWarning(chalk`{yellow TwitchSocket: Received RESPONSE with error: ${messageResult.error}}`);
-            }
-            return;
-          }
-
-          if (messageResult.type === 'RECONNECT') {
-            yield* Effect.logInfo('AppSocket: Received RECONNECT instruction from server');
-            const socket = yield* Ref.get(wsRef);
-            if (socket) {
-              yield* Effect.sync(() => socket.disconnect(false));
-            }
-            return;
-          }
-
-          if (messageResult.type === 'MESSAGE') {
-            const eventData = messageResult.data;
-            if (!eventData || typeof eventData !== 'object' || !('message' in eventData) || typeof eventData.message !== 'string') {
-              return;
+          switch (messageResult.type) {
+            case 'PONG': {
+              yield* Ref.set(lastPongReceivedAt, Date.now());
+              yield* Effect.logDebug('TwitchSocket: PONG received');
+              break;
             }
 
-            const content = yield* Schema.decodeUnknown(
-              Schema.Struct({
-                data: Schema.optional(Schema.Unknown),
-                topic_id: Schema.optional(Schema.String),
-              }),
-            )(JSON.parse(eventData.message as string)).pipe(Effect.catchAll(() => Effect.succeed(undefined)));
-
-            if (!content) {
-              return yield* Effect.void;
+            case 'RESPONSE': {
+              if (messageResult.error && messageResult.error !== '') {
+                yield* Effect.logWarning(chalk`{yellow TwitchSocket: Received RESPONSE with error: ${messageResult.error}}`);
+              }
+              break;
             }
 
-            if (typeof eventData !== 'object' || !('topic' in eventData) || typeof eventData.topic !== 'string') {
-              return;
+            case 'RECONNECT': {
+              yield* Effect.logInfo('AppSocket: Received RECONNECT instruction from server');
+              const socket = yield* Ref.get(wsRef);
+              if (Option.isSome(socket)) {
+                yield* Effect.sync(() => socket.value.disconnect(false));
+              }
+              break;
             }
 
-            const [topicType, topicId] = eventData.topic.split('.');
-            const payload = {
-              topicType,
-              topicId,
-              ...content,
-              ...(content.data && typeof content.data === 'object' ? content.data : {}),
-              topic_id: content.topic_id ?? topicId,
-            };
+            case 'MESSAGE': {
+              const eventData = messageResult.data;
+              if (
+                !eventData ||
+                typeof eventData !== 'object' ||
+                !('message' in eventData) ||
+                typeof eventData.message !== 'string' ||
+                !('topic' in eventData) ||
+                typeof eventData.topic !== 'string'
+              ) {
+                return;
+              }
 
-            const decoded = yield* Schema.decodeUnknown(SocketMessageSchema)(payload).pipe(Effect.orDie);
-            yield* PubSub.publish(messagesPubSub, decoded);
+              const content = yield* Schema.decodeUnknown(
+                Schema.Struct({
+                  data: Schema.optional(Schema.Unknown),
+                  topic_id: Schema.optional(Schema.String),
+                }),
+              )(JSON.parse(eventData.message)).pipe(Effect.catchAll(() => Effect.succeed(undefined)));
+
+              if (!content) return;
+
+              const [topicType, topicId] = eventData.topic.split('.');
+              const payload = {
+                topicType,
+                topicId,
+                ...content,
+                ...(content.data && typeof content.data === 'object' ? content.data : {}),
+                topic_id: content.topic_id ?? topicId,
+              };
+
+              const decoded = yield* Schema.decodeUnknown(SocketMessageSchema)(payload).pipe(Effect.orDie);
+              yield* PubSub.publish(messagesPubSub, decoded);
+              break;
+            }
           }
         });
 
@@ -194,17 +197,18 @@ export const TwitchSocketLayer = (authToken: string): Layer.Layer<TwitchSocketTa
         autoConnect: false,
         pingIntervalMs: 180_000,
         requestTimeoutMs: 10_000,
+        logger: (...args: unknown[]) => Effect.logDebug(...args),
       });
 
-      yield* Ref.set(wsRef, ws);
+      yield* Ref.set(wsRef, Option.some(ws));
       yield* Effect.addFinalizer(() => Effect.sync(() => ws.dispose()));
 
       const connect = Effect.gen(function* () {
         if (yield* Ref.get(isConnecting)) {
           return;
         }
+
         yield* Ref.set(isConnecting, true);
-        yield* Effect.logDebug('TwitchSocket: Connecting to PubSub...');
         yield* Effect.tryPromise({
           try: () => Promise.resolve(ws.connect()),
           catch: (e) => new TwitchSocketError({ message: 'Failed to connect', cause: e }),
@@ -221,8 +225,8 @@ export const TwitchSocketLayer = (authToken: string): Layer.Layer<TwitchSocketTa
             return;
           }
           const socket = yield* Ref.get(wsRef);
-          if (socket) {
-            yield* performListen(socket, topic, id, true);
+          if (Option.isSome(socket)) {
+            yield* performListen(socket.value, topic, id, true);
           }
         });
 
@@ -241,10 +245,10 @@ export const TwitchSocketLayer = (authToken: string): Layer.Layer<TwitchSocketTa
           });
 
           const socket = yield* Ref.get(wsRef);
-          if (socket) {
+          if (Option.isSome(socket)) {
             yield* Effect.tryPromise({
               try: () =>
-                socket.sendRequest({
+                socket.value.sendRequest({
                   description: `unlisten ${topicKey}`,
                   payload: JSON.stringify({
                     type: 'UNLISTEN',
@@ -263,8 +267,8 @@ export const TwitchSocketLayer = (authToken: string): Layer.Layer<TwitchSocketTa
       const disconnect = (reconnect: boolean = false) =>
         Effect.gen(function* () {
           const socket = yield* Ref.get(wsRef);
-          if (socket) {
-            yield* Effect.sync(() => socket.disconnect(reconnect));
+          if (Option.isSome(socket)) {
+            yield* Effect.sync(() => socket.value.disconnect(reconnect));
           }
         });
 

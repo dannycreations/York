@@ -9,7 +9,7 @@ import { TwitchSocketLayer } from './services/TwitchSocket';
 import { WatchServiceLayer } from './services/WatchService';
 import { HttpClientLayer } from './structures/HttpClient';
 import { createLogger, LoggerClientLayer } from './structures/LoggerClient';
-import { runForkWithCleanUp } from './structures/RuntimeClient';
+import { cycleWithRestart, runForkWithCleanUp } from './structures/RuntimeClient';
 import { MainWorkflow } from './workflows/MainWorkflow';
 
 const MainLayer = Layer.unwrapEffect(
@@ -30,10 +30,4 @@ const MainLayer = Layer.unwrapEffect(
   }),
 );
 
-const run = () => {
-  const program = MainWorkflow.pipe(Effect.provide(MainLayer), Effect.scoped);
-
-  runForkWithCleanUp(program);
-};
-
-run();
+runForkWithCleanUp(cycleWithRestart(MainWorkflow.pipe(Effect.provide(MainLayer))));

@@ -8,7 +8,7 @@ import type { ClientConfig } from '../core/Config';
 import type { StoreClient } from '../structures/StoreClient';
 import type { MainState } from './MainWorkflow';
 
-export const OfflineWorkflow = (state: MainState, configStore: StoreClient<ClientConfig>) =>
+export const OfflineWorkflow = (state: MainState, configStore: StoreClient<ClientConfig>): Effect.Effect<void, never, CampaignStoreTag> =>
   Effect.gen(function* () {
     const campaignStore = yield* CampaignStoreTag;
 
