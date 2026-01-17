@@ -355,10 +355,12 @@ export const ClaimDropsSchema = Schema.Struct({
 export const ClaimPointsSchema = Schema.Struct({
   claimCommunityPoints: Schema.NullOr(
     Schema.Struct({
-      claim: Schema.Struct({
-        id: Schema.String,
-      }),
-      currentPoints: Schema.optional(Schema.Number),
+      claim: Schema.NullOr(
+        Schema.Struct({
+          id: Schema.String,
+        }),
+      ),
+      currentPoints: Schema.NullOr(Schema.Number),
     }),
   ),
 });

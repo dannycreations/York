@@ -1,4 +1,4 @@
-import { Context, Data, Effect, Fiber, Layer, Option, PubSub, Ref, Schedule, Scope, Stream } from 'effect';
+import { Context, Data, Deferred, Effect, Fiber, Layer, Option, PubSub, Ref, Schedule, Scope, Stream } from 'effect';
 import { WebSocket as WsClient } from 'ws';
 
 import type { ClientRequestArgs } from 'node:http';
@@ -8,7 +8,10 @@ export type SocketEvent =
   | { readonly _tag: 'Open' }
   | { readonly _tag: 'Message'; readonly data: string }
   | { readonly _tag: 'Error'; readonly cause: unknown }
-  | { readonly _tag: 'Close' };
+  | { readonly _tag: 'Close' }
+  | { readonly _tag: 'Pong' };
+
+export type SocketPublicEvent = Exclude<SocketEvent, { readonly _tag: 'Pong' }>;
 
 export class SocketClientError extends Data.TaggedError('SocketClientError')<{
   readonly message: string;
@@ -27,7 +30,7 @@ export interface SocketClientOptions {
 
 export interface SocketClient {
   readonly send: (payload: string | object) => Effect.Effect<void, SocketClientError>;
-  readonly events: Stream.Stream<SocketEvent, never, never>;
+  readonly events: Stream.Stream<SocketPublicEvent, never, never>;
   readonly connect: Effect.Effect<void, SocketClientError>;
   readonly disconnect: (graceful?: boolean) => Effect.Effect<void>;
 }
@@ -44,7 +47,7 @@ export const createSocketClient = (options: SocketClientOptions): Effect.Effect<
       socketOptions = {},
     } = options;
 
-    const eventsPubSub = yield* PubSub.unbounded<SocketEvent>();
+    const eventsPubSub = yield* PubSub.unbounded<SocketPublicEvent>();
     const wsRef = yield* Ref.make<Option.Option<WsClient>>(Option.none());
     const lastPongReceivedAt = yield* Ref.make(Date.now());
     const reconnectAttempts = yield* Ref.make(0);
@@ -67,6 +70,15 @@ export const createSocketClient = (options: SocketClientOptions): Effect.Effect<
         }
       });
 
+    const makeRawStream = (ws: WsClient) =>
+      Stream.async<SocketEvent, never>((emit) => {
+        ws.once('open', () => emit.single({ _tag: 'Open' }));
+        ws.on('message', (data) => emit.single({ _tag: 'Message', data: data.toString() }));
+        ws.on('error', (cause) => emit.single({ _tag: 'Error', cause }));
+        ws.on('close', () => emit.single({ _tag: 'Close' }));
+        ws.on('pong', () => emit.single({ _tag: 'Pong' }));
+      });
+
     const connect: Effect.Effect<void, SocketClientError> = Effect.gen(function* () {
       const wsOpt = yield* Ref.get(wsRef);
       if (Option.isSome(wsOpt)) return;
@@ -75,68 +87,49 @@ export const createSocketClient = (options: SocketClientOptions): Effect.Effect<
       const ws = new WsClient(url, socketOptions);
       yield* Ref.set(wsRef, Option.some(ws));
 
-      yield* Effect.async<void, SocketClientError>((resume) => {
-        ws.once('open', () => {
-          Effect.runFork(
-            Effect.gen(function* () {
-              yield* Ref.set(lastPongReceivedAt, Date.now());
-              yield* Ref.set(reconnectAttempts, 0);
-              yield* Effect.logDebug(`SocketClient: Connection established`);
-              yield* PubSub.publish(eventsPubSub, { _tag: 'Open' });
-              resume(Effect.void);
-            }),
-          );
-        });
+      const opened = yield* Deferred.make<void, SocketClientError>();
 
-        ws.on('message', (data) => {
-          const message = data.toString();
-          Effect.runFork(PubSub.publish(eventsPubSub, { _tag: 'Message', data: message }));
-        });
+      yield* makeRawStream(ws).pipe(
+        Stream.tap((event) =>
+          Effect.gen(function* () {
+            switch (event._tag) {
+              case 'Open':
+                yield* Ref.set(lastPongReceivedAt, Date.now());
+                yield* Ref.set(reconnectAttempts, 0);
+                yield* Effect.logDebug(`SocketClient: Connection established`);
+                yield* Deferred.succeed(opened, undefined);
+                break;
+              case 'Pong':
+                yield* Ref.set(lastPongReceivedAt, Date.now());
+                break;
+              case 'Error':
+                yield* Effect.logError(`SocketClient: WebSocket error on ${url}`, event.cause);
+                break;
+              case 'Close':
+                yield* Ref.set(wsRef, Option.none());
+                const attempts = yield* Ref.get(reconnectAttempts);
+                if (attempts < reconnectMaxAttempts) {
+                  yield* Ref.update(reconnectAttempts, (n) => n + 1);
+                  const baseDelay = reconnectBaseMs * 1.5 ** attempts;
+                  const jitter = baseDelay * 0.4 * (Math.random() - 0.5);
+                  const delay = Math.min(reconnectMaxMs, Math.floor(baseDelay + jitter));
+                  yield* Effect.logDebug(
+                    `SocketClient: Reconnect attempt ${attempts + 1}/${reconnectMaxAttempts === Infinity ? '∞' : reconnectMaxAttempts} in ${delay}ms`,
+                  );
+                  yield* Effect.sleep(`${delay} millis`);
+                  yield* connect.pipe(Effect.ignore);
+                } else {
+                  yield* Effect.logError(`SocketClient: Max reconnect attempts reached for ${url}`);
+                }
+                break;
+            }
+          }),
+        ),
+        Stream.runForEach((event) => (event._tag === 'Pong' ? Effect.void : PubSub.publish(eventsPubSub, event))),
+        Effect.fork,
+      );
 
-        ws.on('error', (cause) => {
-          Effect.runFork(
-            Effect.gen(function* () {
-              yield* Effect.logError(`SocketClient: WebSocket error on ${url}`, cause);
-              yield* PubSub.publish(eventsPubSub, { _tag: 'Error', cause });
-            }),
-          );
-        });
-
-        ws.on('close', (code) => {
-          Effect.runFork(
-            Effect.gen(function* () {
-              yield* PubSub.publish(eventsPubSub, { _tag: 'Close' });
-              yield* Ref.set(wsRef, Option.none());
-
-              if (code === 1000) {
-                yield* Effect.logInfo(`SocketClient: Connection closed gracefully on ${url}`);
-                return;
-              }
-
-              const attempts = yield* Ref.get(reconnectAttempts);
-              if (attempts >= reconnectMaxAttempts) {
-                yield* Effect.logError(`SocketClient: Max reconnect attempts reached for ${url}`);
-                return;
-              }
-
-              yield* Ref.update(reconnectAttempts, (n) => n + 1);
-              const baseDelay = reconnectBaseMs * 1.5 ** attempts;
-              const jitter = baseDelay * 0.4 * (Math.random() - 0.5);
-              const delay = Math.min(reconnectMaxMs, Math.floor(baseDelay + jitter));
-
-              yield* Effect.logDebug(
-                `SocketClient: Reconnect attempt ${attempts + 1}/${reconnectMaxAttempts === Infinity ? '∞' : reconnectMaxAttempts} in ${delay}ms`,
-              );
-              yield* Effect.sleep(`${delay} millis`);
-              yield* connect.pipe(Effect.ignore);
-            }),
-          );
-        });
-
-        ws.on('pong', () => {
-          Effect.runFork(Ref.set(lastPongReceivedAt, Date.now()));
-        });
-      });
+      return yield* Deferred.await(opened);
     });
 
     const pingLoop = Effect.gen(function* () {

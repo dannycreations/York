@@ -9,7 +9,7 @@ import { TwitchSocketLayer } from './services/TwitchSocket';
 import { WatchServiceLayer } from './services/WatchService';
 import { HttpClientLayer } from './structures/HttpClient';
 import { createLogger, LoggerClientLayer } from './structures/LoggerClient';
-import { cycleWithRestart, runForkWithCleanUp } from './structures/RuntimeClient';
+import { runMain } from './structures/RuntimeClient';
 import { MainWorkflow } from './workflows/MainWorkflow';
 
 const logger = createLogger({ exception: false, rejection: false });
@@ -23,11 +23,12 @@ const AppLayer = Layer.unwrapEffect(
     const TwitchApi = TwitchApiLayer(env.AUTH_TOKEN, env.IS_DEBUG);
     const TwitchSocket = TwitchSocketLayer(env.AUTH_TOKEN);
 
-    const ApiLayer = Layer.mergeAll(TwitchApi, TwitchSocket).pipe(Layer.provideMerge(BaseLayer));
-    const ServiceLayer = Layer.mergeAll(CampaignStoreLayer, WatchServiceLayer).pipe(Layer.provideMerge(ApiLayer));
-
-    return ServiceLayer;
+    const ApiLayer = Layer.mergeAll(TwitchApi, TwitchSocket);
+    const ServiceLayer = Layer.mergeAll(CampaignStoreLayer, WatchServiceLayer);
+    return ServiceLayer.pipe(Layer.provideMerge(ApiLayer));
   }),
 );
 
-runForkWithCleanUp(cycleWithRestart(MainWorkflow.pipe(Effect.provide(AppLayer), Effect.provide(BaseLayer))));
+runMain(MainWorkflow.pipe(Effect.provide(AppLayer)), {
+  runtimeBaseLayer: BaseLayer,
+});

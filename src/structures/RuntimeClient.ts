@@ -1,39 +1,45 @@
 import { chalk } from '@vegapunk/utilities';
 import { isErrorLike } from '@vegapunk/utilities/result';
-import { Cause, Data, Effect, Fiber, Schedule, Scope } from 'effect';
+import { Cause, Data, Effect, Fiber, Layer, Runtime, Schedule, Scope } from 'effect';
 
 export class RuntimeRestart extends Data.TaggedError('RuntimeRestart') {}
 
-export interface RuntimeOptions {
+export interface RuntimeRestartOptions {
   readonly maxRestarts?: number;
   readonly intervalMs?: number;
   readonly restartDelayMs?: number;
 }
 
-export const runForkWithCleanUp = <A, E>(effect: Effect.Effect<A, E>) => {
-  const fiber = Effect.runFork(
+export interface RuntimeOptions extends RuntimeRestartOptions {
+  readonly runtimeBaseLayer?: Layer.Layer<any, any, any>;
+}
+
+export const runForkWithCleanUp = <A, E, R>(effect: Effect.Effect<A, E, R>, runtime: Runtime.Runtime<R>) => {
+  const runFork = Runtime.runFork(runtime);
+  const runPromise = Runtime.runPromise(runtime);
+
+  const fiber = runFork(
     effect.pipe(
       Effect.catchAllCause((cause) =>
-        Effect.sync(() => {
-          Effect.logFatal('Fatal error in background process', cause);
+        Effect.gen(function* () {
+          yield* Effect.logFatal('Fatal error in background process', cause);
           process.exit(1);
         }),
       ),
     ),
   );
-  process.on('SIGINT', () => {
-    Effect.runPromise(Fiber.interrupt(fiber))
+
+  const cleanUp = () => {
+    runPromise(Fiber.interrupt(fiber))
       .then(() => process.exit(0))
       .catch(() => process.exit(1));
-  });
-  process.on('SIGTERM', () => {
-    Effect.runPromise(Fiber.interrupt(fiber))
-      .then(() => process.exit(0))
-      .catch(() => process.exit(1));
-  });
+  };
+
+  process.on('SIGINT', cleanUp);
+  process.on('SIGTERM', cleanUp);
 };
 
-export const cycleWithRestart = <A, E, R>(program: Effect.Effect<A, E, R | Scope.Scope>, options: RuntimeOptions = {}) => {
+export const cycleWithRestart = <A, E, R>(program: Effect.Effect<A, E, R | Scope.Scope>, options: RuntimeRestartOptions = {}) => {
   const { maxRestarts = 3, intervalMs = 60_000, restartDelayMs = 5_000 } = options;
   const restartTimes: number[] = [];
 
@@ -75,3 +81,11 @@ export const cycleMidnightRestart = Effect.gen(function* () {
   yield* Effect.logInfo(chalk`{bold.yellow It's midnight time. Restarting app...}`);
   return yield* Effect.fail(new RuntimeRestart());
 });
+
+export const runMain = async <A, E, R>(program: Effect.Effect<A, E, R | Scope.Scope>, options: RuntimeOptions = {}) => {
+  const { runtimeBaseLayer, ...restartOptions } = options;
+
+  const runtimeEffect = runtimeBaseLayer ? Effect.runtime().pipe(Effect.provide(runtimeBaseLayer)) : Effect.runtime();
+  const runtime = await Effect.runPromise(runtimeEffect as Effect.Effect<Runtime.Runtime<any>, never, never>);
+  runForkWithCleanUp(cycleWithRestart(program, restartOptions), runtime);
+};
