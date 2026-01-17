@@ -170,7 +170,14 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
       Effect.gen(function* () {
         const detailRes = yield* api.campaignDetails(campaignId);
         const dropDetail = detailRes.user?.dropCampaign;
-        if (!dropDetail) return [];
+        if (!dropDetail) {
+          yield* Ref.update(campaignsRef, (map) => {
+            const next = new Map(map);
+            next.delete(campaignId);
+            return next;
+          });
+          return [];
+        }
 
         yield* Ref.update(campaignsRef, (map) => {
           const next = new Map(map);

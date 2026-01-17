@@ -90,33 +90,44 @@ export const TwitchSocketLayer = (authToken: string): Layer.Layer<TwitchSocketTa
       const messages: Stream.Stream<SocketMessage, never, never> = client.events.pipe(
         Stream.filterMap((event) => {
           if (event._tag !== 'Message') return Option.none();
-          try {
-            const raw = JSON.parse(event.data);
-            if (raw.type === 'MESSAGE' && raw.data?.topic && raw.data?.message) {
-              const [topicType, topicId] = raw.data.topic.split('.');
-              const content = JSON.parse(raw.data.message);
-              return Option.some({
-                topicType,
-                topicId,
-                payload: {
-                  ...content,
-                  ...(content.data && typeof content.data === 'object' ? content.data : {}),
-                  topic_id: content.topic_id ?? topicId,
-                },
-              });
+
+          const parseJson = (data: string) => {
+            try {
+              return JSON.parse(data);
+            } catch {
+              return null;
             }
-            if (raw.type === 'RECONNECT') {
-              Effect.runFork(
-                Effect.gen(function* () {
-                  yield* Effect.logWarning('TwitchSocket: Received RECONNECT instruction from server');
-                  yield* client.disconnect(false);
-                  yield* client.connect.pipe(Effect.ignore);
-                }),
-              );
-            }
-          } catch (e) {
-            // Ignore parse errors
+          };
+
+          const raw = parseJson(event.data);
+          if (!raw) return Option.none();
+
+          if (raw.type === 'MESSAGE' && raw.data?.topic && raw.data?.message) {
+            const [topicType, topicId] = raw.data.topic.split('.');
+            const content = parseJson(raw.data.message);
+            if (!content) return Option.none();
+
+            return Option.some({
+              topicType,
+              topicId,
+              payload: {
+                ...content,
+                ...(content.data && typeof content.data === 'object' ? content.data : {}),
+                topic_id: content.topic_id ?? topicId,
+              },
+            });
           }
+
+          if (raw.type === 'RECONNECT') {
+            Effect.runFork(
+              Effect.gen(function* () {
+                yield* Effect.logWarning('TwitchSocket: Received RECONNECT instruction from server');
+                yield* client.disconnect(false);
+                yield* client.connect.pipe(Effect.ignore);
+              }),
+            );
+          }
+
           return Option.none();
         }),
         Stream.tap((payload) => Effect.logDebug(chalk`AppSocket: Emitted ${payload.topicType}.${payload.topicId}`, payload.payload)),

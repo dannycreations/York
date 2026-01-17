@@ -54,7 +54,7 @@ export const cycleWithRestart = <A, E, R>(program: Effect.Effect<A, E, R | Scope
 
       if (restartTimes.length >= maxRestarts) {
         yield* Effect.logFatal(chalk`{bold.red System crashed too many times (${maxRestarts}+ in ${intervalMs / 1000}s). Shutting down...}`, cause);
-        process.exit(1);
+        yield* Effect.sync(() => process.exit(1));
       }
 
       yield* Effect.logError(chalk`{bold.red System encountered an error}`, cause);

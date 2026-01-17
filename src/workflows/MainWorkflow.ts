@@ -354,11 +354,18 @@ export const MainWorkflow: Effect.Effect<
       return;
     }
 
-    const campaign = activeCampaigns[0];
+    let campaign = activeCampaigns[0];
     yield* Ref.set(state.currentCampaign, Option.some(campaign));
     yield* campaignStore.updateProgress.pipe(Effect.orDie);
 
     const drops = yield* campaignStore.getDropsForCampaign(campaign.id).pipe(Effect.orDie);
+    const campaignsMap = yield* Ref.get(campaignStore.campaigns);
+    const updatedCampaign = campaignsMap.get(campaign.id);
+    if (updatedCampaign) {
+      campaign = updatedCampaign;
+      yield* Ref.set(state.currentCampaign, Option.some(campaign));
+    }
+
     if (drops.length === 0) {
       yield* Effect.logInfo(chalk`${campaign.name} | {red No active drops}`);
       yield* campaignStore.setOffline(campaign.id, true);
