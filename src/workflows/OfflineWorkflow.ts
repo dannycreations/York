@@ -12,6 +12,8 @@ export const OfflineWorkflow = (state: MainState, configStore: StoreClient<Clien
   Effect.gen(function* () {
     const campaignStore = yield* CampaignStoreTag;
 
+    yield* Effect.sleep('120 seconds');
+
     yield* Effect.repeat(
       Effect.gen(function* () {
         const campaignsMap = yield* Ref.get(campaignStore.campaigns);
@@ -64,8 +66,8 @@ export const OfflineWorkflow = (state: MainState, configStore: StoreClient<Clien
           { discard: true },
         );
 
-        yield* Effect.sleep('2 minutes');
+        yield* Effect.sleep(`${Math.floor(Math.random() * 5000)} millis`);
       }),
-      Schedule.forever,
-    );
+      Schedule.spaced('120 seconds'),
+    ).pipe(Effect.asVoid);
   });
