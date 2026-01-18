@@ -4,6 +4,7 @@ import { chalk } from '@vegapunk/utilities';
 import { Context, Data, Deferred, Effect, Layer, Ref, Schedule, Schema } from 'effect';
 import UserAgent from 'user-agents';
 
+import { Twitch } from '../core/Constants';
 import {
   CampaignDetailsSchema,
   ChannelDropsSchema,
@@ -154,7 +155,7 @@ export const TwitchApiLayer = (authToken: string, isDebug: boolean = false): Lay
 
       const unique = Effect.gen(function* () {
         const response = yield* request<string>({
-          url: 'https://www.twitch.tv',
+          url: Twitch.WebUrl,
           headers: { accept: 'text/html' },
         }).pipe(Effect.catchAll((e) => Effect.dieMessage(chalk`{red Could not fetch your unique (client-version/cookies): ${e.message}}`)));
 
@@ -221,7 +222,7 @@ export const TwitchApiLayer = (authToken: string, isDebug: boolean = false): Lay
 
           const response = yield* request<ReadonlyArray<GqlResponse<unknown>>>({
             method: 'POST',
-            url: 'https://gql.twitch.tv/gql',
+            url: Twitch.ApiUrl,
             body,
             responseType: 'json',
           });

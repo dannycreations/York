@@ -1,6 +1,7 @@
 import { chalk, randomString } from '@vegapunk/utilities';
 import { Context, Data, Effect, Layer, Option, Ref, Schema, Stream } from 'effect';
 
+import { Twitch } from '../core/Constants';
 import { SocketMessageSchema } from '../core/Schemas';
 import { createSocketClient } from '../structures/SocketClient';
 
@@ -27,7 +28,7 @@ export const TwitchSocketLayer = (authToken: string): Layer.Layer<TwitchSocketTa
     TwitchSocketTag,
     Effect.gen(function* () {
       const client = yield* createSocketClient({
-        url: 'wss://pubsub-edge.twitch.tv/v1',
+        url: Twitch.WssUrl,
         pingIntervalMs: 180_000,
         pingTimeoutMs: 10_000,
         pingPayload: { type: 'PING' },

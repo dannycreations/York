@@ -1,8 +1,9 @@
+import { mkdir } from 'node:fs/promises';
 import { chalk } from '@vegapunk/utilities';
 import { Data, Effect, Option, Ref, Schedule, Scope } from 'effect';
 
 import { ConfigStoreTag } from '../core/Config';
-import { WsTopic } from '../core/Schemas';
+import { WsTopic } from '../core/Constants';
 import { getDropStatus, isMinutesWatchedMet } from '../helpers/TwitchHelper';
 import { TwitchApiTag } from '../services/TwitchApi';
 import { TwitchSocketTag } from '../services/TwitchSocket';
@@ -156,7 +157,10 @@ const performWatchLoop = (
             Effect.gen(function* () {
               if (yield* Ref.get(state.isClaiming)) return yield* Effect.sleep('5 seconds');
 
-              if (yield* checkHigherPriority(state, campaign, campaignStore)) return;
+              if (yield* checkHigherPriority(state, campaign, campaignStore)) {
+                yield* Ref.update(state.currentChannel, (c) => Option.map(c, (ch) => ({ ...ch, isOnline: false })));
+                return;
+              }
 
               const nowMs = Date.now();
               const nextWatchMs = yield* Ref.get(state.nextWatch);
@@ -386,6 +390,14 @@ const updatePriorities = (campaignStore: CampaignStore, configStore: StoreClient
     });
   });
 
+const ensureSettingsDir = Effect.gen(function* () {
+  const settingsDir = 'sessions';
+  yield* Effect.tryPromise({
+    try: () => mkdir(settingsDir, { recursive: true }),
+    catch: (e) => new MainWorkflowError({ message: 'Failed to create sessions directory', cause: e }),
+  }).pipe(Effect.catchAll(() => Effect.void));
+});
+
 export const MainWorkflow: Effect.Effect<
   void,
   RuntimeRestart,
@@ -396,6 +408,8 @@ export const MainWorkflow: Effect.Effect<
   const configStore = yield* ConfigStoreTag;
   const socket = yield* TwitchSocketTag;
   const watchService = yield* WatchServiceTag;
+
+  yield* ensureSettingsDir;
 
   const state: MainState = {
     currentCampaign: yield* Ref.make<Option.Option<Campaign>>(Option.none()),

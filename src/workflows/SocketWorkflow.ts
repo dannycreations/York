@@ -1,7 +1,8 @@
 import { chalk } from '@vegapunk/utilities';
+import { uniqueId } from '@vegapunk/utilities/common';
 import { Effect, Option, Ref, Stream } from 'effect';
 
-import { WsTopic } from '../core/Schemas';
+import { WsTopic } from '../core/Constants';
 import { TwitchApiTag } from '../services/TwitchApi';
 import { TwitchSocketTag } from '../services/TwitchSocket';
 
@@ -92,14 +93,15 @@ const processMessage = (
 
     const channel = currentChannelOpt.value;
 
-    if (msg.topicType === WsTopic.ChannelStream && msg.topicId !== channel.id) {
-      const socket = yield* TwitchSocketTag;
-      return yield* socket.unlisten(WsTopic.ChannelStream, msg.topicId).pipe(Effect.ignore);
+    if (msg.topicId !== channel.id && msg.topicId !== userId) {
+      if (msg.topicType === WsTopic.ChannelStream || msg.topicType === WsTopic.ChannelMoment || msg.topicType === WsTopic.ChannelUpdate) {
+        const socket = yield* TwitchSocketTag;
+        yield* socket.unlisten(msg.topicType, msg.topicId).pipe(Effect.ignore);
+      }
+      return;
     }
 
-    if (msg.topicId !== channel.id && msg.topicId !== userId) return;
-
-    yield* api.writeDebugFile(msg, `${msg.topicType}-${msg.payload.type ?? Date.now()}`);
+    yield* api.writeDebugFile(msg, `${msg.topicType}-${msg.payload.type ?? uniqueId()}`);
 
     switch (msg.topicType) {
       case WsTopic.ChannelStream: {

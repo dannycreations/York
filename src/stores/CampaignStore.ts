@@ -2,7 +2,8 @@ import { truncate } from '@vegapunk/utilities/common';
 import { Array, Context, Effect, Layer, Option, Order, Ref, Schema } from 'effect';
 
 import { ConfigStoreTag } from '../core/Config';
-import { ChannelDropsSchema, RewardExpiredMs, ViewerDropsDashboardSchema, WsTopic } from '../core/Schemas';
+import { WsTopic } from '../core/Constants';
+import { ChannelDropsSchema, ViewerDropsDashboardSchema } from '../core/Schemas';
 import { getDropStatus, isMinutesWatchedMet } from '../helpers/TwitchHelper';
 import { GqlQueries, TwitchApiTag } from '../services/TwitchApi';
 import { TwitchSocketTag } from '../services/TwitchSocket';
@@ -14,6 +15,8 @@ import type { TwitchSocket, TwitchSocketError } from '../services/TwitchSocket';
 import type { StoreClient } from '../structures/StoreClient';
 
 export type CampaignStoreState = 'Initial' | 'PriorityOnly' | 'All';
+
+const REWARD_EXPIRED_MS = 2_592_000_000;
 
 export interface CampaignStore {
   readonly campaigns: Ref.Ref<ReadonlyMap<string, Campaign>>;
@@ -143,7 +146,7 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
           id: d.id,
           lastAwardedAt: d.lastAwardedAt,
         }))
-        .filter((r) => now - r.lastAwardedAt.getTime() < RewardExpiredMs);
+        .filter((r) => now - r.lastAwardedAt.getTime() < REWARD_EXPIRED_MS);
 
       yield* Ref.set(rewardsRef, newRewards);
 
@@ -322,7 +325,11 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
 
           if (!left || !right) return innerAcc;
 
-          if (left.game.id === right.game.id && left.startAt > right.startAt) {
+          if (left.game.id === right.game.id && left.startAt <= right.startAt) {
+            return innerAcc;
+          }
+
+          if (left.game.id === right.game.id) {
             const next = [...innerAcc];
             const [campaign] = next.splice(j, 1);
             next.splice(i, 0, campaign);

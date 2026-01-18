@@ -19,24 +19,12 @@ export const GameSchema = Schema.Struct({
 
 export type Game = Schema.Schema.Type<typeof GameSchema>;
 
-export const WsTopic = {
-  UserDrop: 'user-drop-events',
-  UserPoint: 'community-points-user-v1',
-  ChannelMoment: 'community-moments-channel-v1',
-  ChannelStream: 'video-playback-by-id',
-  ChannelUpdate: 'broadcast-settings-update',
-} as const;
-
-export type WsTopic = (typeof WsTopic)[keyof typeof WsTopic];
-
 export const RewardSchema = Schema.Struct({
   id: Schema.String,
   lastAwardedAt: DateFromAny,
 });
 
 export type Reward = Schema.Schema.Type<typeof RewardSchema>;
-
-export const RewardExpiredMs = 2_592_000_000;
 
 export const DropSchema = Schema.Struct({
   id: Schema.String,

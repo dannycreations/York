@@ -1,4 +1,4 @@
-import { Context, Data, Deferred, Effect, Fiber, Layer, Option, PubSub, Ref, Schedule, Scope, Stream } from 'effect';
+import { Context, Data, Deferred, Effect, Fiber, Layer, Option, PubSub, Queue, Ref, Schedule, Scope, Stream } from 'effect';
 import { WebSocket as WsClient } from 'ws';
 
 import type { ClientRequestArgs } from 'node:http';
@@ -51,6 +51,61 @@ export const createSocketClient = (options: SocketClientOptions): Effect.Effect<
 
     const eventsPubSub = yield* PubSub.unbounded<SocketEvent>();
     const wsRef = yield* Ref.make<Option.Option<WsClient>>(Option.none());
+    const openedDeferredRef = yield* Ref.make(yield* Deferred.make<void>());
+    const sendQueue = yield* Queue.unbounded<{
+      readonly data: string;
+      readonly deferred: Deferred.Deferred<void, SocketClientError>;
+    }>();
+
+    yield* Effect.gen(function* () {
+      while (true) {
+        const { data, deferred } = yield* Queue.take(sendQueue);
+
+        const sendTask = Effect.gen(function* () {
+          while (true) {
+            const openedDeferred = yield* Ref.get(openedDeferredRef);
+            yield* Deferred.await(openedDeferred);
+
+            const wsOpt = yield* Ref.get(wsRef);
+            if (Option.isNone(wsOpt)) {
+              yield* Effect.sleep('1 seconds');
+              continue;
+            }
+            const ws = wsOpt.value;
+
+            if (ws.readyState !== WsClient.OPEN) {
+              yield* Effect.sleep('100 millis');
+              continue;
+            }
+
+            if (ws.bufferedAmount > 1_048_576) {
+              yield* Effect.sleep('100 millis');
+              continue;
+            }
+
+            const result = yield* Effect.async<void, SocketClientError>((resume) => {
+              ws.send(data, (err) => {
+                if (err) {
+                  resume(Effect.fail(new SocketClientError({ message: 'SocketClient: Failed to send message', cause: err })));
+                } else {
+                  resume(Effect.void);
+                }
+              });
+            }).pipe(Effect.either);
+
+            if (result._tag === 'Right') return;
+            yield* Effect.logError('SocketClient: Failed to send message, retrying...', result.left);
+            yield* Effect.sleep('1 seconds');
+          }
+        }).pipe(Effect.retry(Schedule.recurs(2)));
+
+        yield* Effect.matchEffect(sendTask, {
+          onFailure: (err) => Deferred.fail(deferred, err),
+          onSuccess: () => Deferred.succeed(deferred, undefined),
+        });
+      }
+    }).pipe(Effect.forkIn(yield* Effect.scope));
+
     const lastPongReceivedAt = yield* Ref.make(Date.now());
     const reconnectAttempts = yield* Ref.make(0);
 
@@ -70,6 +125,7 @@ export const createSocketClient = (options: SocketClientOptions): Effect.Effect<
                   }
                 });
                 yield* Ref.set(wsRef, Option.none());
+                yield* Ref.set(openedDeferredRef, yield* Deferred.make<void>());
                 yield* PubSub.publish(eventsPubSub, { _tag: 'Close' });
               }),
           }),
@@ -107,6 +163,8 @@ export const createSocketClient = (options: SocketClientOptions): Effect.Effect<
                 yield* Ref.set(reconnectAttempts, 0);
                 yield* Effect.logDebug('SocketClient: Connection established');
                 yield* Deferred.succeed(opened, undefined);
+                const currentOpened = yield* Ref.get(openedDeferredRef);
+                yield* Deferred.succeed(currentOpened, undefined);
                 break;
               case 'Pong':
                 yield* Ref.set(lastPongReceivedAt, Date.now());
@@ -116,6 +174,7 @@ export const createSocketClient = (options: SocketClientOptions): Effect.Effect<
                 break;
               case 'Close':
                 yield* Ref.set(wsRef, Option.none());
+                yield* Ref.set(openedDeferredRef, yield* Deferred.make<void>());
                 const attempts = yield* Ref.get(reconnectAttempts);
                 if (attempts < reconnectMaxAttempts) {
                   yield* Ref.update(reconnectAttempts, (n) => n + 1);
@@ -153,7 +212,7 @@ export const createSocketClient = (options: SocketClientOptions): Effect.Effect<
         return;
       }
       const wsOpt = yield* Ref.get(wsRef);
-      if (Option.isSome(wsOpt)) {
+      if (Option.isSome(wsOpt) && wsOpt.value.readyState === WsClient.OPEN) {
         if (pingPayload) {
           yield* send(pingPayload);
         } else {
@@ -174,21 +233,10 @@ export const createSocketClient = (options: SocketClientOptions): Effect.Effect<
 
     const send = (payload: string | object): Effect.Effect<void, SocketClientError> =>
       Effect.gen(function* () {
-        const wsOpt = yield* Ref.get(wsRef);
-        if (Option.isNone(wsOpt)) {
-          return yield* Effect.fail(new SocketClientError({ message: 'SocketClient: Not connected' }));
-        }
-        const ws = wsOpt.value;
         const data = typeof payload === 'string' ? payload : JSON.stringify(payload);
-        yield* Effect.async<void, SocketClientError>((resume) => {
-          ws.send(data, (err) => {
-            if (err) {
-              resume(Effect.fail(new SocketClientError({ message: 'SocketClient: Failed to send message', cause: err })));
-            } else {
-              resume(Effect.void);
-            }
-          });
-        });
+        const deferred = yield* Deferred.make<void, SocketClientError>();
+        yield* Queue.offer(sendQueue, { data, deferred });
+        return yield* Deferred.await(deferred);
       });
 
     return {
