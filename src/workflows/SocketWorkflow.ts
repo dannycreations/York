@@ -218,17 +218,19 @@ export const SocketWorkflow = (state: MainState, configStore: StoreClient<Client
     const socket = yield* TwitchSocketTag;
     const userId = yield* api.userId.pipe(Effect.orDie);
 
-    return yield* socket.messages.pipe(
-      Stream.filterEffect(() =>
-        Effect.gen(function* () {
-          const currentCampaign = yield* Ref.get(state.currentCampaign);
-          const currentChannel = yield* Ref.get(state.currentChannel);
-          return Option.isSome(currentCampaign) && Option.isSome(currentChannel);
-        }),
-      ),
-      Stream.runForEach((msg) => processMessage(msg, state, api, configStore, userId)),
-      Effect.annotateLogs({ workflow: 'SocketWorkflow' }),
-      Effect.orDie,
-      Effect.fork,
-    );
+    yield* socket.messages
+      .pipe(
+        Stream.filterEffect(() =>
+          Effect.gen(function* () {
+            const currentCampaign = yield* Ref.get(state.currentCampaign);
+            const currentChannel = yield* Ref.get(state.currentChannel);
+            return Option.isSome(currentCampaign) && Option.isSome(currentChannel);
+          }),
+        ),
+        Stream.runForEach((msg) => processMessage(msg, state, api, configStore, userId)),
+        Effect.annotateLogs({ workflow: 'SocketWorkflow' }),
+        Effect.orDie,
+        Effect.fork,
+      )
+      .pipe(Effect.asVoid);
   });

@@ -116,24 +116,23 @@ export const TwitchSocketLayer = (authToken: string): Layer.Layer<TwitchSocket, 
           }
 
           const [topicType, topicId] = data.topic.split('.');
-          const content = yield* parseMessage(data.message);
-
-          return Option.flatMap(content, (value) => {
-            if (!isObjectLike<{ data: unknown; topic_id: unknown }>(value)) return Option.none();
-
-            const innerData = isObjectLike(value.data) ? value.data : {};
-            const topic_id = typeof value.topic_id === 'string' ? value.topic_id : topicId;
-
-            return Option.some({
-              topicType,
-              topicId,
-              payload: {
-                ...value,
-                ...innerData,
-                topic_id,
-              },
-            });
-          });
+          return yield* parseMessage(data.message).pipe(
+            Effect.map(
+              Option.flatMap((value) =>
+                isObjectLike<{ data: unknown; topic_id: unknown }>(value)
+                  ? Option.some({
+                      topicType,
+                      topicId,
+                      payload: {
+                        ...value,
+                        ...(isObjectLike(value.data) ? value.data : {}),
+                        topic_id: typeof value.topic_id === 'string' ? value.topic_id : topicId,
+                      },
+                    })
+                  : Option.none(),
+              ),
+            ),
+          );
         });
 
       const messages: Stream.Stream<SocketMessage, never, never> = client.events.pipe(
@@ -167,7 +166,8 @@ export const TwitchSocketLayer = (authToken: string): Layer.Layer<TwitchSocket, 
             yield* Effect.forEach(topics, (topicKey) => performListen(topicKey), { discard: true });
           }),
         ),
-        Effect.fork,
+        Effect.annotateLogs({ service: 'TwitchSocket', operation: 'resubscribe' }),
+        Effect.forkScoped,
       );
 
       return {

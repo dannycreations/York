@@ -172,11 +172,7 @@ export const TwitchApiLayer = (authToken: string, isDebug = false): Layer.Layer<
 
           return response;
         }).pipe(
-          Effect.mapError((e) =>
-            e instanceof HttpClientError
-              ? new TwitchApiError({ message: e.message, cause: e })
-              : new TwitchApiError({ message: String(e), cause: e }),
-          ),
+          Effect.mapError((e) => (e instanceof HttpClientError ? new TwitchApiError(e) : new TwitchApiError({ message: String(e), cause: e }))),
           Effect.annotateLogs({ service: 'TwitchApi', operation: 'request' }),
         );
 
@@ -257,18 +253,17 @@ export const TwitchApiLayer = (authToken: string, isDebug = false): Layer.Layer<
 
           const decode = Schema.decodeUnknown(schema);
 
-          return yield* Effect.forEach(response.body, (res) =>
-            Effect.gen(function* () {
-              if (res.errors && res.errors.length > 0) {
-                return yield* handleGraphqlErrors(res.errors);
-              }
-
-              return yield* decode(res.data).pipe(Effect.mapError((e) => new TwitchApiError({ message: 'GraphQL Validation Error', cause: e })));
-            }),
+          return yield* Effect.forEach(
+            response.body,
+            (res) =>
+              res.errors && res.errors.length > 0
+                ? handleGraphqlErrors(res.errors)
+                : decode(res.data).pipe(Effect.mapError((e) => new TwitchApiError({ message: 'GraphQL Validation Error', cause: e }))),
+            { concurrency: 'unbounded' },
           );
         }).pipe(
           Effect.retry({
-            while: (e) => e instanceof TwitchApiError && e.message === 'Retryable GraphQL Error',
+            while: (e) => e.message === 'Retryable GraphQL Error',
             schedule: Schedule.exponential('1 seconds', 2).pipe(Schedule.compose(Schedule.recurs(5))),
           }),
           Effect.annotateLogs({ service: 'TwitchApi', operation: 'graphql' }),
@@ -290,14 +285,14 @@ export const TwitchApiLayer = (authToken: string, isDebug = false): Layer.Layer<
         graphql(GqlQueries.channelLive(channelLogin), ChannelLiveSchema).pipe(Effect.map((res) => res[0]));
 
       const helixStreams = (userId: string): Effect.Effect<Schema.Schema.Type<typeof HelixStreamsSchema>, TwitchApiError> =>
-        request<unknown>({
+        request<Schema.Schema.Encoded<typeof HelixStreamsSchema>>({
           url: 'https://api.twitch.tv/helix/streams',
           headers: { 'client-id': 'uaw3vx1k0ttq74u9b2zfvt768eebh1' },
           searchParams: { user_id: userId },
           responseType: 'json',
         }).pipe(
           Effect.flatMap((res) => Schema.decodeUnknown(HelixStreamsSchema)(res.body)),
-          Effect.mapError((e) => new TwitchApiError({ message: `Helix validation failed: ${e}`, cause: e })),
+          Effect.mapError((e) => (e instanceof TwitchApiError ? e : new TwitchApiError({ message: `Helix validation failed: ${e}`, cause: e }))),
         );
 
       const channelStreams = (logins: readonly string[]): Effect.Effect<Schema.Schema.Type<typeof ChannelStreamsSchema>, TwitchApiError> =>

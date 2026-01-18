@@ -207,25 +207,21 @@ const processInventoryDrops = (
   });
 
 const groupCampaigns = (campaigns: ReadonlyArray<Campaign>): ReadonlyArray<Campaign> =>
-  Array.reduce(campaigns.length > 0 ? Array.range(0, campaigns.length - 1) : [], [...campaigns], (acc, i) =>
-    Array.reduce(i + 1 < acc.length ? Array.range(i + 1, acc.length - 1) : [], acc, (innerAcc, j) => {
-      const left = innerAcc[i];
-      const right = innerAcc[j];
+  Array.reduce(campaigns, [] as Campaign[], (acc, campaign) => {
+    const existingIndex = acc.findIndex((c) => c.game.id === campaign.game.id);
+    if (existingIndex === -1) {
+      return [...acc, campaign];
+    }
 
-      if (!left || !right) return innerAcc;
+    const existing = acc[existingIndex];
+    if (campaign.startAt < existing.startAt) {
+      const next = [...acc];
+      next[existingIndex] = campaign;
+      return next;
+    }
 
-      if (left.game.id === right.game.id) {
-        if (left.startAt <= right.startAt) {
-          return innerAcc;
-        }
-        const next = [...innerAcc];
-        const [campaign] = next.splice(j, 1);
-        next.splice(i, 0, campaign);
-        return next;
-      }
-      return innerAcc;
-    }),
-  );
+    return acc;
+  });
 
 export const CampaignStoreLayer: Layer.Layer<CampaignStore, never, TwitchApi | StoreClient<ClientConfig> | TwitchSocket> = Layer.effect(
   CampaignStoreTag,
@@ -260,27 +256,18 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStore, never, TwitchApi | S
     const updateProgress: Effect.Effect<void, TwitchApiError> = Effect.gen(function* () {
       const config = yield* configStore.get;
       const response = yield* api.inventory;
-
-      const inventory = response.currentUser.inventory;
-      const gameEventDrops = inventory.gameEventDrops;
-      const dropCampaignsInProgress = inventory.dropCampaignsInProgress;
-
       const now = Date.now();
-      const newRewards = gameEventDrops
-        .map((d) => ({
-          id: d.id,
-          lastAwardedAt: d.lastAwardedAt,
-        }))
+
+      const newRewards = response.currentUser.inventory.gameEventDrops
+        .map((d) => ({ id: d.id, lastAwardedAt: d.lastAwardedAt }))
         .filter((r) => now - r.lastAwardedAt.getTime() < REWARD_EXPIRED_MS);
 
       yield* Ref.set(rewardsRef, newRewards);
 
-      const currentRewards = yield* Ref.get(rewardsRef);
+      const newProgress = processInventoryDrops(response.currentUser.inventory.dropCampaignsInProgress, config, newRewards, now);
 
-      const newProgress = processInventoryDrops(dropCampaignsInProgress, config, currentRewards, now);
-
-      yield* Ref.update(progressRef, (current) => {
-        return Array.reduce(newProgress, [...current], (acc, drop) => {
+      yield* Ref.update(progressRef, (current) =>
+        Array.reduce(newProgress, [...current], (acc, drop) => {
           const index = acc.findIndex((d) => d.id === drop.id);
           if (index !== -1) {
             acc[index] = drop;
@@ -288,8 +275,8 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStore, never, TwitchApi | S
             acc.push(drop);
           }
           return acc;
-        });
-      });
+        }),
+      );
     });
 
     const getDropsForCampaign = (campaignId: string): Effect.Effect<ReadonlyArray<Drop>, TwitchApiError> =>

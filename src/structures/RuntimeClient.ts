@@ -55,8 +55,7 @@ export const cycleWithRestart = <A, E, R>(
       }
 
       const now = Date.now();
-      const recentRestarts = restartTimes.filter((t) => now - t < intervalMs);
-      recentRestarts.push(now);
+      const recentRestarts = [...restartTimes.filter((t) => now - t < intervalMs), now];
 
       restartTimes.length = 0;
       restartTimes.push(...recentRestarts);
@@ -92,6 +91,6 @@ export const runMain = async <A, E, R, ROut = unknown, RE = unknown, RIn = unkno
   const { runtimeBaseLayer, ...restartOptions } = options;
 
   const runtimeEffect = runtimeBaseLayer ? Effect.runtime<ROut>().pipe(Effect.provide(runtimeBaseLayer)) : Effect.runtime();
-  const runtime = await Effect.runPromise(runtimeEffect as Effect.Effect<Runtime.Runtime<R>, never, never>);
+  const runtime = await Effect.runPromise(runtimeEffect as Effect.Effect<Runtime.Runtime<R>>);
   runForkWithCleanUp(cycleWithRestart(program, restartOptions), runtime);
 };

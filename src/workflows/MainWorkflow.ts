@@ -132,21 +132,23 @@ const watchChannelTick = (
   campaign: Campaign,
 ): Effect.Effect<void, TwitchApiError | MainWorkflowError | WatchError> =>
   Effect.gen(function* () {
-    if (yield* Ref.get(state.isClaiming)) return yield* Effect.sleep('5 seconds');
+    if (yield* Ref.get(state.isClaiming)) {
+      return yield* Effect.sleep('5 seconds');
+    }
 
     if (yield* checkHigherPriority(state, campaign, campaignStore)) {
-      yield* resetChannel(state);
-      return;
+      return yield* resetChannel(state);
     }
 
     const nowMs = Date.now();
     const nextWatchMs = yield* Ref.get(state.nextWatch);
-    if (nowMs < nextWatchMs) yield* Effect.sleep(`${nextWatchMs - nowMs} millis`);
+    if (nowMs < nextWatchMs) {
+      yield* Effect.sleep(`${nextWatchMs - nowMs} millis`);
+    }
 
     const chanOpt = yield* Ref.get(state.currentChannel);
     if (Option.isNone(chanOpt) || !chanOpt.value.isOnline) {
-      yield* Ref.set(state.currentChannel, Option.none());
-      return;
+      return yield* Ref.set(state.currentChannel, Option.none());
     }
 
     const chan = yield* updateChannelInfo(state, api, chanOpt.value);
@@ -154,12 +156,13 @@ const watchChannelTick = (
 
     if (chan.gameId && chan.currentGameId && chan.gameId !== chan.currentGameId) {
       yield* Effect.logInfo(chalk`{red ${chan.login}} | {red Game changed to ${chan.currentGameName}}`);
-      yield* resetChannel(state);
-      return;
+      return yield* resetChannel(state);
     }
 
     const { success, hlsUrl } = yield* watchService.watch(chan);
-    if (hlsUrl !== chan.hlsUrl) yield* Ref.update(state.currentChannel, (c) => Option.map(c, (ch) => ({ ...ch, hlsUrl })));
+    if (hlsUrl !== chan.hlsUrl) {
+      yield* Ref.update(state.currentChannel, (c) => Option.map(c, (ch) => ({ ...ch, hlsUrl })));
+    }
 
     const currentTimeMs = Date.now();
     const scheduledWatchMs = yield* Ref.get(state.nextWatch);
@@ -167,8 +170,7 @@ const watchChannelTick = (
       if (success) {
         yield* handleWatchSuccess(state, chan, campaignStore);
       } else {
-        yield* resetChannel(state);
-        return;
+        return yield* resetChannel(state);
       }
     }
 

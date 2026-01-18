@@ -70,47 +70,45 @@ const makeHttpClient = Effect.sync(() => {
       const retryCount = isString ? 3 : (options.retry ?? 3);
       const { initial = 10_000, transmission = 30_000, total = 60_000 } = payload.timeout || {};
 
-      return yield* Effect.tryPromise({
-        try: (signal) => {
-          const promise = gotInstance({
-            ...payload,
-            retry: 0,
-            timeout: {
-              lookup: initial,
-              connect: initial,
-              secureConnect: initial,
-              socket: transmission,
-              response: transmission,
-              send: transmission,
-              request: total,
-            },
-            resolveBodyOnly: false,
-          }) as CancelableRequest<Response<T>>;
+      return yield* Effect.async<Response<T>, HttpClientError>((resume) => {
+        const promise = gotInstance({
+          ...payload,
+          retry: 0,
+          timeout: {
+            lookup: initial,
+            connect: initial,
+            secureConnect: initial,
+            socket: transmission,
+            response: transmission,
+            send: transmission,
+            request: total,
+          },
+          resolveBodyOnly: false,
+        }) as CancelableRequest<Response<T>>;
 
-          signal.addEventListener(
-            'abort',
-            () => {
-              if (typeof promise.cancel === 'function') {
-                promise.cancel();
-              }
-            },
-            { once: true },
+        promise
+          .then((response) => resume(Effect.succeed(response)))
+          .catch((error) =>
+            resume(
+              Effect.fail(
+                isErrorLike<RequestError>(error)
+                  ? new HttpClientError({
+                      message: error.message || 'Request failed',
+                      code: error.code,
+                      status: error.response?.statusCode,
+                      cause: error,
+                    })
+                  : new HttpClientError({
+                      message: String(error),
+                      cause: error,
+                    }),
+              ),
+            ),
           );
 
-          return promise;
-        },
-        catch: (error) =>
-          isErrorLike<RequestError>(error)
-            ? new HttpClientError({
-                message: error.message || 'Request failed',
-                code: error.code,
-                status: error.response?.statusCode,
-                cause: error,
-              })
-            : new HttpClientError({
-                message: String(error),
-                cause: error,
-              }),
+        return Effect.sync(() => {
+          promise.cancel();
+        });
       }).pipe(
         Effect.retry({
           while: (error) => {

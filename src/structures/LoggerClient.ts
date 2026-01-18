@@ -122,7 +122,7 @@ export const makeLoggerClient = (options: LoggerOptions = {}): pino.Logger => {
 };
 
 export const LoggerClientLayer = (self: Logger.Logger<unknown, void>, logger: pino.Logger): Layer.Layer<never> =>
-  Layer.merge(
+  Layer.mergeAll(
     Logger.replace(
       self,
       Logger.make(({ logLevel, message, cause }) => {

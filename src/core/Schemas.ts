@@ -15,14 +15,14 @@ export const GameSchema = Schema.Struct({
   name: Schema.optional(Schema.String),
   displayName: Schema.String,
   slug: Schema.optional(Schema.String),
-});
+}).pipe(Schema.annotations({ identifier: 'Game' }));
 
 export type Game = Schema.Schema.Type<typeof GameSchema>;
 
 export const RewardSchema = Schema.Struct({
   id: Schema.String,
   lastAwardedAt: DateFromAny,
-});
+}).pipe(Schema.annotations({ identifier: 'Reward' }));
 
 export type Reward = Schema.Schema.Type<typeof RewardSchema>;
 
@@ -39,7 +39,7 @@ export const DropSchema = Schema.Struct({
   hasPreconditionsMet: Schema.Boolean,
   currentMinutesWatched: Schema.Number,
   dropInstanceID: Schema.optional(Schema.String),
-});
+}).pipe(Schema.annotations({ identifier: 'Drop' }));
 
 export type Drop = Schema.Schema.Type<typeof DropSchema>;
 
@@ -53,7 +53,7 @@ export const CampaignSchema = Schema.Struct({
   priority: Schema.Number,
   isOffline: Schema.Boolean,
   allowChannels: Schema.Array(Schema.String),
-});
+}).pipe(Schema.annotations({ identifier: 'Campaign' }));
 
 export type Campaign = Schema.Schema.Type<typeof CampaignSchema>;
 
@@ -66,7 +66,7 @@ export const ChannelSchema = Schema.Struct({
   currentGameId: Schema.optional(Schema.String),
   currentGameName: Schema.optional(Schema.String),
   hlsUrl: Schema.optional(Schema.String),
-});
+}).pipe(Schema.annotations({ identifier: 'Channel' }));
 
 export type Channel = Schema.Schema.Type<typeof ChannelSchema>;
 
@@ -92,8 +92,8 @@ export const GqlResponseSchema = <A, I, R>(data: Schema.Schema<A, I, R>) =>
     extensions: Schema.optional(GqlExtensionsSchema),
   });
 
-export interface GqlResponse<T = unknown> {
-  readonly data: T;
+export interface GqlResponse<A> {
+  readonly data: A;
   readonly errors?: ReadonlyArray<GqlError>;
   readonly extensions?: GqlExtensions;
 }

@@ -15,44 +15,40 @@ const processUpcomingCampaign = (
   campaignStore: CampaignStore,
   isMainCall: boolean,
   isMainCallSleep: Ref.Ref<boolean>,
-): Effect.Effect<void, never> =>
+) =>
   Effect.gen(function* () {
-    const now = Date.now();
-    const waitMs = next.startAt.getTime() - now;
+    const waitMs = next.startAt.getTime() - Date.now();
 
     if (waitMs > 0) {
       const alreadySleeping = yield* Ref.get(isMainCallSleep);
       if (!alreadySleeping && isMainCall) {
         yield* Ref.set(isMainCallSleep, true);
-        const startTime = next.startAt.toLocaleString();
-        const countStr = chalk`{bold.yellow ${upcomingCount} upcoming}`;
-
-        yield* Effect.logInfo(chalk`{bold.yellow No active campaigns} | ${countStr}`);
-        yield* Effect.logInfo(chalk`{bold.yellow Sleeping until ${startTime}}`);
+        yield* Effect.logInfo(chalk`{bold.yellow No active campaigns} | {bold.yellow ${upcomingCount} upcoming}`);
+        yield* Effect.logInfo(chalk`{bold.yellow Sleeping until ${next.startAt.toLocaleString()}}`);
       }
-    } else {
-      if (yield* Ref.get(isMainCallSleep)) {
-        yield* Ref.set(isMainCallSleep, false);
-        return;
-      }
-
-      if (isMainCall) {
-        yield* Ref.set(campaignStore.state, 'All');
-      }
-
-      yield* Effect.logInfo(chalk`{bold.yellow ${next.name}} | {bold.yellow {strikethrough Upcoming}}`);
-
-      const currentCampaign = yield* Ref.get(state.currentCampaign);
-      const currentDrop = yield* Ref.get(state.currentDrop);
-      const priority = calculatePriority(next, currentCampaign, currentDrop);
-
-      yield* campaignStore.setPriority(next.id, priority);
-
-      yield* Effect.sleep(`${Math.floor(Math.random() * 5000)} millis`);
+      return;
     }
+
+    if (yield* Ref.get(isMainCallSleep)) {
+      return yield* Ref.set(isMainCallSleep, false);
+    }
+
+    if (isMainCall) {
+      yield* Ref.set(campaignStore.state, 'All');
+    }
+
+    yield* Effect.logInfo(chalk`{bold.yellow ${next.name}} | {bold.yellow {strikethrough Upcoming}}`);
+
+    const currentCampaign = yield* Ref.get(state.currentCampaign);
+    const currentDrop = yield* Ref.get(state.currentDrop);
+    const priority = calculatePriority(next, currentCampaign, currentDrop);
+
+    yield* campaignStore.setPriority(next.id, priority);
+
+    yield* Effect.sleep(`${Math.floor(Math.random() * 5000)} millis`);
   });
 
-export const UpcomingWorkflow = (state: MainState): Effect.Effect<void, never, CampaignStore> =>
+export const UpcomingWorkflow = (state: MainState) =>
   Effect.gen(function* () {
     const campaignStore = yield* CampaignStoreTag;
     const sleepTime = 7_200_000;
@@ -61,32 +57,30 @@ export const UpcomingWorkflow = (state: MainState): Effect.Effect<void, never, C
 
     yield* Effect.sleep('120 seconds');
 
-    yield* Effect.repeat(
-      Effect.gen(function* () {
-        const now = Date.now();
-        const nextRefresh = yield* Ref.get(nextRefreshRef);
+    const loop = Effect.gen(function* () {
+      const now = Date.now();
+      const nextRefresh = yield* Ref.get(nextRefreshRef);
 
-        const campaignState = yield* Ref.get(campaignStore.state);
-        const currentCampaign = yield* Ref.get(state.currentCampaign);
-        const isMainCall = campaignState === 'Initial' && Option.isNone(currentCampaign);
+      const campaignState = yield* Ref.get(campaignStore.state);
+      const currentCampaign = yield* Ref.get(state.currentCampaign);
+      const isMainCall = campaignState === 'Initial' && Option.isNone(currentCampaign);
 
-        if (isMainCall || now >= nextRefresh) {
-          yield* campaignStore.updateCampaigns.pipe(Effect.orDie);
-          yield* Ref.set(nextRefreshRef, now + sleepTime);
+      if (isMainCall || now >= nextRefresh) {
+        yield* campaignStore.updateCampaigns.pipe(Effect.orDie);
+        yield* Ref.set(nextRefreshRef, now + sleepTime);
+      }
+
+      const upcoming = yield* campaignStore.getSortedUpcoming;
+      if (upcoming.length === 0) {
+        if (isMainCall) {
+          yield* Effect.logInfo(chalk`{bold.yellow No upcoming campaigns}`);
+          yield* Effect.logInfo(chalk`{bold.yellow Sleeping until ${new Date(now + sleepTime).toLocaleString()}}`);
         }
+        return;
+      }
 
-        const upcoming = yield* campaignStore.getSortedUpcoming;
-        if (upcoming.length === 0) {
-          if (isMainCall) {
-            const waitUntilTime = new Date(now + sleepTime).toLocaleString();
-            yield* Effect.logInfo(chalk`{bold.yellow No upcoming campaigns}`);
-            yield* Effect.logInfo(chalk`{bold.yellow Sleeping until ${waitUntilTime}}`);
-          }
-          return;
-        }
+      yield* processUpcomingCampaign(upcoming[0], upcoming.length, state, campaignStore, isMainCall, isMainCallSleep);
+    });
 
-        yield* processUpcomingCampaign(upcoming[0], upcoming.length, state, campaignStore, isMainCall, isMainCallSleep);
-      }),
-      Schedule.spaced('120 seconds'),
-    ).pipe(Effect.asVoid);
+    yield* Effect.repeat(loop, Schedule.spaced('120 seconds')).pipe(Effect.asVoid);
   });

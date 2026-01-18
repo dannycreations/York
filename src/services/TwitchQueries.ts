@@ -59,7 +59,7 @@ export const GqlQueries = {
   channelStreams: (logins: readonly string[]): GraphqlRequest => ({
     operationName: 'FFZ_StreamFetch',
     hash: 'e3dbb5d8509ff2ef9d6518bf6749d2112bf6fc3ee2886248579bd7db0feb6504',
-    variables: { logins: logins as ReadonlyArray<string> },
+    variables: { logins },
   }),
   channelDrops: (channelID: string): GraphqlRequest => ({
     operationName: 'DropsHighlightService_AvailableDrops',
