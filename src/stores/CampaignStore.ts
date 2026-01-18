@@ -102,7 +102,7 @@ export interface CampaignStore {
   readonly addRewards: (rewards: ReadonlyArray<Reward>) => Effect.Effect<void>;
 }
 
-export const CampaignStoreTag = Context.GenericTag<CampaignStore>('@services/CampaignStore');
+export class CampaignStoreTag extends Context.Tag('@services/CampaignStore')<CampaignStoreTag, CampaignStore>() {}
 
 const filterChannelsByCampaign = (
   api: TwitchApi,
@@ -226,7 +226,7 @@ const groupCampaigns = (campaigns: ReadonlyArray<Campaign>): ReadonlyArray<Campa
     return acc;
   });
 
-export const CampaignStoreLayer: Layer.Layer<CampaignStore, never, TwitchApi | StoreClient<ClientConfig> | TwitchSocket> = Layer.effect(
+export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiTag | ConfigStoreTag | TwitchSocketTag> = Layer.effect(
   CampaignStoreTag,
   Effect.gen(function* () {
     const api = yield* TwitchApiTag;

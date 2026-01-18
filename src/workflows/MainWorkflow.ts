@@ -516,13 +516,13 @@ const ensureSettingsDir = Effect.gen(function* () {
 export const MainWorkflow: Effect.Effect<
   void,
   RuntimeRestart,
-  CampaignStore | TwitchApi | StoreClient<ClientConfig> | TwitchSocket | WatchService | Scope.Scope
+  CampaignStoreTag | TwitchApiTag | ConfigStoreTag | TwitchSocketTag | WatchServiceTag | Scope.Scope
 > = Effect.gen(function* () {
-  const campaignStore = yield* CampaignStoreTag;
-  const api = yield* TwitchApiTag;
-  const configStore = yield* ConfigStoreTag;
-  const socket = yield* TwitchSocketTag;
-  const watchService = yield* WatchServiceTag;
+  const campaignStore: CampaignStore = yield* CampaignStoreTag;
+  const api: TwitchApi = yield* TwitchApiTag;
+  const configStore: StoreClient<ClientConfig> = yield* ConfigStoreTag;
+  const socket: TwitchSocket = yield* TwitchSocketTag;
+  const watchService: WatchService = yield* WatchServiceTag;
 
   yield* ensureSettingsDir;
 
@@ -544,7 +544,7 @@ export const MainWorkflow: Effect.Effect<
 
   yield* SocketWorkflow(state, configStore).pipe(Effect.orDie);
 
-  const mainTaskLoop = (): Effect.Effect<void, never, CampaignStore | TwitchApi | StoreClient<ClientConfig> | TwitchSocket | WatchService> =>
+  const mainTaskLoop = (): Effect.Effect<void, never, CampaignStoreTag | TwitchApiTag | ConfigStoreTag | TwitchSocketTag | WatchServiceTag> =>
     Effect.repeat(
       Effect.gen(function* () {
         yield* updatePriorities(campaignStore, configStore);

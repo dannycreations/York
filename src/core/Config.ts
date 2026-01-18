@@ -26,9 +26,9 @@ export const INITIAL_CONFIG: ClientConfig = {
   exclusionList: new Set(),
 };
 
-export const ConfigStoreTag = Context.GenericTag<StoreClient<ClientConfig>>('@core/ConfigStore');
+export class ConfigStoreTag extends Context.Tag('@core/ConfigStore')<ConfigStoreTag, StoreClient<ClientConfig>>() {}
 
-export const ConfigStoreLayer: Layer.Layer<StoreClient<ClientConfig>, never, Scope.Scope> = StoreClientLayer(
+export const ConfigStoreLayer: Layer.Layer<ConfigStoreTag, never, Scope.Scope> = StoreClientLayer(
   ConfigStoreTag,
   'sessions/settings.json',
   ClientConfigSchema,

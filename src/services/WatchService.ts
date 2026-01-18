@@ -7,8 +7,6 @@ import { TwitchApiTag } from './TwitchApi';
 import { GqlQueries } from './TwitchQueries';
 
 import type { Channel } from '../core/Schemas';
-import type { HttpClient } from '../structures/HttpClient';
-import type { TwitchApi } from './TwitchApi';
 
 export class WatchError extends Data.TaggedError('WatchError')<{
   readonly message: string;
@@ -21,9 +19,9 @@ export interface WatchService {
   readonly checkStream: (hlsUrl: string) => Effect.Effect<boolean, WatchError>;
 }
 
-export const WatchServiceTag = Context.GenericTag<WatchService>('@services/WatchService');
+export class WatchServiceTag extends Context.Tag('@services/WatchService')<WatchServiceTag, WatchService>() {}
 
-export const WatchServiceLayer: Layer.Layer<WatchService, never, HttpClient | TwitchApi> = Layer.effect(
+export const WatchServiceLayer: Layer.Layer<WatchServiceTag, never, HttpClientTag | TwitchApiTag> = Layer.effect(
   WatchServiceTag,
   Effect.gen(function* () {
     const http = yield* HttpClientTag;

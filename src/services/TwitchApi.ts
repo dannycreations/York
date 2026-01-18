@@ -27,7 +27,7 @@ import { GqlQueries } from './TwitchQueries';
 
 import type { ReadonlyRecord } from 'effect/Record';
 import type { GqlResponse } from '../core/Schemas';
-import type { DefaultOptions, HttpClient } from '../structures/HttpClient';
+import type { DefaultOptions } from '../structures/HttpClient';
 import type { GraphqlRequest } from './TwitchQueries';
 
 export class TwitchApiError extends Data.TaggedError('TwitchApiError')<{
@@ -67,7 +67,7 @@ export interface TwitchApi {
   readonly playbackToken: (login: string) => Effect.Effect<Schema.Schema.Type<typeof PlaybackTokenSchema>, TwitchApiError>;
 }
 
-export const TwitchApiTag = Context.GenericTag<TwitchApi>('@services/TwitchApi');
+export class TwitchApiTag extends Context.Tag('@services/TwitchApi')<TwitchApiTag, TwitchApi>() {}
 
 const parseUniqueCookies = (setCookie: readonly string[]): Record<string, string> =>
   setCookie.reduce<Record<string, string>>((acc, cookie) => {
@@ -111,7 +111,7 @@ const handleGraphqlErrors = (errors: ReadonlyArray<{ message: string }>): Effect
   );
 };
 
-export const TwitchApiLayer = (authToken: string, isDebug = false): Layer.Layer<TwitchApi, never, HttpClient> =>
+export const TwitchApiLayer = (authToken: string, isDebug = false): Layer.Layer<TwitchApiTag, never, HttpClientTag> =>
   Layer.effect(
     TwitchApiTag,
     Effect.gen(function* () {

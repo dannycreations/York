@@ -4,10 +4,10 @@ import { Context, Data, Effect, Layer, Option, Ref, Schema, Stream } from 'effec
 
 import { Twitch } from '../core/Constants';
 import { SocketMessageSchema } from '../core/Schemas';
+import { HttpClientTag } from '../structures/HttpClient';
 import { makeSocketClient } from '../structures/SocketClient';
 
 import type { SocketMessage } from '../core/Schemas';
-import type { HttpClient } from '../structures/HttpClient';
 
 export class TwitchSocketError extends Data.TaggedError('TwitchSocketError')<{
   readonly message: string;
@@ -21,9 +21,9 @@ export interface TwitchSocket {
   readonly disconnect: (graceful?: boolean) => Effect.Effect<void>;
 }
 
-export const TwitchSocketTag = Context.GenericTag<TwitchSocket>('@services/TwitchSocket');
+export class TwitchSocketTag extends Context.Tag('@services/TwitchSocket')<TwitchSocketTag, TwitchSocket>() {}
 
-export const TwitchSocketLayer = (authToken: string): Layer.Layer<TwitchSocket, TwitchSocketError, HttpClient> =>
+export const TwitchSocketLayer = (authToken: string): Layer.Layer<TwitchSocketTag, TwitchSocketError, HttpClientTag> =>
   Layer.scoped(
     TwitchSocketTag,
     Effect.gen(function* () {

@@ -5,7 +5,6 @@ import { HttpClientTag } from './HttpClient';
 
 import type { ClientRequestArgs } from 'node:http';
 import type { ClientOptions } from 'ws';
-import type { HttpClient } from './HttpClient';
 
 type SocketState = Data.TaggedEnum<{
   Open: {};
@@ -42,7 +41,7 @@ export interface SocketClient {
   readonly disconnect: (graceful?: boolean) => Effect.Effect<void>;
 }
 
-export const makeSocketClient = (options: SocketClientOptions): Effect.Effect<SocketClient, SocketClientError, Scope.Scope | HttpClient> =>
+export const makeSocketClient = (options: SocketClientOptions): Effect.Effect<SocketClient, SocketClientError, Scope.Scope | HttpClientTag> =>
   Effect.gen(function* () {
     const {
       url,
@@ -149,7 +148,7 @@ export const makeSocketClient = (options: SocketClientOptions): Effect.Effect<So
         ws.on('pong', () => emit.single(SocketState.Pong()));
       });
 
-    const connect: Effect.Effect<void, SocketClientError, HttpClient> = Effect.gen(function* () {
+    const connect: Effect.Effect<void, SocketClientError, HttpClientTag> = Effect.gen(function* () {
       const wsOpt = yield* Ref.get(wsRef);
       if (Option.isSome(wsOpt)) return;
 
@@ -261,7 +260,5 @@ export const makeSocketClient = (options: SocketClientOptions): Effect.Effect<So
     } satisfies SocketClient;
   });
 
-export const SocketClientLayer = (
-  tag: Context.Tag<SocketClient, SocketClient>,
-  options: SocketClientOptions,
-): Layer.Layer<SocketClient, SocketClientError, HttpClient> => Layer.scoped(tag, makeSocketClient(options));
+export const SocketClientLayer = <I, S>(tag: Context.Tag<I, S>, options: SocketClientOptions): Layer.Layer<I, SocketClientError, HttpClientTag> =>
+  Layer.scoped(tag, makeSocketClient(options) as any);

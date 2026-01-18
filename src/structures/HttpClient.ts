@@ -44,16 +44,16 @@ export interface HttpClient {
   readonly waitForConnection: (total?: number) => Effect.Effect<void, HttpClientError>;
 }
 
-export const HttpClientTag = Context.GenericTag<HttpClient>('@structures/HttpClient');
+export class HttpClientTag extends Context.Tag('@structures/HttpClient')<HttpClientTag, HttpClient>() {}
 
 export const isErrorTimeout = (error: unknown): boolean =>
   isErrorLike<{ readonly _tag: string; readonly code?: string }>(error) && (error._tag === 'TimeoutException' || error.code === 'ETIMEDOUT');
 
-export const request = <T = string>(options: string | DefaultOptions): Effect.Effect<Response<T>, HttpClientError, HttpClient> =>
-  HttpClientTag.pipe(Effect.flatMap((service) => service.request<T>(options)));
+export const request = <T = string>(options: string | DefaultOptions): Effect.Effect<Response<T>, HttpClientError, HttpClientTag> =>
+  Effect.flatMap(HttpClientTag, (service) => service.request<T>(options));
 
-export const waitForConnection = (total?: number): Effect.Effect<void, HttpClientError, HttpClient> =>
-  HttpClientTag.pipe(Effect.flatMap((service) => service.waitForConnection(total)));
+export const waitForConnection = (total?: number): Effect.Effect<void, HttpClientError, HttpClientTag> =>
+  Effect.flatMap(HttpClientTag, (service) => service.waitForConnection(total));
 
 const makeHttpClient = Effect.sync(() => {
   const gotInstance: Got = got.bind(got);
@@ -152,4 +152,4 @@ const makeHttpClient = Effect.sync(() => {
   } satisfies HttpClient;
 });
 
-export const HttpClientLayer: Layer.Layer<HttpClient> = Layer.effect(HttpClientTag, makeHttpClient);
+export const HttpClientLayer: Layer.Layer<HttpClientTag> = Layer.effect(HttpClientTag, makeHttpClient);

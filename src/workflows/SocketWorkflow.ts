@@ -18,7 +18,7 @@ const handleClaimAvailable = (
   channel: Channel,
   state: MainState,
   api: TwitchApi,
-): Effect.Effect<void, never, TwitchApi> =>
+): Effect.Effect<void, never, TwitchApiTag> =>
   payload.data.claim.channel_id !== channel.id
     ? Effect.void
     : api
@@ -34,7 +34,7 @@ const handlePointsEarned = (
   channel: Channel,
   state: MainState,
   api: TwitchApi,
-): Effect.Effect<void, never, TwitchApi> =>
+): Effect.Effect<void, never, TwitchApiTag> =>
   payload.data.channel_id !== channel.id
     ? Effect.void
     : Effect.gen(function* () {
@@ -60,7 +60,7 @@ const handleUserPoint = (
   state: MainState,
   api: TwitchApi,
   configStore: StoreClient<ClientConfig>,
-): Effect.Effect<void, never, TwitchApi> =>
+): Effect.Effect<void, never, TwitchApiTag> =>
   Effect.gen(function* () {
     const config = yield* configStore.get;
     if (!config.isClaimPoints) {
@@ -132,7 +132,7 @@ const handleChannelMoment = (
   channel: Channel,
   api: TwitchApi,
   configStore: StoreClient<ClientConfig>,
-): Effect.Effect<void, never, TwitchSocket | TwitchApi> =>
+): Effect.Effect<void, never, TwitchSocketTag | TwitchApiTag> =>
   Effect.gen(function* () {
     if (msg.topicId !== channel.id) {
       const socket = yield* TwitchSocketTag;
@@ -176,7 +176,7 @@ const processMessage = (
   api: TwitchApi,
   configStore: StoreClient<ClientConfig>,
   userId: string,
-): Effect.Effect<void, never, TwitchApi | TwitchSocket> =>
+): Effect.Effect<void, never, TwitchApiTag | TwitchSocketTag> =>
   Effect.gen(function* () {
     const currentChannelOpt = yield* Ref.get(state.currentChannel);
     const currentDrop = yield* Ref.get(state.currentDrop);
@@ -219,10 +219,13 @@ const processMessage = (
     }
   });
 
-export const SocketWorkflow = (state: MainState, configStore: StoreClient<ClientConfig>): Effect.Effect<void, never, TwitchApi | TwitchSocket> =>
+export const SocketWorkflow = (
+  state: MainState,
+  configStore: StoreClient<ClientConfig>,
+): Effect.Effect<void, never, TwitchApiTag | TwitchSocketTag> =>
   Effect.gen(function* () {
-    const api = yield* TwitchApiTag;
-    const socket = yield* TwitchSocketTag;
+    const api: TwitchApi = yield* TwitchApiTag;
+    const socket: TwitchSocket = yield* TwitchSocketTag;
     const userId = yield* api.userId.pipe(Effect.orDie);
 
     yield* socket.messages
