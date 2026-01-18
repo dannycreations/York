@@ -71,38 +71,45 @@ export const TwitchApiTag = Context.GenericTag<TwitchApi>('@services/TwitchApi')
 
 const parseUniqueCookies = (setCookie: readonly string[]): Record<string, string> =>
   setCookie.reduce<Record<string, string>>((acc, cookie) => {
-    const clean = cookie.match(/(?<=\=)\w+(?=\;)/g);
-    if (!clean || !clean[0]) return acc;
+    const match = cookie.match(/(?<=\=)\w+(?=\;)/);
+    if (!match) return acc;
 
-    const value = clean[0];
-    if (cookie.startsWith('server_session_id')) return { ...acc, 'client-session-id': value };
-    if (cookie.startsWith('unique_id') && !cookie.startsWith('unique_id_durable')) return { ...acc, 'x-device-id': value };
+    const value = match[0];
+    if (cookie.startsWith('server_session_id')) {
+      return { ...acc, 'client-session-id': value };
+    }
+
+    if (cookie.startsWith('unique_id') && !cookie.startsWith('unique_id_durable')) {
+      return { ...acc, 'x-device-id': value };
+    }
 
     return acc;
   }, {});
 
-const handleGraphqlErrors = (errors: ReadonlyArray<{ message: string }>): Effect.Effect<never, TwitchApiError> =>
-  Effect.gen(function* () {
-    const retryableErrors = ['service unavailable', 'service timeout', 'context deadline exceeded'];
-    const retries = errors.filter((e) => retryableErrors.includes(e.message.toLowerCase()));
+const handleGraphqlErrors = (errors: ReadonlyArray<{ message: string }>): Effect.Effect<never, TwitchApiError> => {
+  const retryableErrors = ['service unavailable', 'service timeout', 'context deadline exceeded'];
+  const retries = errors.filter((e) => retryableErrors.includes(e.message.toLowerCase()));
 
-    if (retries.length > 0) {
-      yield* Effect.logWarning(chalk`{yellow GraphQL response has ${retries.length} retryable errors}`);
-      return yield* Effect.fail(
-        new TwitchApiError({
-          message: 'Retryable GraphQL Error',
-          cause: errors,
-        }),
-      );
-    }
-
-    return yield* Effect.fail(
-      new TwitchApiError({
-        message: `GraphQL Error: ${errors[0].message}`,
-        cause: errors,
-      }),
+  if (retries.length > 0) {
+    return Effect.logWarning(chalk`{yellow GraphQL response has ${retries.length} retryable errors}`).pipe(
+      Effect.flatMap(() =>
+        Effect.fail(
+          new TwitchApiError({
+            message: 'Retryable GraphQL Error',
+            cause: errors,
+          }),
+        ),
+      ),
     );
-  });
+  }
+
+  return Effect.fail(
+    new TwitchApiError({
+      message: `GraphQL Error: ${errors[0].message}`,
+      cause: errors,
+    }),
+  );
+};
 
 export const TwitchApiLayer = (authToken: string, isDebug = false): Layer.Layer<TwitchApi, never, HttpClient> =>
   Layer.effect(
@@ -119,19 +126,20 @@ export const TwitchApiLayer = (authToken: string, isDebug = false): Layer.Layer<
 
       const getUserId = Deferred.await(userIdDeferred);
 
-      const writeDebugFile = (data: string | object, name?: string): Effect.Effect<void> =>
-        Effect.gen(function* () {
-          if (!isDebug) return;
-          const content = isObjectLike(data) ? JSON.stringify(data, null, 2) : data;
-          const debugDir = join(process.cwd(), 'debug');
-          yield* Effect.tryPromise({
-            try: async () => {
-              await mkdir(debugDir, { recursive: true });
-              await writeFile(join(debugDir, `${name ?? Date.now()}.json`), content);
-            },
-            catch: (e) => new TwitchApiError({ message: 'Failed to write debug file', cause: e }),
-          });
-        }).pipe(Effect.catchAll(() => Effect.void));
+      const writeDebugFile = (data: string | object, name?: string): Effect.Effect<void> => {
+        if (!isDebug) return Effect.void;
+
+        const content = isObjectLike(data) ? JSON.stringify(data, null, 2) : data;
+        const debugDir = join(process.cwd(), 'debug');
+
+        return Effect.tryPromise({
+          try: async () => {
+            await mkdir(debugDir, { recursive: true });
+            await writeFile(join(debugDir, `${name ?? Date.now()}.json`), content);
+          },
+          catch: (e) => new TwitchApiError({ message: 'Failed to write debug file', cause: e }),
+        }).pipe(Effect.ignore);
+      };
 
       const request = <T>(
         options: string | DefaultOptions,
@@ -176,45 +184,36 @@ export const TwitchApiLayer = (authToken: string, isDebug = false): Layer.Layer<
           Effect.annotateLogs({ service: 'TwitchApi', operation: 'request' }),
         );
 
-      const unique = Effect.gen(function* () {
-        const response = yield* request<string>({
-          url: Twitch.WebUrl,
-          headers: { accept: 'text/html' },
-        }).pipe(Effect.catchAll((e) => Effect.dieMessage(chalk`{red Could not fetch your unique (client-version/cookies): ${e.message}}`)));
+      const unique = request<string>({
+        url: Twitch.WebUrl,
+        headers: { accept: 'text/html' },
+      }).pipe(
+        Effect.catchAll((e) => Effect.dieMessage(chalk`{red Could not fetch your unique (client-version/cookies): ${e.message}}`)),
+        Effect.flatMap((response) => {
+          const setCookie = response.headers['set-cookie'];
+          const updateCookies =
+            setCookie && Array.isArray(setCookie) ? Ref.update(headersRef, (h) => ({ ...h, ...parseUniqueCookies(setCookie) })) : Effect.void;
 
-        const setCookie = response.headers['set-cookie'];
-        if (setCookie && Array.isArray(setCookie)) {
-          const cookies = parseUniqueCookies(setCookie);
-          yield* Ref.update(headersRef, (h) => ({ ...h, ...cookies }));
-        }
+          const match = /twilightBuildID="([-a-z0-9]+)"/.exec(response.body);
+          const updateVersion = match && match[1] ? Ref.update(headersRef, (h) => ({ ...h, 'client-version': match[1]! })) : Effect.void;
 
-        const htmlReg = /twilightBuildID="([-a-z0-9]+)"/;
-        const match = htmlReg.exec(response.body);
-        if (match && match[1]) {
-          const version = match[1];
-          yield* Ref.update(headersRef, (h) => ({ ...h, 'client-version': version }));
-        }
-      });
+          return Effect.all([updateCookies, updateVersion], { discard: true });
+        }),
+      );
 
-      const validate = Effect.gen(function* () {
-        const response = yield* request<{ user_id: string }>({
-          url: 'https://id.twitch.tv/oauth2/validate',
-          responseType: 'json',
-        }).pipe(
-          Effect.catchAll((e) =>
-            Effect.gen(function* () {
-              yield* Effect.logError(chalk`{red Could not validate your auth token: ${e.message}}`);
-              return yield* Effect.die(e);
-            }),
-          ),
-        );
-
-        if (response.statusCode === 401) {
-          return yield* Effect.dieMessage('Unauthorized: Invalid OAuth token detected during validation');
-        }
-        yield* Deferred.succeed(userIdDeferred, response.body.user_id);
-        return response.body.user_id;
-      });
+      const validate = request<{ user_id: string }>({
+        url: 'https://id.twitch.tv/oauth2/validate',
+        responseType: 'json',
+      }).pipe(
+        Effect.catchAll((e) =>
+          Effect.logError(chalk`{red Could not validate your auth token: ${e.message}}`).pipe(Effect.flatMap(() => Effect.die(e))),
+        ),
+        Effect.flatMap((response) =>
+          response.statusCode === 401
+            ? Effect.dieMessage('Unauthorized: Invalid OAuth token detected during validation')
+            : Deferred.succeed(userIdDeferred, response.body.user_id).pipe(Effect.as(response.body.user_id)),
+        ),
+      );
 
       const init = Effect.all([unique, validate], { concurrency: 'unbounded' }).pipe(Effect.asVoid);
 

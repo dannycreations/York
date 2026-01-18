@@ -109,7 +109,7 @@ const filterChannelsByCampaign = (
   channels: readonly Channel[],
   campaignId: string,
 ): Effect.Effect<ReadonlyArray<Channel>, TwitchApiError> =>
-  channels.length === 0
+  Array.isEmptyReadonlyArray(channels)
     ? Effect.succeed([])
     : api
         .graphql(
@@ -121,16 +121,19 @@ const filterChannelsByCampaign = (
         );
 
 const cleanupSocketListeners = (socket: TwitchSocket | undefined, channels: readonly Channel[]): Effect.Effect<void, TwitchSocketError> =>
-  !socket || channels.length === 0
+  !socket || Array.isEmptyReadonlyArray(channels)
     ? Effect.void
     : Effect.forEach(
         channels,
         (c) =>
-          Effect.all([
-            socket.unlisten(WsTopic.ChannelStream, c.id),
-            socket.unlisten(WsTopic.ChannelMoment, c.id),
-            socket.unlisten(WsTopic.ChannelUpdate, c.id),
-          ]),
+          Effect.all(
+            [
+              socket.unlisten(WsTopic.ChannelStream, c.id),
+              socket.unlisten(WsTopic.ChannelMoment, c.id),
+              socket.unlisten(WsTopic.ChannelUpdate, c.id),
+            ],
+            { discard: true },
+          ),
         { discard: true },
       );
 

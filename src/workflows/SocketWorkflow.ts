@@ -19,14 +19,15 @@ const handleClaimAvailable = (
   state: MainState,
   api: TwitchApi,
 ): Effect.Effect<void, never, TwitchApi> =>
-  Effect.gen(function* () {
-    if (payload.data.claim.channel_id !== channel.id) {
-      return;
-    }
-    yield* api.claimPoints(channel.id, payload.data.claim.id).pipe(Effect.ignore);
-    yield* Effect.logInfo(chalk`{green ${channel.login}} | {yellow Points claimed}`);
-    yield* Ref.set(state.nextPointClaim, Date.now() + 900_000);
-  });
+  payload.data.claim.channel_id !== channel.id
+    ? Effect.void
+    : api
+        .claimPoints(channel.id, payload.data.claim.id)
+        .pipe(
+          Effect.zipRight(Effect.logInfo(chalk`{green ${channel.login}} | {yellow Points claimed}`)),
+          Effect.zipRight(Ref.set(state.nextPointClaim, Date.now() + 900_000)),
+          Effect.ignore,
+        );
 
 const handlePointsEarned = (
   payload: Extract<SocketMessage['payload'], { type: 'points-earned' }>,
@@ -34,25 +35,24 @@ const handlePointsEarned = (
   state: MainState,
   api: TwitchApi,
 ): Effect.Effect<void, never, TwitchApi> =>
-  Effect.gen(function* () {
-    if (payload.data.channel_id !== channel.id) {
-      return;
-    }
-    const now = Date.now();
-    const nextClaim = yield* Ref.get(state.nextPointClaim);
-    if (now >= nextClaim) {
-      const channelData = yield* api.channelPoints(channel.login).pipe(Effect.option);
-      if (Option.isSome(channelData)) {
-        const points = channelData.value.community.channel.self.communityPoints;
-        const availableClaim = points.availableClaim;
-        if (availableClaim) {
-          yield* api.claimPoints(channel.id, availableClaim.id).pipe(Effect.ignore);
-          yield* Effect.logInfo(chalk`{green ${channel.login}} | {yellow Points claimed}`);
+  payload.data.channel_id !== channel.id
+    ? Effect.void
+    : Effect.gen(function* () {
+        const now = Date.now();
+        const nextClaim = yield* Ref.get(state.nextPointClaim);
+        if (now >= nextClaim) {
+          const channelData = yield* api.channelPoints(channel.login).pipe(Effect.option);
+          if (Option.isSome(channelData)) {
+            const points = channelData.value.community.channel.self.communityPoints;
+            const availableClaim = points.availableClaim;
+            if (availableClaim) {
+              yield* api.claimPoints(channel.id, availableClaim.id).pipe(Effect.ignore);
+              yield* Effect.logInfo(chalk`{green ${channel.login}} | {yellow Points claimed}`);
+            }
+          }
+          yield* Ref.set(state.nextPointClaim, Date.now() + 900_000);
         }
-      }
-      yield* Ref.set(state.nextPointClaim, Date.now() + 900_000);
-    }
-  });
+      });
 
 const handleUserPoint = (
   payload: SocketMessage['payload'],
@@ -67,10 +67,15 @@ const handleUserPoint = (
       return;
     }
 
-    if (payload.type === 'claim-available') {
-      yield* handleClaimAvailable(payload, channel, state, api);
-    } else if (payload.type === 'points-earned') {
-      yield* handlePointsEarned(payload, channel, state, api);
+    switch (payload.type) {
+      case 'claim-available': {
+        yield* handleClaimAvailable(payload, channel, state, api);
+        break;
+      }
+      case 'points-earned': {
+        yield* handlePointsEarned(payload, channel, state, api);
+        break;
+      }
     }
   });
 
@@ -79,24 +84,22 @@ const handleDropProgress = (
   drop: Drop,
   state: MainState,
 ): Effect.Effect<void> =>
-  Effect.gen(function* () {
-    if (payload.data.drop_id === drop.id) {
-      const progress = payload.data.current_progress_min;
-      const desync = progress - drop.currentMinutesWatched;
-      if (desync !== 0) {
-        yield* Ref.update(state.currentDrop, (d) => Option.map(d, (dr) => ({ ...dr, currentMinutesWatched: progress })));
-        yield* Ref.set(state.localMinutesWatched, 1);
-        yield* Effect.logInfo(chalk`{green ${drop.name}} | {yellow Desync ${desync > 0 ? '+' : ''}${desync} minutes}`);
-      }
-    }
-  });
+  payload.data.drop_id !== drop.id
+    ? Effect.void
+    : Effect.gen(function* () {
+        const progress = payload.data.current_progress_min;
+        const desync = progress - drop.currentMinutesWatched;
+        if (desync !== 0) {
+          yield* Ref.update(state.currentDrop, (d) => Option.map(d, (dr) => ({ ...dr, currentMinutesWatched: progress })));
+          yield* Ref.set(state.localMinutesWatched, 1);
+          yield* Effect.logInfo(chalk`{green ${drop.name}} | {yellow Desync ${desync > 0 ? '+' : ''}${desync} minutes}`);
+        }
+      });
 
 const handleDropClaim = (payload: Extract<SocketMessage['payload'], { type: 'drop-claim' }>, drop: Drop, state: MainState): Effect.Effect<void> =>
-  Effect.gen(function* () {
-    if (payload.data.drop_id === drop.id) {
-      yield* Ref.update(state.currentDrop, (d) => Option.map(d, (dr) => ({ ...dr, dropInstanceID: payload.data.drop_instance_id })));
-    }
-  });
+  payload.data.drop_id !== drop.id
+    ? Effect.void
+    : Ref.update(state.currentDrop, (d) => Option.map(d, (dr) => ({ ...dr, dropInstanceID: payload.data.drop_instance_id })));
 
 const handleUserDrop = (payload: SocketMessage['payload'], currentDrop: Option.Option<Drop>, state: MainState): Effect.Effect<void> =>
   Effect.gen(function* () {
@@ -105,20 +108,24 @@ const handleUserDrop = (payload: SocketMessage['payload'], currentDrop: Option.O
     }
     const drop = currentDrop.value;
 
-    if (payload.type === 'drop-progress') {
-      yield* handleDropProgress(payload, drop, state);
-    } else if (payload.type === 'drop-claim') {
-      yield* handleDropClaim(payload, drop, state);
+    switch (payload.type) {
+      case 'drop-progress': {
+        yield* handleDropProgress(payload, drop, state);
+        break;
+      }
+      case 'drop-claim': {
+        yield* handleDropClaim(payload, drop, state);
+        break;
+      }
     }
   });
 
 const handleChannelStream = (msg: SocketMessage, channel: Channel, state: MainState): Effect.Effect<void> =>
-  Effect.gen(function* () {
-    if (msg.payload.type === 'stream-down') {
-      yield* Ref.update(state.currentChannel, (c) => Option.map(c, (ch) => ({ ...ch, isOnline: false })));
-      yield* Effect.logInfo(chalk`{red ${channel.login}} | {red Stream down}`);
-    }
-  });
+  msg.payload.type !== 'stream-down'
+    ? Effect.void
+    : Ref.update(state.currentChannel, (c) => Option.map(c, (ch) => ({ ...ch, isOnline: false }))).pipe(
+        Effect.zipRight(Effect.logInfo(chalk`{red ${channel.login}} | {red Stream down}`)),
+      );
 
 const handleChannelMoment = (
   msg: SocketMessage,

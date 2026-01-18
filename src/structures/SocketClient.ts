@@ -7,14 +7,17 @@ import type { ClientRequestArgs } from 'node:http';
 import type { ClientOptions } from 'ws';
 import type { HttpClient } from './HttpClient';
 
-type SocketInternalEvent =
-  | { readonly _tag: 'Open' }
-  | { readonly _tag: 'Message'; readonly data: string }
-  | { readonly _tag: 'Error'; readonly cause: unknown }
-  | { readonly _tag: 'Close' }
-  | { readonly _tag: 'Pong' };
+type SocketState = Data.TaggedEnum<{
+  Open: {};
+  Message: { readonly data: string };
+  Error: { readonly cause: unknown };
+  Close: {};
+  Pong: {};
+}>;
 
-export type SocketEvent = Exclude<SocketInternalEvent, { readonly _tag: 'Pong' }>;
+const SocketState = Data.taggedEnum<SocketState>();
+
+export type SocketEvent = Exclude<SocketState, { readonly _tag: 'Pong' }>;
 
 export class SocketClientError extends Data.TaggedError('SocketClientError')<{
   readonly message: string;
@@ -131,19 +134,19 @@ export const makeSocketClient = (options: SocketClientOptions): Effect.Effect<So
                 yield* Ref.set(wsRef, Option.none());
                 const nextDeferred = yield* Deferred.make<void>();
                 yield* Ref.set(openedDeferredRef, nextDeferred);
-                yield* PubSub.publish(eventsPubSub, { _tag: 'Close' });
+                yield* PubSub.publish(eventsPubSub, SocketState.Close());
               }),
           }),
         ),
       );
 
-    const makeRawStream = (ws: WsClient): Stream.Stream<SocketInternalEvent, never, never> =>
-      Stream.async<SocketInternalEvent>((emit) => {
-        ws.once('open', () => emit.single({ _tag: 'Open' }));
-        ws.on('message', (data) => emit.single({ _tag: 'Message', data: data.toString() }));
-        ws.on('error', (cause) => emit.single({ _tag: 'Error', cause }));
-        ws.on('close', () => emit.single({ _tag: 'Close' }));
-        ws.on('pong', () => emit.single({ _tag: 'Pong' }));
+    const makeRawStream = (ws: WsClient): Stream.Stream<SocketState, never, never> =>
+      Stream.async<SocketState>((emit) => {
+        ws.once('open', () => emit.single(SocketState.Open()));
+        ws.on('message', (data) => emit.single(SocketState.Message({ data: data.toString() })));
+        ws.on('error', (cause) => emit.single(SocketState.Error({ cause })));
+        ws.on('close', () => emit.single(SocketState.Close()));
+        ws.on('pong', () => emit.single(SocketState.Pong()));
       });
 
     const connect: Effect.Effect<void, SocketClientError, HttpClient> = Effect.gen(function* () {
@@ -164,9 +167,11 @@ export const makeSocketClient = (options: SocketClientOptions): Effect.Effect<So
           Effect.gen(function* () {
             switch (event._tag) {
               case 'Message':
+              case 'Pong': {
                 yield* Ref.set(lastPongReceivedAt, Date.now());
                 break;
-              case 'Open':
+              }
+              case 'Open': {
                 yield* Ref.set(lastPongReceivedAt, Date.now());
                 yield* Ref.set(reconnectAttempts, 0);
                 yield* Effect.logDebug('SocketClient: Connection established');
@@ -174,13 +179,12 @@ export const makeSocketClient = (options: SocketClientOptions): Effect.Effect<So
                 const currentOpened = yield* Ref.get(openedDeferredRef);
                 yield* Deferred.succeed(currentOpened, undefined);
                 break;
-              case 'Pong':
-                yield* Ref.set(lastPongReceivedAt, Date.now());
-                break;
-              case 'Error':
+              }
+              case 'Error': {
                 yield* Effect.logError('SocketClient: WebSocket error', event.cause);
                 break;
-              case 'Close':
+              }
+              case 'Close': {
                 yield* Ref.set(wsRef, Option.none());
                 const nextDeferred = yield* Deferred.make<void>();
                 yield* Ref.set(openedDeferredRef, nextDeferred);
@@ -201,6 +205,7 @@ export const makeSocketClient = (options: SocketClientOptions): Effect.Effect<So
                   yield* Effect.logError('SocketClient: Max reconnect attempts reached');
                 }
                 break;
+              }
             }
           }),
         ),

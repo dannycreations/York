@@ -1,6 +1,6 @@
 import { mkdir } from 'node:fs/promises';
 import { chalk } from '@vegapunk/utilities';
-import { Data, Effect, Option, Ref, Schedule, Scope } from 'effect';
+import { Array, Data, Effect, Option, Ref, Schedule, Scope } from 'effect';
 
 import { ConfigStoreTag } from '../core/Config';
 import { WsTopic } from '../core/Constants';
@@ -39,9 +39,10 @@ export interface MainState {
 }
 
 const resetChannel = (state: MainState): Effect.Effect<void> =>
-  Ref.update(state.currentChannel, (c) => Option.map(c, (ch) => ({ ...ch, isOnline: false }))).pipe(
-    Effect.zipRight(Ref.set(state.currentChannel, Option.none())),
-  );
+  Ref.update(
+    state.currentChannel,
+    Option.map((ch) => ({ ...ch, isOnline: false })),
+  ).pipe(Effect.zipRight(Ref.set(state.currentChannel, Option.none())));
 
 const claimChannelPoints = (channel: Channel, api: TwitchApi, configStore: StoreClient<ClientConfig>): Effect.Effect<void, TwitchApiError> =>
   Effect.gen(function* () {
@@ -60,7 +61,7 @@ const claimChannelPoints = (channel: Channel, api: TwitchApi, configStore: Store
 const checkHigherPriority = (state: MainState, campaign: Campaign, campaignStore: CampaignStore): Effect.Effect<boolean> =>
   Effect.gen(function* () {
     const activeCampaigns = yield* campaignStore.getSortedActive;
-    if (activeCampaigns.length === 0 || activeCampaigns[0].id === campaign.id) return false;
+    if (Array.isEmptyReadonlyArray(activeCampaigns) || activeCampaigns[0].id === campaign.id) return false;
 
     const higherPriority = activeCampaigns[0];
     const currentDrop = yield* Ref.get(state.currentDrop);
@@ -140,11 +141,7 @@ const watchChannelTick = (
       return yield* resetChannel(state);
     }
 
-    const nowMs = Date.now();
-    const nextWatchMs = yield* Ref.get(state.nextWatch);
-    if (nowMs < nextWatchMs) {
-      yield* Effect.sleep(`${nextWatchMs - nowMs} millis`);
-    }
+    yield* waitForNextWatch(state);
 
     const chanOpt = yield* Ref.get(state.currentChannel);
     if (Option.isNone(chanOpt) || !chanOpt.value.isOnline) {
@@ -161,7 +158,10 @@ const watchChannelTick = (
 
     const { success, hlsUrl } = yield* watchService.watch(chan);
     if (hlsUrl !== chan.hlsUrl) {
-      yield* Ref.update(state.currentChannel, (c) => Option.map(c, (ch) => ({ ...ch, hlsUrl })));
+      yield* Ref.update(
+        state.currentChannel,
+        Option.map((ch) => ({ ...ch, hlsUrl })),
+      );
     }
 
     const currentTimeMs = Date.now();
@@ -186,18 +186,24 @@ const manageChannelSockets = (
 } => {
   const topics = [WsTopic.ChannelStream, WsTopic.ChannelMoment, WsTopic.ChannelUpdate];
 
-  const acquire = Effect.all(
-    topics.map((topic) => socket.listen(topic, channelId)),
-    { concurrency: 'unbounded' },
-  );
+  const acquire = Effect.forEach(topics, (topic) => socket.listen(topic, channelId), { concurrency: 'unbounded' });
 
-  const release = Effect.all(
-    topics.map((topic) => socket.unlisten(topic, channelId)),
-    { concurrency: 'unbounded' },
-  ).pipe(Effect.catchAllCause(() => Effect.void));
+  const release = Effect.forEach(topics, (topic) => socket.unlisten(topic, channelId), {
+    concurrency: 'unbounded',
+    discard: true,
+  }).pipe(Effect.catchAllCause(() => Effect.void));
 
   return { acquire, release };
 };
+
+const waitForNextWatch = (state: MainState): Effect.Effect<void> =>
+  Effect.gen(function* () {
+    const nowMs = Date.now();
+    const nextWatchMs = yield* Ref.get(state.nextWatch);
+    if (nowMs < nextWatchMs) {
+      yield* Effect.sleep(`${nextWatchMs - nowMs} millis`);
+    }
+  });
 
 const processChannelWatch = (
   state: MainState,
@@ -242,7 +248,7 @@ const performWatchLoop = (
     const campaign = campaignOpt.value;
 
     const channels = yield* campaignStore.getChannelsForCampaign(campaign);
-    if (channels.length === 0) {
+    if (Array.isEmptyReadonlyArray(channels)) {
       yield* Effect.logInfo(chalk`${campaign.name} | {red Campaigns offline}`);
       yield* campaignStore.setOffline(campaign.id, true);
       yield* Ref.set(state.currentChannel, Option.none());
@@ -323,7 +329,10 @@ const processClaimAttempts = (
       yield* Effect.sleep('1 minute');
     } else {
       yield* Effect.logInfo(chalk`{green ${drop.name}} | {red Award not found after ${totalAttempts} minutes}`);
-      yield* Ref.update(state.currentDrop, (d) => Option.map(d, (dr) => ({ ...dr, hasPreconditionsMet: false })));
+      yield* Ref.update(
+        state.currentDrop,
+        Option.map((dr) => ({ ...dr, hasPreconditionsMet: false })),
+      );
     }
 
     return attempt + 1;
@@ -414,7 +423,7 @@ const processCampaignLogic = (
   drops: ReadonlyArray<Drop>,
 ): Effect.Effect<void, TwitchApiError | TwitchSocketError | MainWorkflowError | WatchError> =>
   Effect.gen(function* () {
-    if (drops.length === 0) {
+    if (Array.isEmptyReadonlyArray(drops)) {
       yield* Effect.logInfo(chalk`${campaign.name} | {red No active drops}`);
       yield* campaignStore.setOffline(campaign.id, true);
       return;
@@ -437,12 +446,11 @@ const processCampaignLogic = (
     }
 
     if (isMinutesWatchedMet(drop)) {
-      if ((yield* configStore.get).isClaimDrops) {
-        yield* performClaimDrops(state, api, campaignStore, campaign, drop);
-      } else {
-        yield* Ref.update(state.currentCampaign, () => Option.none());
+      const config = yield* configStore.get;
+      if (config.isClaimDrops) {
+        return yield* performClaimDrops(state, api, campaignStore, campaign, drop);
       }
-      return;
+      return yield* Ref.set(state.currentCampaign, Option.none());
     }
 
     yield* performWatchLoop(state, api, socket, campaignStore, watchService, configStore);
@@ -477,7 +485,7 @@ const mainLoop = (
     yield* initializeCampaignState(state, campaignStore, configStore);
 
     const activeCampaigns = yield* campaignStore.getSortedActive;
-    if (activeCampaigns.length === 0) {
+    if (Array.isEmptyReadonlyArray(activeCampaigns)) {
       yield* handleNoActiveCampaigns(campaignStore);
       return;
     }

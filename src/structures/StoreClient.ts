@@ -82,7 +82,7 @@ export const makeStoreClient = <A extends object, I, R>(
           const partialDecode = Schema.decodeUnknown(Schema.partial(schema));
           const partial = yield* partialDecode(rawData).pipe(Effect.catchAll(() => Effect.succeed({})));
 
-          return defaultsDeep({}, partial, initialData) as A;
+          return defaultsDeep({}, partial, initialData);
         }),
       ),
     );
