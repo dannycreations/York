@@ -4,5 +4,5 @@
 
 ```cmd
 # Checks for compilation errors and linting warnings (Fast)
-bun run check
+npm run check
 ```
