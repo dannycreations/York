@@ -142,7 +142,7 @@ export const WatchServiceLayer: Layer.Layer<WatchService, never, HttpClient | Tw
         }
 
         return yield* Effect.fail(new WatchError({ message: 'HLS URL not found' }));
-      }).pipe(Effect.catchAll((e) => Effect.fail(new WatchError({ message: 'Failed to get HLS URL', cause: e }))));
+      }).pipe(Effect.mapError((e) => (e instanceof WatchError ? e : new WatchError({ message: 'Failed to get HLS URL', cause: e }))));
 
     const checkStream = (hlsUrl: string): Effect.Effect<boolean, WatchError> =>
       Effect.gen(function* () {

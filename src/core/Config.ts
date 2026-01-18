@@ -35,12 +35,17 @@ export const ConfigStoreLayer: Layer.Layer<StoreClient<ClientConfig>, never, Sco
   INITIAL_CONFIG,
 );
 
+const BooleanLike = Schema.Union(
+  Schema.Boolean,
+  Schema.transform(Schema.String, Schema.Boolean, {
+    decode: (s) => s === 'true',
+    encode: (b) => String(b),
+  }),
+);
+
 export const EnvSchema = Schema.Struct({
   AUTH_TOKEN: Schema.NonEmptyString,
-  IS_DEBUG: Schema.optionalWith(Schema.Boolean, {
-    default: () => false,
-    decode: (u: unknown) => (typeof u === 'string' ? u === 'true' : Boolean(u)) as never,
-  }),
+  IS_DEBUG: Schema.optional(BooleanLike).pipe(Schema.withConstructorDefault(() => false)),
 });
 
 export type Env = Schema.Schema.Type<typeof EnvSchema>;

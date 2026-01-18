@@ -256,5 +256,7 @@ export const makeSocketClient = (options: SocketClientOptions): Effect.Effect<So
     } satisfies SocketClient;
   });
 
-export const SocketClientLayer = <S, I>(tag: Context.Tag<S, I>, options: SocketClientOptions): Layer.Layer<S, SocketClientError, HttpClient> =>
-  Layer.scoped(tag, makeSocketClient(options) as never);
+export const SocketClientLayer = (
+  tag: Context.Tag<SocketClient, SocketClient>,
+  options: SocketClientOptions,
+): Layer.Layer<SocketClient, SocketClientError, HttpClient> => Layer.scoped(tag, makeSocketClient(options));

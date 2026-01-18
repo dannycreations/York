@@ -118,10 +118,10 @@ export const makeStoreClient = <A extends object, I, R>(
     } satisfies StoreClient<A>;
   });
 
-export const StoreClientLayer = <S, I, A extends object, SI, SR>(
-  tag: Context.Tag<S, I>,
+export const StoreClientLayer = <A extends object, I, R>(
+  tag: Context.Tag<StoreClient<A>, StoreClient<A>>,
   filePath: string,
-  schema: Schema.Schema<A, SI, SR>,
+  schema: Schema.Schema<A, I, R>,
   initialData: A,
   initialDelay = 1000,
-): Layer.Layer<S, never, Scope.Scope | SR> => Layer.scoped(tag, makeStoreClient(filePath, schema, initialData, initialDelay) as never);
+): Layer.Layer<StoreClient<A>, never, Scope.Scope | R> => Layer.scoped(tag, makeStoreClient(filePath, schema, initialData, initialDelay));

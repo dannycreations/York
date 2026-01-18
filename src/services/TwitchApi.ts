@@ -121,6 +121,7 @@ export const TwitchApiLayer = (authToken: string, isDebug = false): Layer.Layer<
 
       const writeDebugFile = (data: string | object, name?: string): Effect.Effect<void> =>
         Effect.gen(function* () {
+          if (!isDebug) return;
           const content = isObjectLike(data) ? JSON.stringify(data, null, 2) : data;
           const debugDir = join(process.cwd(), 'debug');
           yield* Effect.tryPromise({
@@ -193,8 +194,9 @@ export const TwitchApiLayer = (authToken: string, isDebug = false): Layer.Layer<
 
         const htmlReg = /twilightBuildID="([-a-z0-9]+)"/;
         const match = htmlReg.exec(response.body);
-        if (match) {
-          yield* Ref.update(headersRef, (h) => ({ ...h, 'client-version': match[1] }));
+        if (match && match[1]) {
+          const version = match[1];
+          yield* Ref.update(headersRef, (h) => ({ ...h, 'client-version': version }));
         }
       });
 

@@ -55,7 +55,6 @@ const processDrop = (
 
   const isClaimed = (drop.requiredSubs ?? 0) > 0 || (drop.self?.isClaimed ?? false);
   const isWatched = drop.self ? isMinutesWatchedMet({ ...drop.self, requiredMinutesWatched }) : false;
-
   const alreadyClaimed = benefits.some((id) => currentRewards.some((r) => r.id === id && r.lastAwardedAt >= startAt));
 
   if ((isWatched && !config.isClaimDrops) || alreadyClaimed || isClaimed) {
@@ -72,7 +71,7 @@ const processDrop = (
 
   return Option.some({
     id: drop.id,
-    name: truncate(drop.benefitEdges[0].benefit.name?.trim() ?? drop.name.trim()),
+    name: truncate(drop.benefitEdges[0]?.benefit.name?.trim() ?? drop.name.trim()),
     benefits,
     campaignId,
     startAt,

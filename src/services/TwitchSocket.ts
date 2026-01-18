@@ -96,46 +96,43 @@ export const TwitchSocketLayer = (authToken: string): Layer.Layer<TwitchSocket, 
         }).pipe(Effect.option);
 
       const handleReconnect = (raw: unknown): Effect.Effect<void> =>
-        isObjectLike<{ type: string }>(raw) && raw.type === 'RECONNECT'
-          ? Effect.gen(function* () {
-              yield* Effect.logWarning('TwitchSocket: Received RECONNECT instruction from server');
-              yield* client.disconnect(false);
-              yield* client.connect.pipe(Effect.ignore);
-            })
-          : Effect.void;
+        Effect.gen(function* () {
+          if (isObjectLike<{ type: string }>(raw) && raw.type === 'RECONNECT') {
+            yield* Effect.logWarning('TwitchSocket: Received RECONNECT instruction from server');
+            yield* client.disconnect(false);
+            yield* client.connect.pipe(Effect.ignore);
+          }
+        });
 
       const extractPayload = (raw: unknown): Effect.Effect<Option.Option<unknown>, never, never> =>
         Effect.gen(function* () {
-          if (!isObjectLike<{ type: string; data: unknown }>(raw) || raw.type !== 'MESSAGE') return Option.none();
+          if (!isObjectLike<{ type: string; data: unknown }>(raw) || raw.type !== 'MESSAGE') {
+            return Option.none();
+          }
 
-          const data = isObjectLike<{ topic: unknown; message: unknown }>(raw.data) ? raw.data : null;
-          if (!data) return Option.none();
+          const { data } = raw;
+          if (!isObjectLike<{ topic: string; message: string }>(data) || typeof data.topic !== 'string' || typeof data.message !== 'string') {
+            return Option.none();
+          }
 
-          const topic = typeof data.topic === 'string' ? data.topic : null;
-          const message = typeof data.message === 'string' ? data.message : null;
-          if (!topic || !message) return Option.none();
+          const [topicType, topicId] = data.topic.split('.');
+          const content = yield* parseMessage(data.message);
 
-          const [topicType, topicId] = topic.split('.');
+          return Option.flatMap(content, (value) => {
+            if (!isObjectLike<{ data: unknown; topic_id: unknown }>(value)) return Option.none();
 
-          const content = yield* parseMessage(message);
+            const innerData = isObjectLike(value.data) ? value.data : {};
+            const topic_id = typeof value.topic_id === 'string' ? value.topic_id : topicId;
 
-          return Option.match(content, {
-            onNone: () => Option.none(),
-            onSome: (value) => {
-              if (!isObjectLike<{ data: unknown; topic_id: unknown }>(value)) return Option.none();
-
-              const innerData = isObjectLike(value.data) ? value.data : {};
-              const topic_id = (typeof value.topic_id === 'string' ? value.topic_id : undefined) ?? topicId;
-              return Option.some({
-                topicType,
-                topicId,
-                payload: {
-                  ...value,
-                  ...innerData,
-                  topic_id,
-                },
-              });
-            },
+            return Option.some({
+              topicType,
+              topicId,
+              payload: {
+                ...value,
+                ...innerData,
+                topic_id,
+              },
+            });
           });
         });
 

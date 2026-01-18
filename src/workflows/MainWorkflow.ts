@@ -163,11 +163,13 @@ const watchChannelTick = (
 
     const currentTimeMs = Date.now();
     const scheduledWatchMs = yield* Ref.get(state.nextWatch);
-    if (success && currentTimeMs >= scheduledWatchMs) {
-      yield* handleWatchSuccess(state, chan, campaignStore);
-    } else if (!success && currentTimeMs >= scheduledWatchMs) {
-      yield* resetChannel(state);
-      return;
+    if (currentTimeMs >= scheduledWatchMs) {
+      if (success) {
+        yield* handleWatchSuccess(state, chan, campaignStore);
+      } else {
+        yield* resetChannel(state);
+        return;
+      }
     }
 
     yield* Effect.sleep('1 minute');
@@ -256,6 +258,22 @@ const performWatchLoop = (
     yield* Ref.set(state.currentChannel, Option.none());
   });
 
+const tryClaim = (state: MainState, api: TwitchApi, campaignStore: CampaignStore, drop: Drop): Effect.Effect<boolean, TwitchApiError> =>
+  Effect.gen(function* () {
+    const currentDropOpt = yield* Ref.get(state.currentDrop);
+    if (Option.isNone(currentDropOpt)) return false;
+
+    const currentDrop = currentDropOpt.value;
+    const claimRes = yield* api.claimDrops(currentDrop.dropInstanceID ?? '').pipe(Effect.option);
+
+    if (Option.isSome(claimRes) && claimRes.value.claimDropRewards) {
+      yield* Effect.logInfo(chalk`{green ${drop.name}} | {yellow Drops claimed}`);
+      yield* campaignStore.addRewards(drop.benefits.map((id) => ({ id, lastAwardedAt: new Date() })));
+      return true;
+    }
+    return false;
+  });
+
 const processClaimAttempts = (
   state: MainState,
   api: TwitchApi,
@@ -275,17 +293,12 @@ const processClaimAttempts = (
       }
     }
 
+    const claimed = yield* tryClaim(state, api, campaignStore, drop);
+    if (claimed) return totalAttempts;
+
     const currentDropOpt = yield* Ref.get(state.currentDrop);
     if (Option.isNone(currentDropOpt)) return totalAttempts;
-
     const currentDrop = currentDropOpt.value;
-    const claimRes = yield* api.claimDrops(currentDrop.dropInstanceID ?? '').pipe(Effect.option);
-
-    if (Option.isSome(claimRes) && claimRes.value.claimDropRewards) {
-      yield* Effect.logInfo(chalk`{green ${drop.name}} | {yellow Drops claimed}`);
-      yield* campaignStore.addRewards(drop.benefits.map((id) => ({ id, lastAwardedAt: new Date() })));
-      return totalAttempts;
-    }
 
     if (currentDrop.currentMinutesWatched < currentDrop.requiredMinutesWatched) {
       const isBroken = currentDrop.requiredMinutesWatched - currentDrop.currentMinutesWatched >= 20;
@@ -321,18 +334,17 @@ const performClaimDrops = (
   campaign: Campaign,
   drop: Drop,
 ): Effect.Effect<void, TwitchApiError> =>
-  Effect.gen(function* () {
-    yield* Ref.set(state.isClaiming, true);
-
-    const totalAttempts = 5;
-
-    yield* Effect.iterate(0, {
-      while: (attempt) => attempt < totalAttempts,
-      body: (attempt) => processClaimAttempts(state, api, campaignStore, campaign, drop, totalAttempts, attempt),
-    });
-
-    yield* Ref.set(state.isClaiming, false);
-  });
+  Effect.acquireUseRelease(
+    Ref.set(state.isClaiming, true),
+    () => {
+      const totalAttempts = 5;
+      return Effect.iterate(0, {
+        while: (attempt) => attempt < totalAttempts,
+        body: (attempt) => processClaimAttempts(state, api, campaignStore, campaign, drop, totalAttempts, attempt),
+      });
+    },
+    () => Ref.set(state.isClaiming, false),
+  );
 
 const initializeCampaignState = (state: MainState, campaignStore: CampaignStore, configStore: StoreClient<ClientConfig>): Effect.Effect<void> =>
   Effect.gen(function* () {
