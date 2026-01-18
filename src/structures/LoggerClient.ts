@@ -37,7 +37,7 @@ export interface LoggerOptions {
   readonly rejection?: boolean;
 }
 
-export const createLoggerClient = (options: LoggerOptions = {}): pino.Logger => {
+export const makeLoggerClient = (options: LoggerOptions = {}): pino.Logger => {
   const {
     dir = join(process.cwd(), 'logs'),
     level = process.env.NODE_ENV === 'development' ? 'debug' : 'info',
@@ -47,7 +47,7 @@ export const createLoggerClient = (options: LoggerOptions = {}): pino.Logger => 
     rejection = true,
   } = options;
 
-  const streams: StreamEntry[] = [
+  const streams: ReadonlyArray<StreamEntry> = [
     {
       level: 'warn',
       stream: pino.destination({
@@ -55,34 +55,32 @@ export const createLoggerClient = (options: LoggerOptions = {}): pino.Logger => 
         dest: `${dir}/errors.log`,
       }),
     },
+    ...(trace
+      ? [
+          {
+            level: 'trace' as const,
+            stream: pino.destination({
+              mkdir: true,
+              dest: `${dir}/traces.log`,
+            }),
+          },
+        ]
+      : []),
+    pretty
+      ? {
+          level,
+          stream: pinoPretty({
+            colorize: true,
+            translateTime: 'SYS:HH:MM:ss',
+            sync: process.env.NODE_ENV === 'development',
+            singleLine: process.env.NODE_ENV === 'production',
+          }),
+        }
+      : {
+          level,
+          stream: process.stdout,
+        },
   ];
-
-  if (trace) {
-    streams.push({
-      level: 'trace',
-      stream: pino.destination({
-        mkdir: true,
-        dest: `${dir}/traces.log`,
-      }),
-    });
-  }
-
-  if (pretty) {
-    streams.push({
-      level,
-      stream: pinoPretty({
-        colorize: true,
-        translateTime: 'SYS:HH:MM:ss',
-        sync: process.env.NODE_ENV === 'development',
-        singleLine: process.env.NODE_ENV === 'production',
-      }),
-    });
-  } else {
-    streams.push({
-      level,
-      stream: process.stdout,
-    });
-  }
 
   const instance = pino(
     {
@@ -105,7 +103,7 @@ export const createLoggerClient = (options: LoggerOptions = {}): pino.Logger => 
         },
       },
     },
-    pino.multistream(streams),
+    pino.multistream(streams as StreamEntry[]),
   );
 
   if (exception && process.listenerCount('uncaughtException') === 0) {
@@ -135,14 +133,14 @@ export const LoggerClientLayer = (self: Logger.Logger<unknown, void>, logger: pi
           const [failure] = Cause.failures(cause);
           const causePretty = { cause: Cause.pretty(cause) };
 
-          if (isErrorLike<{ cause: unknown }>(failure) && failure.cause) {
-            payload.push({ ...failure.cause, ...causePretty });
+          if (isErrorLike<{ readonly cause: unknown }>(failure) && failure.cause) {
+            payload.push({ ...(failure.cause as object), ...causePretty });
           } else {
             payload.push(causePretty);
           }
         }
 
-        const logMethod = logger[level] as (...args: unknown[]) => void;
+        const logMethod = logger[level] as (...args: readonly unknown[]) => void;
         logMethod.call(logger, ...payload);
       }),
     ),

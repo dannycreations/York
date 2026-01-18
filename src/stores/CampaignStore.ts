@@ -5,7 +5,8 @@ import { ConfigStoreTag } from '../core/Config';
 import { WsTopic } from '../core/Constants';
 import { ChannelDropsSchema, ViewerDropsDashboardSchema } from '../core/Schemas';
 import { getDropStatus, isMinutesWatchedMet } from '../helpers/TwitchHelper';
-import { GqlQueries, TwitchApiTag } from '../services/TwitchApi';
+import { TwitchApiTag } from '../services/TwitchApi';
+import { GqlQueries } from '../services/TwitchQueries';
 import { TwitchSocketTag } from '../services/TwitchSocket';
 
 import type { ClientConfig } from '../core/Config';
@@ -35,7 +36,7 @@ export interface CampaignStore {
   readonly addRewards: (rewards: ReadonlyArray<Reward>) => Effect.Effect<void>;
 }
 
-export class CampaignStoreTag extends Context.Tag('@services/CampaignStore')<CampaignStoreTag, CampaignStore>() {}
+export const CampaignStoreTag = Context.GenericTag<CampaignStore>('@services/CampaignStore');
 
 const filterChannelsByCampaign = (
   api: TwitchApi,
@@ -71,7 +72,7 @@ const processCampaignData = (
   data: Schema.Schema.Type<typeof ViewerDropsDashboardSchema>['currentUser']['dropCampaigns'][number],
   existingCampaigns: ReadonlyMap<string, Campaign>,
   configStore: StoreClient<ClientConfig>,
-) =>
+): Effect.Effect<Option.Option<Campaign>> =>
   Effect.gen(function* () {
     const config = yield* configStore.get;
     const gameName = data.game.displayName;
@@ -102,7 +103,7 @@ const processCampaignData = (
     } satisfies Campaign);
   });
 
-export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiTag | ConfigStoreTag | TwitchSocketTag> = Layer.effect(
+export const CampaignStoreLayer: Layer.Layer<CampaignStore, never, TwitchApi | StoreClient<ClientConfig> | TwitchSocket> = Layer.effect(
   CampaignStoreTag,
   Effect.gen(function* () {
     const api = yield* TwitchApiTag;

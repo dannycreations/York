@@ -25,12 +25,10 @@ import {
 import { HttpClientError, HttpClientTag } from '../structures/HttpClient';
 import { GqlQueries } from './TwitchQueries';
 
+import type { ReadonlyRecord } from 'effect/Record';
 import type { GqlResponse } from '../core/Schemas';
-import type { DefaultOptions } from '../structures/HttpClient';
+import type { DefaultOptions, HttpClient } from '../structures/HttpClient';
 import type { GraphqlRequest } from './TwitchQueries';
-
-export { GqlQueries };
-export type { GraphqlRequest };
 
 export class TwitchApiError extends Data.TaggedError('TwitchApiError')<{
   readonly message: string;
@@ -69,7 +67,7 @@ export interface TwitchApi {
   readonly playbackToken: (login: string) => Effect.Effect<Schema.Schema.Type<typeof PlaybackTokenSchema>, TwitchApiError>;
 }
 
-export class TwitchApiTag extends Context.Tag('@services/TwitchApi')<TwitchApiTag, TwitchApi>() {}
+export const TwitchApiTag = Context.GenericTag<TwitchApi>('@services/TwitchApi');
 
 const parseUniqueCookies = (setCookie: readonly string[]): Record<string, string> =>
   setCookie.reduce<Record<string, string>>((acc, cookie) => {
@@ -83,7 +81,7 @@ const parseUniqueCookies = (setCookie: readonly string[]): Record<string, string
     return acc;
   }, {});
 
-export const TwitchApiLayer = (authToken: string, isDebug: boolean = false): Layer.Layer<TwitchApiTag, never, HttpClientTag> =>
+export const TwitchApiLayer = (authToken: string, isDebug = false): Layer.Layer<TwitchApi, never, HttpClient> =>
   Layer.effect(
     TwitchApiTag,
     Effect.gen(function* () {
@@ -114,7 +112,10 @@ export const TwitchApiLayer = (authToken: string, isDebug: boolean = false): Lay
       const request = <T>(
         options: string | DefaultOptions,
         isDebugOverride?: boolean,
-      ): Effect.Effect<{ body: T; statusCode: number; headers: Record<string, string | string[] | undefined> }, TwitchApiError> =>
+      ): Effect.Effect<
+        { readonly body: T; readonly statusCode: number; readonly headers: ReadonlyRecord<string, string | string[] | undefined> },
+        TwitchApiError
+      > =>
         Effect.gen(function* () {
           const commonHeaders = yield* Ref.get(headersRef);
           const payload = typeof options === 'string' ? { url: options } : options;
@@ -152,6 +153,7 @@ export const TwitchApiLayer = (authToken: string, isDebug: boolean = false): Lay
               ? new TwitchApiError({ message: e.message, cause: e })
               : new TwitchApiError({ message: String(e), cause: e }),
           ),
+          Effect.annotateLogs({ service: 'TwitchApi', operation: 'request' }),
         );
 
       const unique = Effect.gen(function* () {
@@ -198,7 +200,7 @@ export const TwitchApiLayer = (authToken: string, isDebug: boolean = false): Lay
       const graphql = <A, I, R>(
         requests: GraphqlRequest | ReadonlyArray<GraphqlRequest>,
         schema: Schema.Schema<A, I, R>,
-        waitForUserId: boolean = true,
+        waitForUserId = true,
       ): Effect.Effect<ReadonlyArray<A>, TwitchApiError, R> =>
         Effect.gen(function* () {
           const userId = waitForUserId ? yield* getUserId : '';

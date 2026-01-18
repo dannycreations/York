@@ -29,7 +29,7 @@ export const runForkWithCleanUp = <A, E, R>(effect: Effect.Effect<A, E, R>, runt
     ),
   );
 
-  const cleanUp = (): void => {
+  const cleanUp = () => {
     runPromise(Fiber.interrupt(fiber))
       .then(() => process.exit(0))
       .catch(() => process.exit(1));
@@ -50,7 +50,7 @@ export const cycleWithRestart = <A, E, R>(
     Effect.gen(function* () {
       const failures = Array.from(Cause.failures(cause));
 
-      if (failures.some((error) => isErrorLike<{ _tag: string }>(error) && error._tag === 'RuntimeRestart')) {
+      if (failures.some((error) => isErrorLike<{ readonly _tag: string }>(error) && error._tag === 'RuntimeRestart')) {
         return;
       }
 

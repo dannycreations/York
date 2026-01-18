@@ -1,4 +1,4 @@
-import { Context, Schema } from 'effect';
+import { Context, Layer, Schema, Scope } from 'effect';
 
 import { StoreClientLayer } from '../structures/StoreClient';
 
@@ -26,15 +26,20 @@ export const INITIAL_CONFIG: ClientConfig = {
   exclusionList: new Set(),
 };
 
-export class ConfigStoreTag extends Context.Tag('@core/ConfigStore')<ConfigStoreTag, StoreClient<ClientConfig>>() {}
+export const ConfigStoreTag = Context.GenericTag<StoreClient<ClientConfig>>('@core/ConfigStore');
 
-export const ConfigStoreLayer = StoreClientLayer(ConfigStoreTag, 'sessions/settings.json', ClientConfigSchema, INITIAL_CONFIG);
+export const ConfigStoreLayer: Layer.Layer<StoreClient<ClientConfig>, never, Scope.Scope> = StoreClientLayer(
+  ConfigStoreTag,
+  'sessions/settings.json',
+  ClientConfigSchema,
+  INITIAL_CONFIG,
+);
 
 export const EnvSchema = Schema.Struct({
   AUTH_TOKEN: Schema.NonEmptyString,
   IS_DEBUG: Schema.optionalWith(Schema.Boolean, {
     default: () => false,
-    decode: (u: unknown) => (typeof u === 'string' ? u === 'true' : Boolean(u)),
+    decode: (u: unknown) => (typeof u === 'string' ? u === 'true' : Boolean(u)) as never,
   }),
 });
 

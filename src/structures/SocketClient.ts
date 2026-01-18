@@ -1,10 +1,11 @@
 import { Context, Data, Deferred, Effect, Fiber, Layer, Option, PubSub, Queue, Ref, Schedule, Scope, Stream } from 'effect';
 import { WebSocket as WsClient } from 'ws';
 
-import { HttpClientLayer, HttpClientTag } from './HttpClient';
+import { HttpClientTag } from './HttpClient';
 
 import type { ClientRequestArgs } from 'node:http';
 import type { ClientOptions } from 'ws';
+import type { HttpClient } from './HttpClient';
 
 type SocketInternalEvent =
   | { readonly _tag: 'Open' }
@@ -38,7 +39,7 @@ export interface SocketClient {
   readonly disconnect: (graceful?: boolean) => Effect.Effect<void>;
 }
 
-export const createSocketClient = (options: SocketClientOptions): Effect.Effect<SocketClient, SocketClientError, Scope.Scope | HttpClientTag> =>
+export const makeSocketClient = (options: SocketClientOptions): Effect.Effect<SocketClient, SocketClientError, Scope.Scope | HttpClient> =>
   Effect.gen(function* () {
     const {
       url,
@@ -59,59 +60,58 @@ export const createSocketClient = (options: SocketClientOptions): Effect.Effect<
       readonly deferred: Deferred.Deferred<void, SocketClientError>;
     }>();
 
-    yield* Effect.gen(function* () {
-      while (true) {
-        const { data, deferred } = yield* Queue.take(sendQueue);
+    const processSendQueue = Queue.take(sendQueue).pipe(
+      Effect.flatMap(({ data, deferred }) => {
+        const waitForReady = Effect.gen(function* () {
+          const openedDeferred = yield* Ref.get(openedDeferredRef);
+          yield* Deferred.await(openedDeferred);
+
+          const wsOpt = yield* Ref.get(wsRef);
+          if (Option.isNone(wsOpt)) {
+            yield* Effect.sleep('1 seconds');
+            return yield* Effect.fail('Not Ready');
+          }
+
+          const ws = wsOpt.value;
+          if (ws.readyState !== WsClient.OPEN || ws.bufferedAmount > 1_048_576) {
+            yield* Effect.sleep('100 millis');
+            return yield* Effect.fail('Not Ready');
+          }
+
+          return ws;
+        }).pipe(Effect.retry({ while: (e): e is string => e === 'Not Ready' }));
 
         const sendTask = Effect.gen(function* () {
-          while (true) {
-            const openedDeferred = yield* Ref.get(openedDeferredRef);
-            yield* Deferred.await(openedDeferred);
+          const ws = yield* waitForReady.pipe(Effect.mapError((e) => new SocketClientError({ message: String(e) })));
+          return yield* Effect.async<void, SocketClientError>((resume) => {
+            ws.send(data, (err) => {
+              if (err) {
+                resume(Effect.fail(new SocketClientError({ message: 'SocketClient: Failed to send message', cause: err })));
+              } else {
+                resume(Effect.void);
+              }
+            });
+          });
+        }).pipe(
+          Effect.retry({
+            schedule: Schedule.fixed('1 seconds').pipe(Schedule.compose(Schedule.recurs(2))),
+          }),
+        );
 
-            const wsOpt = yield* Ref.get(wsRef);
-            if (Option.isNone(wsOpt)) {
-              yield* Effect.sleep('1 seconds');
-              continue;
-            }
-            const ws = wsOpt.value;
-
-            if (ws.readyState !== WsClient.OPEN) {
-              yield* Effect.sleep('100 millis');
-              continue;
-            }
-
-            if (ws.bufferedAmount > 1_048_576) {
-              yield* Effect.sleep('100 millis');
-              continue;
-            }
-
-            const result = yield* Effect.async<void, SocketClientError>((resume) => {
-              ws.send(data, (err) => {
-                if (err) {
-                  resume(Effect.fail(new SocketClientError({ message: 'SocketClient: Failed to send message', cause: err })));
-                } else {
-                  resume(Effect.void);
-                }
-              });
-            }).pipe(Effect.either);
-
-            if (result._tag === 'Right') return;
-            yield* Effect.logError('SocketClient: Failed to send message, retrying...', result.left);
-            yield* Effect.sleep('1 seconds');
-          }
-        }).pipe(Effect.retry(Schedule.recurs(2)));
-
-        yield* Effect.matchEffect(sendTask, {
+        return Effect.matchEffect(sendTask, {
           onFailure: (err) => Deferred.fail(deferred, err),
           onSuccess: () => Deferred.succeed(deferred, undefined),
         });
-      }
-    }).pipe(Effect.forkIn(yield* Effect.scope));
+      }),
+      Effect.forever,
+    );
+
+    yield* Effect.forkIn(processSendQueue, yield* Effect.scope);
 
     const lastPongReceivedAt = yield* Ref.make(Date.now());
     const reconnectAttempts = yield* Ref.make(0);
 
-    const disconnect = (graceful: boolean = false): Effect.Effect<void> =>
+    const disconnect = (graceful = false): Effect.Effect<void> =>
       Ref.get(wsRef).pipe(
         Effect.flatMap(
           Option.match({
@@ -127,7 +127,8 @@ export const createSocketClient = (options: SocketClientOptions): Effect.Effect<
                   }
                 });
                 yield* Ref.set(wsRef, Option.none());
-                yield* Ref.set(openedDeferredRef, yield* Deferred.make<void>());
+                const nextDeferred = yield* Deferred.make<void>();
+                yield* Ref.set(openedDeferredRef, nextDeferred);
                 yield* PubSub.publish(eventsPubSub, { _tag: 'Close' });
               }),
           }),
@@ -135,7 +136,7 @@ export const createSocketClient = (options: SocketClientOptions): Effect.Effect<
       );
 
     const makeRawStream = (ws: WsClient): Stream.Stream<SocketInternalEvent, never, never> =>
-      Stream.async<SocketInternalEvent, never>((emit) => {
+      Stream.async<SocketInternalEvent>((emit) => {
         ws.once('open', () => emit.single({ _tag: 'Open' }));
         ws.on('message', (data) => emit.single({ _tag: 'Message', data: data.toString() }));
         ws.on('error', (cause) => emit.single({ _tag: 'Error', cause }));
@@ -143,7 +144,7 @@ export const createSocketClient = (options: SocketClientOptions): Effect.Effect<
         ws.on('pong', () => emit.single({ _tag: 'Pong' }));
       });
 
-    const connect: Effect.Effect<void, SocketClientError, HttpClientTag> = Effect.gen(function* () {
+    const connect: Effect.Effect<void, SocketClientError, HttpClient> = Effect.gen(function* () {
       const wsOpt = yield* Ref.get(wsRef);
       if (Option.isSome(wsOpt)) return;
 
@@ -179,7 +180,8 @@ export const createSocketClient = (options: SocketClientOptions): Effect.Effect<
                 break;
               case 'Close':
                 yield* Ref.set(wsRef, Option.none());
-                yield* Ref.set(openedDeferredRef, yield* Deferred.make<void>());
+                const nextDeferred = yield* Deferred.make<void>();
+                yield* Ref.set(openedDeferredRef, nextDeferred);
                 const attempts = yield* Ref.get(reconnectAttempts);
                 if (attempts < reconnectMaxAttempts) {
                   yield* Ref.update(reconnectAttempts, (n) => n + 1);
@@ -252,5 +254,5 @@ export const createSocketClient = (options: SocketClientOptions): Effect.Effect<
     } satisfies SocketClient;
   });
 
-export const SocketClientLayer = <S>(tag: Context.Tag<S, SocketClient>, options: SocketClientOptions) =>
-  Layer.scoped(tag, createSocketClient(options)).pipe(Layer.provide(HttpClientLayer));
+export const SocketClientLayer = <S, I>(tag: Context.Tag<S, I>, options: SocketClientOptions): Layer.Layer<S, SocketClientError, HttpClient> =>
+  Layer.scoped(tag, makeSocketClient(options) as never);

@@ -57,7 +57,7 @@ const processUpcomingCampaign = (
     }
   });
 
-export const UpcomingWorkflow = (state: MainState): Effect.Effect<void, never, CampaignStoreTag> =>
+export const UpcomingWorkflow = (state: MainState): Effect.Effect<void, never, CampaignStore> =>
   Effect.gen(function* () {
     const campaignStore = yield* CampaignStoreTag;
     const sleepTime = 7_200_000;

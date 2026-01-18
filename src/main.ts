@@ -8,11 +8,11 @@ import { TwitchSocketLayer } from './services/TwitchSocket';
 import { WatchServiceLayer } from './services/WatchService';
 import { CampaignStoreLayer } from './stores/CampaignStore';
 import { HttpClientLayer } from './structures/HttpClient';
-import { createLoggerClient, LoggerClientLayer } from './structures/LoggerClient';
+import { LoggerClientLayer, makeLoggerClient } from './structures/LoggerClient';
 import { runMain } from './structures/RuntimeClient';
 import { MainWorkflow } from './workflows/MainWorkflow';
 
-const logger = createLoggerClient({ exception: false, rejection: false });
+const logger = makeLoggerClient({ exception: false, rejection: false });
 
 const BaseLayer = Layer.mergeAll(ConfigStoreLayer, HttpClientLayer, LoggerClientLayer(Logger.defaultLogger, logger));
 

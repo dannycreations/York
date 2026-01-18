@@ -29,12 +29,11 @@ const loadStore = (filePath: string): Effect.Effect<unknown, StoreClientError> =
     catch: (error) => error,
   }).pipe(
     Effect.flatMap((content) => Effect.sync(() => parseJsonc<unknown>(content))),
-    Effect.catchAll((error) => {
-      if (isErrorLike<{ code: string }>(error) && error.code === 'ENOENT') {
-        return Effect.succeed({});
-      }
-      return Effect.fail(new StoreClientError({ message: `Failed to load store: ${filePath}`, cause: error }));
-    }),
+    Effect.catchAll((error) =>
+      isErrorLike<{ readonly code: string }>(error) && error.code === 'ENOENT'
+        ? Effect.succeed({})
+        : Effect.fail(new StoreClientError({ message: `Failed to load store: ${filePath}`, cause: error })),
+    ),
   );
 
 const saveStore = <A, I, R>(filePath: string, schema: Schema.Schema<A, I, R>, data: A): Effect.Effect<void, StoreClientError, R> =>
@@ -60,11 +59,11 @@ const saveStore = <A, I, R>(filePath: string, schema: Schema.Schema<A, I, R>, da
     });
   });
 
-export const createStoreClient = <A extends object, I, R>(
+export const makeStoreClient = <A extends object, I, R>(
   filePath: string,
   schema: Schema.Schema<A, I, R>,
   initialData: A,
-  initialDelay: number = 1000,
+  initialDelay = 1000,
 ): Effect.Effect<StoreClient<A>, never, Scope.Scope | R> =>
   Effect.gen(function* () {
     const dataRef = yield* Ref.make(initialData);
@@ -119,10 +118,10 @@ export const createStoreClient = <A extends object, I, R>(
     } satisfies StoreClient<A>;
   });
 
-export const StoreClientLayer = <S, A extends object, I, R>(
-  tag: Context.Tag<S, StoreClient<A>>,
+export const StoreClientLayer = <S, I, A extends object, SI, SR>(
+  tag: Context.Tag<S, I>,
   filePath: string,
-  schema: Schema.Schema<A, I, R>,
+  schema: Schema.Schema<A, SI, SR>,
   initialData: A,
-  initialDelay: number = 1000,
-): Layer.Layer<S, never, Scope.Scope | R> => Layer.scoped(tag, createStoreClient(filePath, schema, initialData, initialDelay));
+  initialDelay = 1000,
+): Layer.Layer<S, never, Scope.Scope | SR> => Layer.scoped(tag, makeStoreClient(filePath, schema, initialData, initialDelay) as never);

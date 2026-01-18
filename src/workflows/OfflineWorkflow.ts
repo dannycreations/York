@@ -45,7 +45,7 @@ const processOfflineCampaign = (campaign: Campaign, state: MainState, campaignSt
     }
   });
 
-export const OfflineWorkflow = (state: MainState, configStore: StoreClient<ClientConfig>): Effect.Effect<void, never, CampaignStoreTag> =>
+export const OfflineWorkflow = (state: MainState, configStore: StoreClient<ClientConfig>): Effect.Effect<void, never, CampaignStore> =>
   Effect.gen(function* () {
     const campaignStore = yield* CampaignStoreTag;
 

@@ -7,9 +7,9 @@ import { TwitchApiTag } from '../services/TwitchApi';
 import { TwitchSocketTag } from '../services/TwitchSocket';
 
 import type { ClientConfig } from '../core/Config';
-import type { Channel, Drop } from '../core/Schemas';
+import type { Channel, Drop, SocketMessage } from '../core/Schemas';
 import type { TwitchApi } from '../services/TwitchApi';
-import type { SocketMessage } from '../services/TwitchSocket';
+import type { TwitchSocket } from '../services/TwitchSocket';
 import type { StoreClient } from '../structures/StoreClient';
 import type { MainState } from './MainWorkflow';
 
@@ -19,7 +19,7 @@ const handleUserPoint = (
   state: MainState,
   api: TwitchApi,
   configStore: StoreClient<ClientConfig>,
-): Effect.Effect<void, never, TwitchApiTag> =>
+): Effect.Effect<void, never, TwitchApi> =>
   Effect.gen(function* () {
     const config = yield* configStore.get;
     if (!config.isClaimPoints) {
@@ -84,7 +84,7 @@ const processMessage = (
   api: TwitchApi,
   configStore: StoreClient<ClientConfig>,
   userId: string,
-): Effect.Effect<void, never, TwitchApiTag | TwitchSocketTag> =>
+): Effect.Effect<void, never, TwitchApi | TwitchSocket> =>
   Effect.gen(function* () {
     const currentChannelOpt = yield* Ref.get(state.currentChannel);
     const currentDrop = yield* Ref.get(state.currentDrop);
@@ -158,10 +158,7 @@ const processMessage = (
     }
   });
 
-export const SocketWorkflow = (
-  state: MainState,
-  configStore: StoreClient<ClientConfig>,
-): Effect.Effect<void, never, TwitchApiTag | TwitchSocketTag> =>
+export const SocketWorkflow = (state: MainState, configStore: StoreClient<ClientConfig>): Effect.Effect<void, never, TwitchApi | TwitchSocket> =>
   Effect.gen(function* () {
     const api = yield* TwitchApiTag;
     const socket = yield* TwitchSocketTag;

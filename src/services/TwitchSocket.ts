@@ -4,12 +4,10 @@ import { Context, Data, Effect, Layer, Option, Ref, Schema, Stream } from 'effec
 
 import { Twitch } from '../core/Constants';
 import { SocketMessageSchema } from '../core/Schemas';
-import { HttpClientTag } from '../structures/HttpClient';
-import { createSocketClient } from '../structures/SocketClient';
+import { makeSocketClient } from '../structures/SocketClient';
 
 import type { SocketMessage } from '../core/Schemas';
-
-export type { SocketMessage };
+import type { HttpClient } from '../structures/HttpClient';
 
 export class TwitchSocketError extends Data.TaggedError('TwitchSocketError')<{
   readonly message: string;
@@ -23,13 +21,13 @@ export interface TwitchSocket {
   readonly disconnect: (graceful?: boolean) => Effect.Effect<void>;
 }
 
-export class TwitchSocketTag extends Context.Tag('@services/TwitchSocket')<TwitchSocketTag, TwitchSocket>() {}
+export const TwitchSocketTag = Context.GenericTag<TwitchSocket>('@services/TwitchSocket');
 
-export const TwitchSocketLayer = (authToken: string): Layer.Layer<TwitchSocketTag, TwitchSocketError, HttpClientTag> =>
+export const TwitchSocketLayer = (authToken: string): Layer.Layer<TwitchSocket, TwitchSocketError, HttpClient> =>
   Layer.scoped(
     TwitchSocketTag,
     Effect.gen(function* () {
-      const client = yield* createSocketClient({
+      const client = yield* makeSocketClient({
         url: Twitch.WssUrl,
         pingIntervalMs: 180_000,
         pingTimeoutMs: 10_000,
@@ -156,7 +154,7 @@ export const TwitchSocketLayer = (authToken: string): Layer.Layer<TwitchSocketTa
           ),
         ),
         Stream.filterMap((o) => o),
-      );
+      ) as Stream.Stream<SocketMessage, never, never>;
 
       yield* client.events.pipe(
         Stream.filter((e) => e._tag === 'Open'),

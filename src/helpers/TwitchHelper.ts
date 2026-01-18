@@ -1,6 +1,6 @@
 export const GRACE_PERIOD_MINUTES = 10;
 
-export const getDropStatus = (startAt: Date, endAt: Date, minutesLeft?: number) => {
+export const getDropStatus = (startAt: Date, endAt: Date, minutesLeft?: number): { readonly isUpcoming: boolean; readonly isExpired: boolean } => {
   const nowMs = Date.now();
   const startAtMs = startAt.getTime();
   const endAtMs = endAt.getTime();
@@ -20,5 +20,5 @@ export const getDropStatus = (startAt: Date, endAt: Date, minutesLeft?: number) 
   };
 };
 
-export const isMinutesWatchedMet = (drop: { currentMinutesWatched: number; requiredMinutesWatched: number }) =>
+export const isMinutesWatchedMet = (drop: { readonly currentMinutesWatched: number; readonly requiredMinutesWatched: number }): boolean =>
   drop.currentMinutesWatched >= drop.requiredMinutesWatched + 1;
