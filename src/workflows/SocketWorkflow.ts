@@ -90,9 +90,14 @@ const handleDropProgress = (
         const progress = payload.data.current_progress_min;
         const desync = progress - drop.currentMinutesWatched;
         if (desync !== 0) {
-          yield* Ref.update(state.currentDrop, (d) => Option.map(d, (dr) => ({ ...dr, currentMinutesWatched: progress })));
+          const updatedDrop = { ...drop, currentMinutesWatched: progress };
+          yield* Ref.set(state.currentDrop, Option.some(updatedDrop));
           yield* Ref.set(state.localMinutesWatched, 1);
           yield* Effect.logInfo(chalk`{green ${drop.name}} | {yellow Desync ${desync > 0 ? '+' : ''}${desync} minutes}`);
+
+          if (progress >= drop.requiredMinutesWatched) {
+            yield* Ref.set(state.currentChannel, Option.none());
+          }
         }
       });
 

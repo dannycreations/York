@@ -108,7 +108,13 @@ const handleWatchSuccess = (state: MainState, chan: Channel, campaignStore: Camp
       const drop = dropOpt.value;
       const currentMinutesWatched = drop.currentMinutesWatched + 1;
       yield* Effect.logInfo(chalk`{green ${drop.name}} | {green ${chan.login}} | {green ${currentMinutesWatched}/${drop.requiredMinutesWatched}}`);
-      yield* Ref.update(state.currentDrop, (d) => Option.map(d, (dr) => ({ ...dr, currentMinutesWatched })));
+      const updatedDropState = { ...drop, currentMinutesWatched };
+      yield* Ref.set(state.currentDrop, Option.some(updatedDropState));
+
+      if (isMinutesWatchedMet(updatedDropState)) {
+        yield* Ref.set(state.currentChannel, Option.none());
+        return;
+      }
 
       if ((yield* Ref.get(state.localMinutesWatched)) >= 20) {
         yield* Ref.set(state.localMinutesWatched, 0);
@@ -169,6 +175,8 @@ const watchChannelTick = (
     if (currentTimeMs >= scheduledWatchMs) {
       if (success) {
         yield* handleWatchSuccess(state, chan, campaignStore);
+        const currentChannel = yield* Ref.get(state.currentChannel);
+        if (Option.isNone(currentChannel)) return;
       } else {
         return yield* resetChannel(state);
       }
@@ -260,7 +268,13 @@ const performWatchLoop = (
 
     yield* Effect.forEach(
       channels,
-      (channel) => processChannelWatch(state, api, socket, campaignStore, watchService, configStore, campaign, channel),
+      (channel) =>
+        Effect.gen(function* () {
+          const dropOpt = yield* Ref.get(state.currentDrop);
+          if (Option.isSome(dropOpt) && isMinutesWatchedMet(dropOpt.value)) return;
+
+          yield* processChannelWatch(state, api, socket, campaignStore, watchService, configStore, campaign, channel);
+        }),
       { discard: true, concurrency: 1 },
     );
     yield* Ref.set(state.currentChannel, Option.none());

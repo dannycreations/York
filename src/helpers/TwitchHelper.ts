@@ -24,7 +24,7 @@ export const getDropStatus = (
 };
 
 export const isMinutesWatchedMet = (drop: { readonly currentMinutesWatched: number; readonly requiredMinutesWatched: number }): boolean =>
-  drop.currentMinutesWatched >= drop.requiredMinutesWatched + 1;
+  drop.currentMinutesWatched > drop.requiredMinutesWatched;
 
 export const calculatePriority = (
   target: { readonly game: { readonly id: string }; readonly endAt: Date },
