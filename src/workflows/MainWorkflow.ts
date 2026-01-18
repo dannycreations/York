@@ -144,7 +144,7 @@ const performWatchLoop = (
             yield* Effect.logInfo(chalk`{green ${channel.login}} | {yellow Points claimed}`);
           }
 
-          yield* Effect.all(
+          const acquire = Effect.all(
             [
               socket.listen(WsTopic.ChannelStream, channel.id),
               socket.listen(WsTopic.ChannelMoment, channel.id),
@@ -153,54 +153,7 @@ const performWatchLoop = (
             { concurrency: 'unbounded' },
           );
 
-          yield* Effect.repeat(
-            Effect.gen(function* () {
-              if (yield* Ref.get(state.isClaiming)) return yield* Effect.sleep('5 seconds');
-
-              if (yield* checkHigherPriority(state, campaign, campaignStore)) {
-                yield* Ref.update(state.currentChannel, (c) => Option.map(c, (ch) => ({ ...ch, isOnline: false })));
-                return;
-              }
-
-              const nowMs = Date.now();
-              const nextWatchMs = yield* Ref.get(state.nextWatch);
-              if (nowMs < nextWatchMs) yield* Effect.sleep(`${nextWatchMs - nowMs} millis`);
-
-              const chanOpt = yield* Ref.get(state.currentChannel);
-              if (Option.isNone(chanOpt) || !chanOpt.value.isOnline) {
-                yield* Ref.set(state.currentChannel, Option.none());
-                return;
-              }
-
-              const chan = yield* updateChannelInfo(state, api, chanOpt.value);
-              if (!chan) return;
-
-              if (chan.gameId && chan.currentGameId && chan.gameId !== chan.currentGameId) {
-                yield* Effect.logInfo(chalk`{red ${chan.login}} | {red Game changed to ${chan.currentGameName}}`);
-                yield* Ref.update(state.currentChannel, (c) => Option.map(c, (ch) => ({ ...ch, isOnline: false })));
-                yield* Ref.set(state.currentChannel, Option.none());
-                return;
-              }
-
-              const { success, hlsUrl } = yield* watchService.watch(chan);
-              if (hlsUrl !== chan.hlsUrl) yield* Ref.update(state.currentChannel, (c) => Option.map(c, (ch) => ({ ...ch, hlsUrl })));
-
-              const currentTimeMs = Date.now();
-              const scheduledWatchMs = yield* Ref.get(state.nextWatch);
-              if (success && currentTimeMs >= scheduledWatchMs) {
-                yield* handleWatchSuccess(state, chan, campaignStore);
-              } else if (!success && currentTimeMs >= scheduledWatchMs) {
-                yield* Ref.update(state.currentChannel, (c) => Option.map(c, (ch) => ({ ...ch, isOnline: false })));
-                yield* Ref.set(state.currentChannel, Option.none());
-                return;
-              }
-
-              yield* Effect.sleep('1 minute');
-            }),
-            { until: () => Ref.get(state.currentChannel).pipe(Effect.map(Option.isNone)) },
-          );
-
-          yield* Effect.all(
+          const release = Effect.all(
             [
               socket.unlisten(WsTopic.ChannelStream, channel.id),
               socket.unlisten(WsTopic.ChannelMoment, channel.id),
@@ -208,6 +161,58 @@ const performWatchLoop = (
             ],
             { concurrency: 'unbounded' },
           ).pipe(Effect.catchAllCause(() => Effect.void));
+
+          yield* Effect.acquireUseRelease(
+            acquire,
+            () =>
+              Effect.repeat(
+                Effect.gen(function* () {
+                  if (yield* Ref.get(state.isClaiming)) return yield* Effect.sleep('5 seconds');
+
+                  if (yield* checkHigherPriority(state, campaign, campaignStore)) {
+                    yield* Ref.update(state.currentChannel, (c) => Option.map(c, (ch) => ({ ...ch, isOnline: false })));
+                    return;
+                  }
+
+                  const nowMs = Date.now();
+                  const nextWatchMs = yield* Ref.get(state.nextWatch);
+                  if (nowMs < nextWatchMs) yield* Effect.sleep(`${nextWatchMs - nowMs} millis`);
+
+                  const chanOpt = yield* Ref.get(state.currentChannel);
+                  if (Option.isNone(chanOpt) || !chanOpt.value.isOnline) {
+                    yield* Ref.set(state.currentChannel, Option.none());
+                    return;
+                  }
+
+                  const chan = yield* updateChannelInfo(state, api, chanOpt.value);
+                  if (!chan) return;
+
+                  if (chan.gameId && chan.currentGameId && chan.gameId !== chan.currentGameId) {
+                    yield* Effect.logInfo(chalk`{red ${chan.login}} | {red Game changed to ${chan.currentGameName}}`);
+                    yield* Ref.update(state.currentChannel, (c) => Option.map(c, (ch) => ({ ...ch, isOnline: false })));
+                    yield* Ref.set(state.currentChannel, Option.none());
+                    return;
+                  }
+
+                  const { success, hlsUrl } = yield* watchService.watch(chan);
+                  if (hlsUrl !== chan.hlsUrl) yield* Ref.update(state.currentChannel, (c) => Option.map(c, (ch) => ({ ...ch, hlsUrl })));
+
+                  const currentTimeMs = Date.now();
+                  const scheduledWatchMs = yield* Ref.get(state.nextWatch);
+                  if (success && currentTimeMs >= scheduledWatchMs) {
+                    yield* handleWatchSuccess(state, chan, campaignStore);
+                  } else if (!success && currentTimeMs >= scheduledWatchMs) {
+                    yield* Ref.update(state.currentChannel, (c) => Option.map(c, (ch) => ({ ...ch, isOnline: false })));
+                    yield* Ref.set(state.currentChannel, Option.none());
+                    return;
+                  }
+
+                  yield* Effect.sleep('1 minute');
+                }),
+                { until: () => Ref.get(state.currentChannel).pipe(Effect.map(Option.isNone)) },
+              ),
+            () => release,
+          );
 
           yield* Ref.set(state.localMinutesWatched, 0);
         }),
@@ -275,6 +280,7 @@ const performClaimDrops = (
             yield* Effect.sleep('1 minute');
           } else {
             yield* Effect.logInfo(chalk`{green ${drop.name}} | {red Award not found after ${totalAttempts} minutes}`);
+            yield* Ref.update(state.currentDrop, (d) => Option.map(d, (dr) => ({ ...dr, hasPreconditionsMet: false })));
           }
 
           return attempt + 1;
