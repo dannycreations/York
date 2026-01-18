@@ -81,6 +81,29 @@ const parseUniqueCookies = (setCookie: readonly string[]): Record<string, string
     return acc;
   }, {});
 
+const handleGraphqlErrors = (errors: ReadonlyArray<{ message: string }>): Effect.Effect<never, TwitchApiError> =>
+  Effect.gen(function* () {
+    const retryableErrors = ['service unavailable', 'service timeout', 'context deadline exceeded'];
+    const retries = errors.filter((e) => retryableErrors.includes(e.message.toLowerCase()));
+
+    if (retries.length > 0) {
+      yield* Effect.logWarning(chalk`{yellow GraphQL response has ${retries.length} retryable errors}`);
+      return yield* Effect.fail(
+        new TwitchApiError({
+          message: 'Retryable GraphQL Error',
+          cause: errors,
+        }),
+      );
+    }
+
+    return yield* Effect.fail(
+      new TwitchApiError({
+        message: `GraphQL Error: ${errors[0].message}`,
+        cause: errors,
+      }),
+    );
+  });
+
 export const TwitchApiLayer = (authToken: string, isDebug = false): Layer.Layer<TwitchApi, never, HttpClient> =>
   Layer.effect(
     TwitchApiTag,
@@ -235,25 +258,7 @@ export const TwitchApiLayer = (authToken: string, isDebug = false): Layer.Layer<
           return yield* Effect.forEach(response.body, (res) =>
             Effect.gen(function* () {
               if (res.errors && res.errors.length > 0) {
-                const retryableErrors = ['service unavailable', 'service timeout', 'context deadline exceeded'];
-                const retries = res.errors.filter((e) => retryableErrors.includes(e.message.toLowerCase()));
-
-                if (retries.length > 0) {
-                  yield* Effect.logWarning(chalk`{yellow GraphQL response has ${retries.length} retryable errors}`);
-                  return yield* Effect.fail(
-                    new TwitchApiError({
-                      message: 'Retryable GraphQL Error',
-                      cause: res.errors,
-                    }),
-                  );
-                }
-
-                return yield* Effect.fail(
-                  new TwitchApiError({
-                    message: `GraphQL Error: ${res.errors[0].message}`,
-                    cause: res.errors,
-                  }),
-                );
+                return yield* handleGraphqlErrors(res.errors);
               }
 
               return yield* decode(res.data).pipe(Effect.mapError((e) => new TwitchApiError({ message: 'GraphQL Validation Error', cause: e })));

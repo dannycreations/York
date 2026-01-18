@@ -32,47 +32,39 @@ export const WatchServiceLayer: Layer.Layer<WatchService, never, HttpClient | Tw
     const settingUrlRef = yield* Ref.make<Option.Option<string>>(Option.none());
     const spadeUrlRef = yield* Ref.make<Option.Option<string>>(Option.none());
 
-    const getSpadeUrl = (): Effect.Effect<string, WatchError> =>
-      Ref.get(spadeUrlRef).pipe(
-        Effect.flatMap(
-          Option.match({
-            onNone: () =>
-              Effect.gen(function* () {
-                let settingUrl = yield* Ref.get(settingUrlRef);
-                if (Option.isNone(settingUrl)) {
-                  const webRes = yield* http
-                    .request({ url: Twitch.WebUrl })
-                    .pipe(Effect.mapError((e) => new WatchError({ message: 'Failed to fetch Twitch home', cause: e })));
-                  const match = webRes.body.match(Twitch.SettingReg);
-                  if (match && match[0]) {
-                    const foundSettingUrl = match[0];
-                    yield* Ref.set(settingUrlRef, Option.some(foundSettingUrl));
-                    settingUrl = Option.some(foundSettingUrl);
-                  } else {
-                    return yield* Effect.fail(new WatchError({ message: 'Could not parse Settings URL' }));
-                  }
-                }
+    const fetchRegexUrl = (
+      url: string,
+      regex: RegExp,
+      cache: Ref.Ref<Option.Option<string>>,
+      errorMessage: string,
+    ): Effect.Effect<string, WatchError> =>
+      Effect.gen(function* () {
+        const cached = yield* Ref.get(cache);
+        if (Option.isSome(cached)) {
+          return cached.value;
+        }
 
-                const settingRes = yield* http
-                  .request({ url: Option.getOrThrow(settingUrl) })
-                  .pipe(Effect.mapError((e) => new WatchError({ message: 'Failed to fetch settings', cause: e })));
-                const spadeMatch = settingRes.body.match(Twitch.SpadeReg);
-                if (!spadeMatch || !spadeMatch[0]) {
-                  return yield* Effect.fail(new WatchError({ message: 'Could not parse Spade URL' }));
-                }
+        const response = yield* http.request({ url }).pipe(Effect.mapError((e) => new WatchError({ message: 'Failed to fetch URL', cause: e })));
+        const match = response.body.match(regex);
 
-                const foundSpadeUrl = spadeMatch[0];
-                yield* Ref.set(spadeUrlRef, Option.some(foundSpadeUrl));
-                return foundSpadeUrl;
-              }),
-            onSome: (url) => Effect.succeed(url),
-          }),
-        ),
-      );
+        if (match && match[0]) {
+          yield* Ref.set(cache, Option.some(match[0]));
+          return match[0];
+        }
+
+        return yield* Effect.fail(new WatchError({ message: errorMessage }));
+      });
+
+    const getSettingUrl = fetchRegexUrl(Twitch.WebUrl, Twitch.SettingReg, settingUrlRef, 'Could not parse Settings URL');
+
+    const getSpadeUrl = Effect.gen(function* () {
+      const settingUrl = yield* getSettingUrl;
+      return yield* fetchRegexUrl(settingUrl, Twitch.SpadeReg, spadeUrlRef, 'Could not parse Spade URL');
+    });
 
     const watch = (channel: Channel): Effect.Effect<{ success: boolean; hlsUrl?: string }, WatchError> =>
       Effect.gen(function* () {
-        const spadeUrl = yield* getSpadeUrl();
+        const spadeUrl = yield* getSpadeUrl;
         const userId = yield* api.userId;
 
         if (!channel.currentSid) {

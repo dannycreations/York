@@ -120,6 +120,8 @@ export const makeSocketClient = (options: SocketClientOptions): Effect.Effect<So
               Effect.gen(function* () {
                 yield* Effect.sync(() => {
                   ws.removeAllListeners();
+                  // Prevent late error
+                  ws.on('error', () => {});
                   if (graceful) {
                     ws.close(1000);
                   } else {

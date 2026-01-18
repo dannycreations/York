@@ -1,6 +1,7 @@
 import { chalk } from '@vegapunk/utilities';
 import { Effect, Option, Ref, Schedule } from 'effect';
 
+import { calculatePriority } from '../helpers/TwitchHelper';
 import { CampaignStoreTag } from '../stores/CampaignStore';
 
 import type { Campaign } from '../core/Schemas';
@@ -41,17 +42,11 @@ const processUpcomingCampaign = (
 
       yield* Effect.logInfo(chalk`{bold.yellow ${next.name}} | {bold.yellow {strikethrough Upcoming}}`);
 
-      const currentCampaignOpt = yield* Ref.get(state.currentCampaign);
-      if (Option.isNone(currentCampaignOpt)) {
-        yield* campaignStore.setPriority(next.id, 0);
-      } else {
-        const current = currentCampaignOpt.value;
-        const currentDropOpt = yield* Ref.get(state.currentDrop);
-        const isDifferentGame = current.game.id !== next.game.id;
-        const shouldPrioritize = Option.isSome(currentDropOpt) && isDifferentGame && currentDropOpt.value.endAt >= next.endAt;
+      const currentCampaign = yield* Ref.get(state.currentCampaign);
+      const currentDrop = yield* Ref.get(state.currentDrop);
+      const priority = calculatePriority(next, currentCampaign, currentDrop);
 
-        yield* campaignStore.setPriority(next.id, shouldPrioritize ? current.priority + 1 : 0);
-      }
+      yield* campaignStore.setPriority(next.id, priority);
 
       yield* Effect.sleep(`${Math.floor(Math.random() * 5000)} millis`);
     }
