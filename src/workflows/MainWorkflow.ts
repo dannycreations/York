@@ -216,7 +216,7 @@ const performWatchLoop = (
 
           yield* Ref.set(state.localMinutesWatched, 0);
         }),
-      { discard: true },
+      { discard: true, concurrency: 1 },
     );
     yield* Ref.set(state.currentChannel, Option.none());
   });

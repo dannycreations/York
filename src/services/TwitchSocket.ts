@@ -1,8 +1,10 @@
 import { chalk, randomString } from '@vegapunk/utilities';
+import { isObjectLike } from '@vegapunk/utilities/common';
 import { Context, Data, Effect, Layer, Option, Ref, Schema, Stream } from 'effect';
 
 import { Twitch } from '../core/Constants';
 import { SocketMessageSchema } from '../core/Schemas';
+import { HttpClientTag } from '../structures/HttpClient';
 import { createSocketClient } from '../structures/SocketClient';
 
 import type { SocketMessage } from '../core/Schemas';
@@ -23,7 +25,7 @@ export interface TwitchSocket {
 
 export class TwitchSocketTag extends Context.Tag('@services/TwitchSocket')<TwitchSocketTag, TwitchSocket>() {}
 
-export const TwitchSocketLayer = (authToken: string): Layer.Layer<TwitchSocketTag, TwitchSocketError, never> =>
+export const TwitchSocketLayer = (authToken: string): Layer.Layer<TwitchSocketTag, TwitchSocketError, HttpClientTag> =>
   Layer.scoped(
     TwitchSocketTag,
     Effect.gen(function* () {
@@ -93,13 +95,13 @@ export const TwitchSocketLayer = (authToken: string): Layer.Layer<TwitchSocketTa
         Stream.filterMap((event) => (event._tag === 'Message' ? Option.some(event.data) : Option.none())),
         Stream.mapEffect((data) =>
           Effect.try({
-            try: () => JSON.parse(data) as unknown,
+            try: () => JSON.parse(data),
             catch: (e) => new TwitchSocketError({ message: 'TwitchSocket: Failed to parse raw message', cause: e }),
           }).pipe(Effect.option),
         ),
         Stream.filterMap((o) => o),
         Stream.tap((raw) =>
-          raw && typeof raw === 'object' && 'type' in raw && raw.type === 'RECONNECT'
+          isObjectLike(raw) && raw.type === 'RECONNECT'
             ? Effect.gen(function* () {
                 yield* Effect.logWarning('TwitchSocket: Received RECONNECT instruction from server');
                 yield* client.disconnect(false);
@@ -109,38 +111,36 @@ export const TwitchSocketLayer = (authToken: string): Layer.Layer<TwitchSocketTa
         ),
         Stream.mapEffect((raw) =>
           Effect.gen(function* () {
-            const rawObj = raw as Record<string, unknown>;
-            if (rawObj.type !== 'MESSAGE') return Option.none();
+            if (!isObjectLike(raw) || raw.type !== 'MESSAGE') return Option.none();
 
-            const data = rawObj.data as Record<string, unknown>;
-            const topic = data.topic;
-            const message = data.message;
+            const data = isObjectLike(raw.data) ? raw.data : null;
+            if (!data) return Option.none();
 
-            if (typeof topic !== 'string' || typeof message !== 'string') return Option.none();
+            const topic = typeof data.topic === 'string' ? data.topic : null;
+            const message = typeof data.message === 'string' ? data.message : null;
+            if (!topic || !message) return Option.none();
 
             const [topicType, topicId] = topic.split('.');
 
             const content = yield* Effect.try({
-              try: () => JSON.parse(message) as unknown,
+              try: () => JSON.parse(message),
               catch: (e) => new TwitchSocketError({ message: 'TwitchSocket: Failed to parse message content', cause: e }),
             }).pipe(Effect.option);
 
             return Option.match(content, {
               onNone: () => Option.none(),
               onSome: (value) => {
-                if (!value || typeof value !== 'object') return Option.none();
+                if (!isObjectLike(value)) return Option.none();
 
-                const payload = value as Record<string, unknown>;
-                const innerData =
-                  'data' in payload && payload.data && typeof payload.data === 'object' ? (payload.data as Record<string, unknown>) : {};
-
+                const innerData = isObjectLike(value.data) ? value.data : {};
+                const topic_id = (typeof value.topic_id === 'string' ? value.topic_id : undefined) ?? topicId;
                 return Option.some({
                   topicType,
                   topicId,
                   payload: {
-                    ...payload,
+                    ...value,
                     ...innerData,
-                    topic_id: ('topic_id' in payload && typeof payload.topic_id === 'string' ? payload.topic_id : undefined) ?? topicId,
+                    topic_id,
                   },
                 });
               },
@@ -158,7 +158,6 @@ export const TwitchSocketLayer = (authToken: string): Layer.Layer<TwitchSocketTa
         Stream.filterMap((o) => o),
       );
 
-      // Re-subscribe on reconnect
       yield* client.events.pipe(
         Stream.filter((e) => e._tag === 'Open'),
         Stream.runForEach(() =>

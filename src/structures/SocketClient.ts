@@ -1,6 +1,8 @@
 import { Context, Data, Deferred, Effect, Fiber, Layer, Option, PubSub, Queue, Ref, Schedule, Scope, Stream } from 'effect';
 import { WebSocket as WsClient } from 'ws';
 
+import { HttpClientLayer, HttpClientTag } from './HttpClient';
+
 import type { ClientRequestArgs } from 'node:http';
 import type { ClientOptions } from 'ws';
 
@@ -36,7 +38,7 @@ export interface SocketClient {
   readonly disconnect: (graceful?: boolean) => Effect.Effect<void>;
 }
 
-export const createSocketClient = (options: SocketClientOptions): Effect.Effect<SocketClient, SocketClientError, Scope.Scope> =>
+export const createSocketClient = (options: SocketClientOptions): Effect.Effect<SocketClient, SocketClientError, Scope.Scope | HttpClientTag> =>
   Effect.gen(function* () {
     const {
       url,
@@ -141,9 +143,12 @@ export const createSocketClient = (options: SocketClientOptions): Effect.Effect<
         ws.on('pong', () => emit.single({ _tag: 'Pong' }));
       });
 
-    const connect: Effect.Effect<void, SocketClientError> = Effect.gen(function* () {
+    const connect: Effect.Effect<void, SocketClientError, HttpClientTag> = Effect.gen(function* () {
       const wsOpt = yield* Ref.get(wsRef);
       if (Option.isSome(wsOpt)) return;
+
+      const httpClient = yield* HttpClientTag;
+      yield* httpClient.waitForConnection().pipe(Effect.ignore);
 
       yield* Effect.logDebug(`SocketClient: Connecting to ${url}`);
       const ws = yield* Effect.sync(() => new WsClient(url, socketOptions));
@@ -241,11 +246,11 @@ export const createSocketClient = (options: SocketClientOptions): Effect.Effect<
 
     return {
       send,
-      events: Stream.fromPubSub(eventsPubSub),
-      connect,
+      connect: connect as Effect.Effect<void, SocketClientError>,
       disconnect,
+      events: Stream.fromPubSub(eventsPubSub),
     } satisfies SocketClient;
   });
 
 export const SocketClientLayer = <S>(tag: Context.Tag<S, SocketClient>, options: SocketClientOptions) =>
-  Layer.scoped(tag, createSocketClient(options));
+  Layer.scoped(tag, createSocketClient(options)).pipe(Layer.provide(HttpClientLayer));

@@ -1,6 +1,7 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { chalk } from '@vegapunk/utilities';
+import { isObjectLike } from '@vegapunk/utilities/common';
 import { Context, Data, Deferred, Effect, Layer, Ref, Schedule, Schema } from 'effect';
 import UserAgent from 'user-agents';
 
@@ -99,7 +100,7 @@ export const TwitchApiLayer = (authToken: string, isDebug: boolean = false): Lay
 
       const writeDebugFile = (data: string | object, name?: string): Effect.Effect<void> =>
         Effect.gen(function* () {
-          const content = typeof data === 'object' ? JSON.stringify(data, null, 2) : data;
+          const content = isObjectLike(data) ? JSON.stringify(data, null, 2) : data;
           const debugDir = join(process.cwd(), 'debug');
           yield* Effect.tryPromise({
             try: async () => {
@@ -236,7 +237,7 @@ export const TwitchApiLayer = (authToken: string, isDebug: boolean = false): Lay
                 const retries = res.errors.filter((e) => retryableErrors.includes(e.message.toLowerCase()));
 
                 if (retries.length > 0) {
-                  yield* Effect.logWarning(chalk`{yellow GraphQL response has ${retries.length} retryable errors}`, retries);
+                  yield* Effect.logWarning(chalk`{yellow GraphQL response has ${retries.length} retryable errors}`);
                   return yield* Effect.fail(
                     new TwitchApiError({
                       message: 'Retryable GraphQL Error',
