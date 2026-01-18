@@ -37,7 +37,7 @@ export interface LoggerOptions {
   readonly rejection?: boolean;
 }
 
-export const createLogger = (options: LoggerOptions = {}): pino.Logger => {
+export const createLoggerClient = (options: LoggerOptions = {}): pino.Logger => {
   const {
     dir = join(process.cwd(), 'logs'),
     level = process.env.NODE_ENV === 'development' ? 'debug' : 'info',

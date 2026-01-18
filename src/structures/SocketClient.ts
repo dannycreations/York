@@ -99,6 +99,9 @@ export const createSocketClient = (options: SocketClientOptions): Effect.Effect<
         Stream.tap((event) =>
           Effect.gen(function* () {
             switch (event._tag) {
+              case 'Message':
+                yield* Ref.set(lastPongReceivedAt, Date.now());
+                break;
               case 'Open':
                 yield* Ref.set(lastPongReceivedAt, Date.now());
                 yield* Ref.set(reconnectAttempts, 0);
@@ -144,7 +147,7 @@ export const createSocketClient = (options: SocketClientOptions): Effect.Effect<
       const lastPong = yield* Ref.get(lastPongReceivedAt);
       const now = Date.now();
       if (now - lastPong > pingIntervalMs + pingTimeoutMs) {
-        yield* Effect.logWarning('SocketClient: Ping timeout, reconnecting');
+        yield* Effect.logWarning('SocketClient: Ping timeout, reconnecting...');
         yield* disconnect(false);
         yield* connect.pipe(Effect.ignore);
         return;

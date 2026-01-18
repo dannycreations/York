@@ -60,7 +60,7 @@ const saveStore = <A, I, R>(filePath: string, schema: Schema.Schema<A, I, R>, da
     });
   });
 
-export const createStore = <A extends object, I, R>(
+export const createStoreClient = <A extends object, I, R>(
   filePath: string,
   schema: Schema.Schema<A, I, R>,
   initialData: A,
@@ -125,4 +125,4 @@ export const StoreClientLayer = <S, A extends object, I, R>(
   schema: Schema.Schema<A, I, R>,
   initialData: A,
   initialDelay: number = 1000,
-): Layer.Layer<S, never, Scope.Scope | R> => Layer.scoped(tag, createStore(filePath, schema, initialData, initialDelay));
+): Layer.Layer<S, never, Scope.Scope | R> => Layer.scoped(tag, createStoreClient(filePath, schema, initialData, initialDelay));
