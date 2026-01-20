@@ -64,30 +64,32 @@ export const TwitchSocketLayer = (authToken: string): Layer.Layer<TwitchSocketTa
           .pipe(Effect.mapError((e) => new TwitchSocketError({ message: `TwitchSocket: Failed to unlisten from ${topicKey}`, cause: e })));
 
       const listen = (topic: string, id: string): Effect.Effect<void, TwitchSocketError> =>
-        Effect.gen(function* () {
+        Ref.modify(subscribedTopics, (s) => {
           const topicKey = `${topic}.${id}`;
-          const current = yield* Ref.get(subscribedTopics);
-          if (current.has(topicKey)) return;
-
-          yield* Ref.update(subscribedTopics, (s) => new Set([...s, topicKey]));
-          yield* performListen(topicKey);
-          yield* Effect.logDebug(`TwitchSocket: Subscribed ${topicKey}`);
-        });
+          if (s.has(topicKey)) return [Effect.void, s];
+          return [
+            performListen(topicKey).pipe(
+              Effect.tap(() => Effect.logDebug(`TwitchSocket: Subscribed ${topicKey}`)),
+              Effect.catchAll((e) =>
+                Ref.update(subscribedTopics, (set) => {
+                  const next = new Set(set);
+                  next.delete(topicKey);
+                  return next;
+                }).pipe(Effect.zipRight(Effect.fail(e))),
+              ),
+            ),
+            new Set([...s, topicKey]),
+          ];
+        }).pipe(Effect.flatten);
 
       const unlisten = (topic: string, id: string): Effect.Effect<void, TwitchSocketError> =>
-        Effect.gen(function* () {
+        Ref.modify(subscribedTopics, (s) => {
           const topicKey = `${topic}.${id}`;
-          const current = yield* Ref.get(subscribedTopics);
-          if (!current.has(topicKey)) return;
-
-          yield* Ref.update(subscribedTopics, (s) => {
-            const next = new Set(s);
-            next.delete(topicKey);
-            return next;
-          });
-          yield* performUnlisten(topicKey);
-          yield* Effect.logDebug(`TwitchSocket: Unsubscribed ${topicKey}`);
-        });
+          if (!s.has(topicKey)) return [Effect.void, s];
+          const next = new Set(s);
+          next.delete(topicKey);
+          return [performUnlisten(topicKey).pipe(Effect.tap(() => Effect.logDebug(`TwitchSocket: Unsubscribed ${topicKey}`))), next];
+        }).pipe(Effect.flatten);
 
       const parseMessage = (data: string): Effect.Effect<Option.Option<unknown>> =>
         Effect.try({
@@ -100,7 +102,6 @@ export const TwitchSocketLayer = (authToken: string): Layer.Layer<TwitchSocketTa
           if (isObjectLike<{ type: string }>(raw) && raw.type === 'RECONNECT') {
             yield* Effect.logWarning('TwitchSocket: Received RECONNECT instruction from server');
             yield* client.disconnect(false);
-            yield* client.connect.pipe(Effect.ignore);
           }
         });
 

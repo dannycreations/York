@@ -226,9 +226,12 @@ const processChannelWatch = (
   Effect.gen(function* () {
     yield* Ref.set(state.currentChannel, Option.some(channel));
 
-    yield* claimChannelPoints(channel, api, configStore);
+    const chan = yield* updateChannelInfo(state, api, channel);
+    if (!chan) return;
 
-    const { acquire, release } = manageChannelSockets(socket, channel.id);
+    yield* claimChannelPoints(chan, api, configStore);
+
+    const { acquire, release } = manageChannelSockets(socket, chan.id);
 
     yield* Effect.acquireUseRelease(
       acquire,
