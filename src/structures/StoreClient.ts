@@ -28,11 +28,18 @@ const loadStore = (filePath: string): Effect.Effect<unknown, StoreClientError> =
     try: () => readFile(filePath, 'utf-8'),
     catch: (error) => error,
   }).pipe(
-    Effect.flatMap((content) => Effect.sync(() => parseJsonc<unknown>(content))),
-    Effect.catchAll((error) =>
-      isErrorLike<{ readonly code: string }>(error) && error.code === 'ENOENT'
+    Effect.flatMap((content) =>
+      Effect.try({
+        try: () => parseJsonc<unknown>(content),
+        catch: (cause) => new StoreClientError({ message: `Failed to parse store: ${filePath}`, cause }),
+      }),
+    ),
+    Effect.catchAll((cause) =>
+      isErrorLike<{ readonly code: string }>(cause) && cause.code === 'ENOENT'
         ? Effect.succeed({})
-        : Effect.fail(new StoreClientError({ message: `Failed to load store: ${filePath}`, cause: error })),
+        : cause instanceof StoreClientError
+          ? Effect.fail(cause)
+          : Effect.fail(new StoreClientError({ message: `Failed to load store: ${filePath}`, cause })),
     ),
   );
 
@@ -42,7 +49,7 @@ const saveStore = <A, I, R>(filePath: string, schema: Schema.Schema<A, I, R>, da
 
     const encode = Schema.encode(schema);
     const encoded = yield* encode(data).pipe(
-      Effect.mapError((error) => new StoreClientError({ message: `Failed to encode store: ${filePath}`, cause: error })),
+      Effect.mapError((cause) => new StoreClientError({ message: `Failed to encode store: ${filePath}`, cause })),
     );
 
     const tempPath = `${filePath}.tmp`;
@@ -82,7 +89,7 @@ export const makeStoreClient = <A extends object, I, R>(
           const partialDecode = Schema.decodeUnknown(Schema.partial(schema));
           const partial = yield* partialDecode(rawData).pipe(Effect.catchAll(() => Effect.succeed({})));
 
-          return defaultsDeep({}, partial, initialData);
+          return defaultsDeep({}, partial, initialData) as A;
         }),
       ),
     );
@@ -118,10 +125,11 @@ export const makeStoreClient = <A extends object, I, R>(
     } satisfies StoreClient<A>;
   });
 
-export const StoreClientLayer = <I, S, A extends object, IS, R>(
+export const StoreClientLayer = <I, S extends StoreClient<A>, A extends object, IS, R>(
   tag: Context.Tag<I, S>,
   filePath: string,
   schema: Schema.Schema<A, IS, R>,
   initialData: A,
   initialDelay = 1000,
-): Layer.Layer<I, never, Scope.Scope | R> => Layer.scoped(tag, makeStoreClient(filePath, schema, initialData, initialDelay) as any);
+): Layer.Layer<I, never, Scope.Scope | R> =>
+  Layer.scoped(tag, makeStoreClient(filePath, schema, initialData, initialDelay).pipe(Effect.map((client) => client as unknown as S)));
