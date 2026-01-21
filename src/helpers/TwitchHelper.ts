@@ -2,12 +2,12 @@ import { Option } from 'effect';
 
 export const GRACE_PERIOD_MINUTES = 10;
 
-export const getDropStatus = (
-  startAt: Date,
-  endAt: Date,
-  nowMs: number,
-  minutesLeft?: number,
-): { readonly isUpcoming: boolean; readonly isExpired: boolean } => {
+export interface DropStatusInfo {
+  readonly isUpcoming: boolean;
+  readonly isExpired: boolean;
+}
+
+export const getDropStatus = (startAt: Date, endAt: Date, nowMs: number, minutesLeft?: number): DropStatusInfo => {
   const startAtMs = startAt.getTime();
   const endAtMs = endAt.getTime();
 

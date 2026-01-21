@@ -9,7 +9,7 @@ import { TwitchApiTag } from '../services/TwitchApi';
 import { TwitchSocketTag } from '../services/TwitchSocket';
 import { WatchServiceTag } from '../services/WatchService';
 import { CampaignStoreTag } from '../stores/CampaignStore';
-import { cycleMidnightRestart } from '../structures/RuntimeClient';
+import { cycleUntilMidnight } from '../structures/RuntimeClient';
 import { OfflineWorkflow } from './OfflineWorkflow';
 import { SocketWorkflow } from './SocketWorkflow';
 import { UpcomingWorkflow } from './UpcomingWorkflow';
@@ -571,7 +571,7 @@ export const MainWorkflow: Effect.Effect<
       Schedule.forever,
     ).pipe(Effect.asVoid);
 
-  yield* Effect.all([mainTaskLoop(), UpcomingWorkflow(state), OfflineWorkflow(state, configStore), cycleMidnightRestart], {
+  yield* Effect.all([mainTaskLoop(), UpcomingWorkflow(state), OfflineWorkflow(state, configStore), cycleUntilMidnight], {
     concurrency: 'unbounded',
   });
 });

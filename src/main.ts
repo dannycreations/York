@@ -9,10 +9,10 @@ import { WatchServiceLayer } from './services/WatchService';
 import { CampaignStoreLayer } from './stores/CampaignStore';
 import { HttpClientLayer } from './structures/HttpClient';
 import { LoggerClientLayer, makeLoggerClient } from './structures/LoggerClient';
-import { runMain } from './structures/RuntimeClient';
+import { runMainCycle } from './structures/RuntimeClient';
 import { MainWorkflow } from './workflows/MainWorkflow';
 
-const logger = makeLoggerClient({ exception: false, rejection: false });
+const logger = makeLoggerClient();
 
 const BaseLayer = Layer.mergeAll(ConfigStoreLayer, HttpClientLayer, LoggerClientLayer(Logger.defaultLogger, logger));
 
@@ -31,6 +31,4 @@ const AppLayer = Layer.unwrapEffect(
   }),
 );
 
-runMain(MainWorkflow.pipe(Effect.provide(AppLayer)), {
-  runtimeBaseLayer: BaseLayer,
-});
+runMainCycle(MainWorkflow.pipe(Effect.provide(AppLayer), Effect.provide(BaseLayer)));

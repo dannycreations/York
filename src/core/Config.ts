@@ -12,7 +12,7 @@ export const ClientConfigSchema = Schema.Struct({
   usePriorityConnected: Schema.Boolean,
   priorityList: Schema.Set(Schema.String),
   exclusionList: Schema.Set(Schema.String),
-}).pipe(Schema.mutable);
+});
 
 export type ClientConfig = Schema.Schema.Type<typeof ClientConfigSchema>;
 

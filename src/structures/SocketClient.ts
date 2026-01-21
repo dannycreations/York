@@ -260,5 +260,8 @@ export const makeSocketClient = (options: SocketClientOptions): Effect.Effect<So
     } satisfies SocketClient;
   });
 
-export const SocketClientLayer = <I, S>(tag: Context.Tag<I, S>, options: SocketClientOptions): Layer.Layer<I, SocketClientError, HttpClientTag> =>
-  Layer.scoped(tag, makeSocketClient(options) as any);
+export const SocketClientLayer = <I, S extends SocketClient>(
+  tag: Context.Tag<I, S>,
+  options: SocketClientOptions,
+): Layer.Layer<I, SocketClientError, HttpClientTag> =>
+  Layer.scoped(tag, makeSocketClient(options).pipe(Effect.map((client) => client as unknown as S)));
