@@ -55,8 +55,9 @@ export const makeSocketClient = (options: SocketClientOptions): Effect.Effect<So
     } = options;
 
     const eventsPubSub = yield* PubSub.unbounded<SocketEvent>();
+    const isConnectingRef = yield* Ref.make(false);
     const wsRef = yield* Ref.make<Option.Option<WsClient>>(Option.none());
-    const openedDeferredRef = yield* Ref.make(yield* Deferred.make<void>());
+    const openedDeferredRef = yield* Ref.make(yield* Deferred.make<void, SocketClientError>());
     const sendQueue = yield* Queue.unbounded<{
       readonly data: string;
       readonly deferred: Deferred.Deferred<void, SocketClientError>;
@@ -131,7 +132,7 @@ export const makeSocketClient = (options: SocketClientOptions): Effect.Effect<So
                   }
                 });
                 yield* Ref.set(wsRef, Option.none());
-                const nextDeferred = yield* Deferred.make<void>();
+                const nextDeferred = yield* Deferred.make<void, SocketClientError>();
                 yield* Ref.set(openedDeferredRef, nextDeferred);
                 yield* PubSub.publish(eventsPubSub, SocketState.Close());
               }),
@@ -144,13 +145,22 @@ export const makeSocketClient = (options: SocketClientOptions): Effect.Effect<So
         ws.once('open', () => emit.single(SocketState.Open()));
         ws.on('message', (data) => emit.single(SocketState.Message({ data: data.toString() })));
         ws.on('error', (cause) => emit.single(SocketState.Error({ cause })));
-        ws.on('close', () => emit.single(SocketState.Close()));
+        ws.on('close', () => {
+          emit.single(SocketState.Close());
+          emit.end();
+        });
         ws.on('pong', () => emit.single(SocketState.Pong()));
       });
 
     const connect: Effect.Effect<void, SocketClientError, HttpClientTag | Scope.Scope> = Effect.gen(function* () {
+      const lock = yield* Ref.getAndUpdate(isConnectingRef, () => true);
+      if (lock) return;
+
       const wsOpt = yield* Ref.get(wsRef);
-      if (Option.isSome(wsOpt)) return;
+      if (Option.isSome(wsOpt)) {
+        yield* Ref.set(isConnectingRef, false);
+        return;
+      }
 
       const httpClient = yield* HttpClientTag;
       yield* httpClient.waitForConnection().pipe(Effect.ignore);
@@ -181,12 +191,20 @@ export const makeSocketClient = (options: SocketClientOptions): Effect.Effect<So
               }
               case 'Error': {
                 yield* Effect.logError('SocketClient: WebSocket error', event.cause);
+                yield* Deferred.fail(opened, new SocketClientError({ message: 'WebSocket error', cause: event.cause })).pipe(Effect.ignore);
+                const currentOpened = yield* Ref.get(openedDeferredRef);
+                yield* Deferred.fail(currentOpened, new SocketClientError({ message: 'WebSocket error', cause: event.cause })).pipe(Effect.ignore);
                 break;
               }
               case 'Close': {
+                yield* Deferred.fail(opened, new SocketClientError({ message: 'WebSocket closed' })).pipe(Effect.ignore);
+                const currentOpened = yield* Ref.get(openedDeferredRef);
+                yield* Deferred.fail(currentOpened, new SocketClientError({ message: 'WebSocket closed' })).pipe(Effect.ignore);
+
                 yield* Ref.set(wsRef, Option.none());
-                const nextDeferred = yield* Deferred.make<void>();
+                const nextDeferred = yield* Deferred.make<void, SocketClientError>();
                 yield* Ref.set(openedDeferredRef, nextDeferred);
+
                 const attempts = yield* Ref.get(reconnectAttempts);
                 if (attempts < reconnectMaxAttempts) {
                   yield* Ref.update(reconnectAttempts, (n) => n + 1);
@@ -212,22 +230,32 @@ export const makeSocketClient = (options: SocketClientOptions): Effect.Effect<So
         Effect.forkScoped,
       );
 
-      return yield* Deferred.await(opened);
-    });
+      const result = yield* Deferred.await(opened);
+      yield* Ref.set(isConnectingRef, false);
+      return result;
+    }).pipe(Effect.onExit((exit) => (exit._tag === 'Failure' ? Ref.set(isConnectingRef, false) : Effect.void)));
 
-    const pingLoop = Effect.gen(function* () {
+    const timeoutLoop = Effect.gen(function* () {
+      const connecting = yield* Ref.get(isConnectingRef);
+      if (connecting) return;
+
+      const wsOpt = yield* Ref.get(wsRef);
+      if (Option.isNone(wsOpt)) return;
+
       const lastPong = yield* Ref.get(lastPongReceivedAt);
       const now = Date.now();
       if (now - lastPong > pingIntervalMs + pingTimeoutMs) {
         yield* Effect.logWarning('SocketClient: Ping timeout, reconnecting...');
         yield* disconnect(false);
         yield* connect.pipe(Effect.ignore);
-        return;
       }
+    }).pipe(Effect.repeat(Schedule.spaced('5 seconds')));
+
+    const pingLoop = Effect.gen(function* () {
       const wsOpt = yield* Ref.get(wsRef);
       if (Option.isSome(wsOpt) && wsOpt.value.readyState === WsClient.OPEN) {
         if (pingPayload) {
-          yield* send(pingPayload);
+          yield* send(pingPayload).pipe(Effect.ignore);
         } else {
           yield* Effect.sync(() => wsOpt.value.ping());
         }
@@ -235,6 +263,7 @@ export const makeSocketClient = (options: SocketClientOptions): Effect.Effect<So
     }).pipe(Effect.repeat(Schedule.spaced(`${pingIntervalMs} millis`)));
 
     yield* connect;
+    yield* Effect.forkScoped(timeoutLoop);
     yield* Effect.forkScoped(pingLoop);
     yield* Effect.addFinalizer(() => disconnect(true));
 
