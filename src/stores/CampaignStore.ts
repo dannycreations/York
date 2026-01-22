@@ -1,5 +1,5 @@
 import { truncate } from '@vegapunk/utilities/common';
-import { Array, Context, Effect, Layer, Option, Order, Ref, Schema } from 'effect';
+import { Array, Context, Data, Effect, Layer, Option, Order, Ref, Schema } from 'effect';
 
 import { ConfigStoreTag } from '../core/Config';
 import { WsTopic } from '../core/Constants';
@@ -15,7 +15,13 @@ import type { TwitchApi, TwitchApiError } from '../services/TwitchApi';
 import type { TwitchSocket, TwitchSocketError } from '../services/TwitchSocket';
 import type { StoreClient } from '../structures/StoreClient';
 
-export type CampaignStoreState = 'Initial' | 'PriorityOnly' | 'All';
+export type CampaignStoreState = Data.TaggedEnum<{
+  Initial: {};
+  PriorityOnly: {};
+  All: {};
+}>;
+
+export const CampaignStoreState = Data.taggedEnum<CampaignStoreState>();
 
 const REWARD_EXPIRED_MS = 2_592_000_000;
 
@@ -89,6 +95,7 @@ export interface CampaignStore {
   readonly campaigns: Ref.Ref<ReadonlyMap<string, Campaign>>;
   readonly progress: Ref.Ref<ReadonlyArray<Drop>>;
   readonly rewards: Ref.Ref<ReadonlyArray<Reward>>;
+  readonly state: Ref.Ref<CampaignStoreState>;
   readonly updateCampaigns: Effect.Effect<void, TwitchApiError>;
   readonly updateProgress: Effect.Effect<void, TwitchApiError>;
   readonly getSortedActive: Effect.Effect<ReadonlyArray<Campaign>>;
@@ -96,7 +103,6 @@ export interface CampaignStore {
   readonly getOffline: Effect.Effect<ReadonlyArray<Campaign>>;
   readonly setOffline: (id: string, isOffline: boolean) => Effect.Effect<void>;
   readonly setPriority: (id: string, priority: number) => Effect.Effect<void>;
-  readonly state: Ref.Ref<CampaignStoreState>;
   readonly getDropsForCampaign: (campaignId: string) => Effect.Effect<ReadonlyArray<Drop>, TwitchApiError>;
   readonly getChannelsForCampaign: (campaign: Campaign) => Effect.Effect<ReadonlyArray<Channel>, TwitchApiError | TwitchSocketError>;
   readonly addRewards: (rewards: ReadonlyArray<Reward>) => Effect.Effect<void>;
@@ -235,24 +241,25 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
     const campaignsRef = yield* Ref.make<ReadonlyMap<string, Campaign>>(new Map());
     const progressRef = yield* Ref.make<ReadonlyArray<Drop>>([]);
     const rewardsRef = yield* Ref.make<ReadonlyArray<Reward>>([]);
-    const stateRef = yield* Ref.make<CampaignStoreState>('Initial');
+    const stateRef = yield* Ref.make<CampaignStoreState>(CampaignStoreState.Initial());
 
     const updateCampaigns: Effect.Effect<void, TwitchApiError> = Effect.gen(function* () {
       const response = yield* api.dropsDashboard;
       const existingCampaigns = yield* Ref.get(campaignsRef);
-      const newCampaigns = new Map<string, Campaign>();
 
-      yield* Effect.forEach(
+      const newCampaignsList = yield* Effect.forEach(
         response.currentUser.dropCampaigns,
-        (data) =>
-          Effect.gen(function* () {
-            const campaign = yield* processCampaignData(data, existingCampaigns, configStore);
-            if (Option.isSome(campaign)) {
-              newCampaigns.set(campaign.value.id, campaign.value);
-            }
-          }),
-        { discard: true, concurrency: 10 },
+        (data) => processCampaignData(data, existingCampaigns, configStore),
+        { concurrency: 10 },
       );
+
+      const newCampaigns = new Map<string, Campaign>();
+      for (const campaignOpt of newCampaignsList) {
+        if (Option.isSome(campaignOpt)) {
+          newCampaigns.set(campaignOpt.value.id, campaignOpt.value);
+        }
+      }
+
       yield* Ref.set(campaignsRef, newCampaigns);
     });
 
@@ -349,7 +356,7 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
         if (c.isOffline) return false;
         const status = getDropStatus(c.startAt, c.endAt, Date.now());
         if (status.isExpired) return false;
-        if (state === 'PriorityOnly' && !config.priorityList.has(c.game.displayName)) return false;
+        if (state._tag === 'PriorityOnly' && !config.priorityList.has(c.game.displayName)) return false;
         return true;
       });
 

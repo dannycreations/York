@@ -24,11 +24,14 @@ export const getDropStatus = (startAt: Date, endAt: Date, nowMs: number, minutes
 };
 
 export const isMinutesWatchedMet = (drop: { readonly currentMinutesWatched: number; readonly requiredMinutesWatched: number }): boolean =>
-  drop.currentMinutesWatched > drop.requiredMinutesWatched;
+  drop.currentMinutesWatched >= drop.requiredMinutesWatched;
 
 export const calculatePriority = (
   target: { readonly game: { readonly id: string }; readonly endAt: Date },
-  currentCampaign: Option.Option<{ readonly priority: number; readonly game: { readonly id: string } }>,
+  currentCampaign: Option.Option<{
+    readonly priority: number;
+    readonly game: { readonly id: string };
+  }>,
   currentDrop: Option.Option<{ readonly endAt: Date }>,
 ): number =>
   Option.match(currentCampaign, {

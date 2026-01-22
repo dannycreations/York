@@ -2,7 +2,7 @@ import { chalk } from '@vegapunk/utilities';
 import { Effect, Option, Ref, Schedule } from 'effect';
 
 import { calculatePriority } from '../helpers/TwitchHelper';
-import { CampaignStoreTag } from '../stores/CampaignStore';
+import { CampaignStoreState, CampaignStoreTag } from '../stores/CampaignStore';
 
 import type { Campaign } from '../core/Schemas';
 import type { CampaignStore } from '../stores/CampaignStore';
@@ -34,7 +34,7 @@ const processUpcomingCampaign = (
     }
 
     if (isMainCall) {
-      yield* Ref.set(campaignStore.state, 'All');
+      yield* Ref.set(campaignStore.state, CampaignStoreState.All());
     }
 
     yield* Effect.logInfo(chalk`{bold.yellow ${next.name}} | {bold.yellow {strikethrough Upcoming}}`);
@@ -63,7 +63,7 @@ export const UpcomingWorkflow = (state: MainState) =>
 
       const campaignState = yield* Ref.get(campaignStore.state);
       const currentCampaign = yield* Ref.get(state.currentCampaign);
-      const isMainCall = campaignState === 'Initial' && Option.isNone(currentCampaign);
+      const isMainCall = campaignState._tag === 'Initial' && Option.isNone(currentCampaign);
 
       if (isMainCall || now >= nextRefresh) {
         yield* campaignStore.updateCampaigns.pipe(Effect.orDie);

@@ -1,6 +1,6 @@
 import { chalk } from '@vegapunk/utilities';
 import { uniqueId } from '@vegapunk/utilities/common';
-import { Effect, Option, Ref, Stream } from 'effect';
+import { Effect, Option, Ref, Scope, Stream } from 'effect';
 
 import { WsTopic } from '../core/Constants';
 import { TwitchApiTag } from '../services/TwitchApi';
@@ -227,7 +227,7 @@ const processMessage = (
 export const SocketWorkflow = (
   state: MainState,
   configStore: StoreClient<ClientConfig>,
-): Effect.Effect<void, never, TwitchApiTag | TwitchSocketTag> =>
+): Effect.Effect<void, never, TwitchApiTag | TwitchSocketTag | Scope.Scope> =>
   Effect.gen(function* () {
     const api: TwitchApi = yield* TwitchApiTag;
     const socket: TwitchSocket = yield* TwitchSocketTag;
@@ -245,7 +245,7 @@ export const SocketWorkflow = (
         Stream.runForEach((msg) => processMessage(msg, state, api, configStore, userId)),
         Effect.annotateLogs({ workflow: 'SocketWorkflow' }),
         Effect.orDie,
-        Effect.fork,
+        Effect.forkScoped,
       )
       .pipe(Effect.asVoid);
   });

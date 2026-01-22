@@ -98,41 +98,40 @@ export const TwitchSocketLayer = (authToken: string): Layer.Layer<TwitchSocketTa
         }).pipe(Effect.option);
 
       const handleReconnect = (raw: unknown): Effect.Effect<void> =>
-        Effect.gen(function* () {
-          if (isObjectLike<{ type: string }>(raw) && raw.type === 'RECONNECT') {
-            yield* Effect.logWarning('TwitchSocket: Received RECONNECT instruction from server');
-            yield* client.disconnect(false);
-          }
-        });
+        isObjectLike<{ readonly type: string }>(raw) && raw.type === 'RECONNECT'
+          ? Effect.logWarning('TwitchSocket: Received RECONNECT instruction from server').pipe(Effect.zipRight(client.disconnect(false)))
+          : Effect.void;
 
-      const extractPayload = (raw: unknown): Effect.Effect<Option.Option<unknown>, never, never> =>
+      const extractPayload = (raw: unknown): Effect.Effect<Option.Option<unknown>> =>
         Effect.gen(function* () {
-          if (!isObjectLike<{ type: string; data: unknown }>(raw) || raw.type !== 'MESSAGE') {
+          if (!isObjectLike<{ readonly type: string; readonly data: unknown }>(raw) || raw.type !== 'MESSAGE') {
             return Option.none();
           }
 
           const { data } = raw;
-          if (!isObjectLike<{ topic: string; message: string }>(data) || typeof data.topic !== 'string' || typeof data.message !== 'string') {
+          if (
+            !isObjectLike<{ readonly topic: string; readonly message: string }>(data) ||
+            typeof data.topic !== 'string' ||
+            typeof data.message !== 'string'
+          ) {
             return Option.none();
           }
 
           const [topicType, topicId] = data.topic.split('.');
-          return yield* parseMessage(data.message).pipe(
-            Effect.map(
-              Option.flatMap((value) =>
-                isObjectLike<{ data: unknown; topic_id: unknown }>(value)
-                  ? Option.some({
-                      topicType,
-                      topicId,
-                      payload: {
-                        ...value,
-                        ...(isObjectLike(value.data) ? value.data : {}),
-                        topic_id: typeof value.topic_id === 'string' ? value.topic_id : topicId,
-                      },
-                    })
-                  : Option.none(),
-              ),
-            ),
+          const messageOpt = yield* parseMessage(data.message);
+
+          return Option.flatMap(messageOpt, (value) =>
+            isObjectLike<{ readonly data: unknown; readonly topic_id: unknown }>(value)
+              ? Option.some({
+                  topicType,
+                  topicId,
+                  payload: {
+                    ...value,
+                    ...(isObjectLike(value.data) ? value.data : {}),
+                    topic_id: typeof value.topic_id === 'string' ? value.topic_id : topicId,
+                  },
+                })
+              : Option.none(),
           );
         });
 

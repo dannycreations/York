@@ -27,7 +27,7 @@ export const makeRuntimeBridge = Effect.gen(function* () {
       ),
     runSync: (effect) => runSync(effect),
     runPromise: (effect) => runPromise(effect),
-  } as RuntimeBridge;
+  } satisfies RuntimeBridge;
 });
 
 export interface RuntimeCycleOptions {
@@ -62,7 +62,8 @@ export const runMainCycle = <A, E, R>(program: Effect.Effect<A, E, R>, options: 
         Effect.gen(function* () {
           const failures = Cause.failures(cause);
 
-          const isRestart = (error: unknown) => isErrorLike<{ readonly _tag: string }>(error) && error._tag === 'RuntimeRestart';
+          const isRestart = (error: unknown): error is RuntimeRestart =>
+            isErrorLike<{ readonly _tag: string }>(error) && error._tag === 'RuntimeRestart';
           if (Chunk.some(failures, isRestart)) {
             return;
           }
@@ -87,7 +88,7 @@ export const runMainCycle = <A, E, R>(program: Effect.Effect<A, E, R>, options: 
       Effect.ignore,
     );
 
-    const fiber = runFork(cycle);
+    const fiber = runFork(cycle, { name: 'MainCycle' });
 
     const cleanUp = () => {
       runPromise(Fiber.interrupt(fiber))

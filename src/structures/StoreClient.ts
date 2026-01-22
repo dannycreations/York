@@ -89,7 +89,7 @@ export const makeStoreClient = <A extends object, I, R>(
           const partialDecode = Schema.decodeUnknown(Schema.partial(schema));
           const partial = yield* partialDecode(rawData).pipe(Effect.catchAll(() => Effect.succeed({})));
 
-          return defaultsDeep<A>({}, partial, initialData);
+          return Data.struct(defaultsDeep<A>({}, partial, initialData));
         }),
       ),
     );
@@ -123,8 +123,8 @@ export const makeStoreClient = <A extends object, I, R>(
 
     return {
       get: Ref.get(dataRef),
-      set: (partial: Partial<A>) => Ref.update(dataRef, (current) => ({ ...current, ...partial })).pipe(Effect.andThen(Ref.set(dirtyRef, true))),
-      update: (f: (data: A) => A) => Ref.update(dataRef, f).pipe(Effect.andThen(Ref.set(dirtyRef, true))),
+      set: (partial: Partial<A>) => Ref.update(dataRef, (current) => ({ ...current, ...partial })).pipe(Effect.zipRight(Ref.set(dirtyRef, true))),
+      update: (f: (data: A) => A) => Ref.update(dataRef, f).pipe(Effect.zipRight(Ref.set(dirtyRef, true))),
       setDelay: (delayMs: number) => Ref.set(delayRef, Math.max(1000, delayMs)),
     } satisfies StoreClient<A>;
   });

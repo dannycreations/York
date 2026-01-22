@@ -8,7 +8,7 @@ import { getDropStatus, isMinutesWatchedMet } from '../helpers/TwitchHelper';
 import { TwitchApiTag } from '../services/TwitchApi';
 import { TwitchSocketTag } from '../services/TwitchSocket';
 import { WatchServiceTag } from '../services/WatchService';
-import { CampaignStoreTag } from '../stores/CampaignStore';
+import { CampaignStoreState, CampaignStoreTag } from '../stores/CampaignStore';
 import { cycleUntilMidnight } from '../structures/RuntimeClient';
 import { OfflineWorkflow } from './OfflineWorkflow';
 import { SocketWorkflow } from './SocketWorkflow';
@@ -76,16 +76,16 @@ const checkHigherPriority = (state: MainState, campaign: Campaign, campaignStore
     return false;
   });
 
-const updateChannelInfo = (state: MainState, api: TwitchApi, chan: Channel): Effect.Effect<Channel | null, MainWorkflowError> =>
+const updateChannelInfo = (state: MainState, api: TwitchApi, chan: Channel): Effect.Effect<Option.Option<Channel>, MainWorkflowError> =>
   Effect.gen(function* () {
-    if (chan.currentSid && (yield* Ref.get(state.localMinutesWatched)) > 0) return chan;
+    if (chan.currentSid && (yield* Ref.get(state.localMinutesWatched)) > 0) return Option.some(chan);
 
     const streamRes = yield* api.helixStreams(chan.id).pipe(Effect.mapError((e) => new MainWorkflowError({ message: e.message, cause: e })));
 
     const live = streamRes.data[0];
     if (!live) {
       yield* resetChannel(state);
-      return null;
+      return Option.none();
     }
 
     const updated = {
@@ -95,7 +95,7 @@ const updateChannelInfo = (state: MainState, api: TwitchApi, chan: Channel): Eff
       currentGameName: live.game_name,
     };
     yield* Ref.set(state.currentChannel, Option.some(updated));
-    return updated;
+    return Option.some(updated);
   });
 
 const handleWatchSuccess = (state: MainState, chan: Channel, campaignStore: CampaignStore): Effect.Effect<void, TwitchApiError> =>
@@ -140,26 +140,31 @@ const watchChannelTick = (
 ): Effect.Effect<void, TwitchApiError | MainWorkflowError | WatchError> =>
   Effect.gen(function* () {
     if (yield* Ref.get(state.isClaiming)) {
-      return yield* Effect.sleep('5 seconds');
+      yield* Effect.sleep('5 seconds');
+      return;
     }
 
     if (yield* checkHigherPriority(state, campaign, campaignStore)) {
-      return yield* resetChannel(state);
+      yield* resetChannel(state);
+      return;
     }
 
     yield* waitForNextWatch(state);
 
     const chanOpt = yield* Ref.get(state.currentChannel);
     if (Option.isNone(chanOpt) || !chanOpt.value.isOnline) {
-      return yield* Ref.set(state.currentChannel, Option.none());
+      yield* Ref.set(state.currentChannel, Option.none());
+      return;
     }
 
-    const chan = yield* updateChannelInfo(state, api, chanOpt.value);
-    if (!chan) return;
+    const updatedChanOpt = yield* updateChannelInfo(state, api, chanOpt.value);
+    if (Option.isNone(updatedChanOpt)) return;
+    const chan = updatedChanOpt.value;
 
     if (chan.gameId && chan.currentGameId && chan.gameId !== chan.currentGameId) {
       yield* Effect.logInfo(chalk`{red ${chan.login}} | {red Game changed to ${chan.currentGameName}}`);
-      return yield* resetChannel(state);
+      yield* resetChannel(state);
+      return;
     }
 
     const { success, hlsUrl } = yield* watchService.watch(chan);
@@ -178,7 +183,8 @@ const watchChannelTick = (
         const currentChannel = yield* Ref.get(state.currentChannel);
         if (Option.isNone(currentChannel)) return;
       } else {
-        return yield* resetChannel(state);
+        yield* resetChannel(state);
+        return;
       }
     }
 
@@ -226,8 +232,9 @@ const processChannelWatch = (
   Effect.gen(function* () {
     yield* Ref.set(state.currentChannel, Option.some(channel));
 
-    const chan = yield* updateChannelInfo(state, api, channel);
-    if (!chan) return;
+    const chanOpt = yield* updateChannelInfo(state, api, channel);
+    if (Option.isNone(chanOpt)) return;
+    const chan = chanOpt.value;
 
     yield* claimChannelPoints(chan, api, configStore);
 
@@ -377,7 +384,7 @@ const performClaimDrops = (
 const initializeCampaignState = (state: MainState, campaignStore: CampaignStore, configStore: StoreClient<ClientConfig>): Effect.Effect<void> =>
   Effect.gen(function* () {
     const currentState = yield* Ref.get(campaignStore.state);
-    if (currentState !== 'Initial') return;
+    if (currentState._tag !== 'Initial') return;
 
     yield* campaignStore.updateCampaigns.pipe(Effect.orDie);
     yield* campaignStore.updateProgress.pipe(Effect.orDie);
@@ -390,18 +397,18 @@ const initializeCampaignState = (state: MainState, campaignStore: CampaignStore,
     const activeList = hasPriority ? priorities : campaigns;
     yield* Effect.logInfo(chalk`{bold.yellow Checking ${activeList.length} ${hasPriority ? '' : 'Non-'}Priority game!}`);
 
-    yield* Ref.set(campaignStore.state, hasPriority ? 'PriorityOnly' : 'All');
+    yield* Ref.set(campaignStore.state, hasPriority ? CampaignStoreState.PriorityOnly() : CampaignStoreState.All());
     yield* Ref.set(state.isClaiming, false);
   });
 
 const handleNoActiveCampaigns = (campaignStore: CampaignStore): Effect.Effect<void> =>
   Effect.gen(function* () {
     const currentState = yield* Ref.get(campaignStore.state);
-    if (currentState === 'PriorityOnly') {
-      yield* Ref.set(campaignStore.state, 'All');
+    if (currentState._tag === 'PriorityOnly') {
+      yield* Ref.set(campaignStore.state, CampaignStoreState.All());
       return;
     }
-    yield* Ref.set(campaignStore.state, 'Initial');
+    yield* Ref.set(campaignStore.state, CampaignStoreState.Initial());
     yield* Effect.logInfo(chalk`{yellow No active campaigns. Checking upcoming...}`);
     yield* Effect.logInfo('');
     yield* Effect.sleep('10 minutes');
@@ -471,8 +478,9 @@ const processCampaignLogic = (
     }
 
     yield* performWatchLoop(state, api, socket, campaignStore, watchService, configStore);
-    if ((yield* Ref.get(campaignStore.state)) === 'All') {
-      yield* Ref.set(campaignStore.state, 'Initial');
+    const currentState = yield* Ref.get(campaignStore.state);
+    if (currentState._tag === 'All') {
+      yield* Ref.set(campaignStore.state, CampaignStoreState.Initial());
     }
   });
 

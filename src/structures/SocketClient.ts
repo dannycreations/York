@@ -1,4 +1,4 @@
-import { Context, Data, Deferred, Effect, Fiber, Layer, Option, PubSub, Queue, Ref, Schedule, Scope, Stream } from 'effect';
+import { Context, Data, Deferred, Effect, Layer, Option, PubSub, Queue, Ref, Schedule, Scope, Stream } from 'effect';
 import { WebSocket as WsClient } from 'ws';
 
 import { HttpClientTag } from './HttpClient';
@@ -96,7 +96,7 @@ export const makeSocketClient = (options: SocketClientOptions): Effect.Effect<So
           });
         }).pipe(
           Effect.retry({
-            schedule: Schedule.fixed('1 seconds').pipe(Schedule.compose(Schedule.recurs(2))),
+            schedule: Schedule.exponential('1 seconds').pipe(Schedule.compose(Schedule.recurs(2))),
           }),
         );
 
@@ -108,7 +108,7 @@ export const makeSocketClient = (options: SocketClientOptions): Effect.Effect<So
       Effect.forever,
     );
 
-    yield* Effect.forkIn(processSendQueue, yield* Effect.scope);
+    yield* Effect.forkScoped(processSendQueue);
 
     const lastPongReceivedAt = yield* Ref.make(Date.now());
     const reconnectAttempts = yield* Ref.make(0);
@@ -122,7 +122,7 @@ export const makeSocketClient = (options: SocketClientOptions): Effect.Effect<So
               Effect.gen(function* () {
                 yield* Effect.sync(() => {
                   ws.removeAllListeners();
-                  // Prevent late error
+                  // SAFETY: Prevent late error
                   ws.on('error', () => {});
                   if (graceful) {
                     ws.close(1000);
@@ -148,7 +148,7 @@ export const makeSocketClient = (options: SocketClientOptions): Effect.Effect<So
         ws.on('pong', () => emit.single(SocketState.Pong()));
       });
 
-    const connect: Effect.Effect<void, SocketClientError, HttpClientTag> = Effect.gen(function* () {
+    const connect: Effect.Effect<void, SocketClientError, HttpClientTag | Scope.Scope> = Effect.gen(function* () {
       const wsOpt = yield* Ref.get(wsRef);
       if (Option.isSome(wsOpt)) return;
 
@@ -198,7 +198,7 @@ export const makeSocketClient = (options: SocketClientOptions): Effect.Effect<So
                   );
                   yield* Effect.sleep(`${delay} millis`).pipe(
                     Effect.flatMap(() => connect.pipe(Effect.ignore)),
-                    Effect.fork,
+                    Effect.forkScoped,
                   );
                 } else {
                   yield* Effect.logError('SocketClient: Max reconnect attempts reached');
@@ -209,7 +209,7 @@ export const makeSocketClient = (options: SocketClientOptions): Effect.Effect<So
           }),
         ),
         Stream.runForEach((event) => (event._tag === 'Pong' ? Effect.void : PubSub.publish(eventsPubSub, event))),
-        Effect.fork,
+        Effect.forkScoped,
       );
 
       return yield* Deferred.await(opened);
@@ -235,14 +235,8 @@ export const makeSocketClient = (options: SocketClientOptions): Effect.Effect<So
     }).pipe(Effect.repeat(Schedule.spaced(`${pingIntervalMs} millis`)));
 
     yield* connect;
-    const pingFiber = yield* Effect.fork(pingLoop);
-
-    yield* Effect.addFinalizer(() =>
-      Effect.gen(function* () {
-        yield* Fiber.interrupt(pingFiber);
-        yield* disconnect(true);
-      }),
-    );
+    yield* Effect.forkScoped(pingLoop);
+    yield* Effect.addFinalizer(() => disconnect(true));
 
     const send = (payload: string | object): Effect.Effect<void, SocketClientError> =>
       Effect.gen(function* () {

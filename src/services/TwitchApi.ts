@@ -46,7 +46,14 @@ export interface TwitchApi {
   readonly request: <T = string>(
     options: string | DefaultOptions,
     isDebugOverride?: boolean,
-  ) => Effect.Effect<{ body: T; statusCode: number; headers: Record<string, string | string[] | undefined> }, TwitchApiError>;
+  ) => Effect.Effect<
+    {
+      body: T;
+      statusCode: number;
+      headers: Record<string, string | string[] | undefined>;
+    },
+    TwitchApiError
+  >;
   readonly init: Effect.Effect<void, TwitchApiError>;
   readonly dropsDashboard: Effect.Effect<Schema.Schema.Type<typeof ViewerDropsDashboardSchema>, TwitchApiError>;
   readonly inventory: Effect.Effect<Schema.Schema.Type<typeof InventorySchema>, TwitchApiError>;
@@ -69,10 +76,10 @@ export interface TwitchApi {
 
 export class TwitchApiTag extends Context.Tag('@services/TwitchApi')<TwitchApiTag, TwitchApi>() {}
 
-const parseUniqueCookies = (setCookie: readonly string[]): Record<string, string> =>
+const parseUniqueCookies = (setCookie: readonly string[]): Readonly<Record<string, string>> =>
   setCookie.reduce<Record<string, string>>((acc, cookie) => {
     const match = cookie.match(/(?<=\=)\w+(?=\;)/);
-    if (!match) return acc;
+    if (!match || !match[0]) return acc;
 
     const value = match[0];
     if (cookie.startsWith('server_session_id')) {
@@ -86,13 +93,13 @@ const parseUniqueCookies = (setCookie: readonly string[]): Record<string, string
     return acc;
   }, {});
 
-const handleGraphqlErrors = (errors: ReadonlyArray<{ message: string }>): Effect.Effect<never, TwitchApiError> => {
+const handleGraphqlErrors = (errors: ReadonlyArray<{ readonly message: string }>): Effect.Effect<never, TwitchApiError> => {
   const retryableErrors = ['service unavailable', 'service timeout', 'context deadline exceeded'];
   const retries = errors.filter((e) => retryableErrors.includes(e.message.toLowerCase()));
 
   if (retries.length > 0) {
     return Effect.logWarning(chalk`{yellow GraphQL response has ${retries.length} retryable errors}`).pipe(
-      Effect.flatMap(() =>
+      Effect.zipRight(
         Effect.fail(
           new TwitchApiError({
             message: 'Retryable GraphQL Error',
@@ -158,7 +165,7 @@ export const TwitchApiLayer = (authToken: string, isDebug = false): Layer.Layer<
 
           if (response.statusCode === 401) {
             yield* Effect.logFatal(chalk`{red Unauthorized: Invalid OAuth token detected during request}`);
-            return yield* Effect.dieMessage('Unauthorized: Invalid OAuth token detected during request');
+            return yield* Effect.die(new TwitchApiError({ message: 'Unauthorized: Invalid OAuth token detected during request' }));
           }
 
           if (isDebug || isDebugOverride) {
@@ -210,7 +217,7 @@ export const TwitchApiLayer = (authToken: string, isDebug = false): Layer.Layer<
         ),
         Effect.flatMap((response) =>
           response.statusCode === 401
-            ? Effect.dieMessage('Unauthorized: Invalid OAuth token detected during validation')
+            ? Effect.die(new TwitchApiError({ message: 'Unauthorized: Invalid OAuth token detected during validation' }))
             : Deferred.succeed(userIdDeferred, response.body.user_id).pipe(Effect.as(response.body.user_id)),
         ),
       );
@@ -263,7 +270,7 @@ export const TwitchApiLayer = (authToken: string, isDebug = false): Layer.Layer<
         }).pipe(
           Effect.retry({
             while: (e) => e.message === 'Retryable GraphQL Error',
-            schedule: Schedule.exponential('1 seconds', 2).pipe(Schedule.compose(Schedule.recurs(5))),
+            schedule: Schedule.exponential('1 seconds').pipe(Schedule.compose(Schedule.recurs(5))),
           }),
           Effect.annotateLogs({ service: 'TwitchApi', operation: 'graphql' }),
         );

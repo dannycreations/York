@@ -61,7 +61,7 @@ export const WatchServiceLayer: Layer.Layer<WatchServiceTag, never, HttpClientTa
       Effect.flatMap((settingUrl) => fetchRegexUrl(settingUrl, Twitch.SpadeReg, spadeUrlRef, 'Could not parse Spade URL')),
     );
 
-    const watch = (channel: Channel): Effect.Effect<{ success: boolean; hlsUrl?: string }, WatchError> =>
+    const watch = (channel: Channel): Effect.Effect<{ readonly success: boolean; readonly hlsUrl?: string }, WatchError> =>
       Effect.gen(function* () {
         if (!channel.currentSid) return { success: false };
 
@@ -99,27 +99,24 @@ export const WatchServiceLayer: Layer.Layer<WatchServiceTag, never, HttpClientTa
             Effect.catchAll(() => Effect.succeed(false)),
           );
 
-        let currentHlsUrl = channel.hlsUrl;
         const sendStream = Effect.gen(function* () {
-          if (!currentHlsUrl) {
-            currentHlsUrl = yield* getHlsUrl(channel.login);
-          }
-
-          const success = yield* checkStream(currentHlsUrl);
-          if (success) return true;
+          const hlsUrl = channel.hlsUrl ? channel.hlsUrl : yield* getHlsUrl(channel.login);
+          const success = yield* checkStream(hlsUrl);
+          if (success) return { success: true, hlsUrl };
 
           const live = yield* api.channelLive(channel.login);
-          if (!live.user?.stream?.id) return false;
+          if (!live.user?.stream?.id) return { success: false, hlsUrl };
 
-          currentHlsUrl = yield* getHlsUrl(channel.login);
-          return yield* checkStream(currentHlsUrl);
-        }).pipe(Effect.catchAll(() => Effect.succeed(false)));
+          const freshHlsUrl = yield* getHlsUrl(channel.login);
+          const freshSuccess = yield* checkStream(freshHlsUrl);
+          return { success: freshSuccess, hlsUrl: freshHlsUrl };
+        }).pipe(Effect.catchAll(() => Effect.succeed({ success: false, hlsUrl: channel.hlsUrl })));
 
-        const [eventSuccess, streamSuccess] = yield* Effect.all([sendEvent, sendStream]);
+        const [eventSuccess, streamResult] = yield* Effect.all([sendEvent, sendStream]);
 
         return {
-          success: eventSuccess || streamSuccess,
-          hlsUrl: currentHlsUrl,
+          success: eventSuccess || streamResult.success,
+          hlsUrl: streamResult.hlsUrl,
         };
       }).pipe(Effect.catchAll(() => Effect.succeed({ success: false })));
 

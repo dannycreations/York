@@ -3,7 +3,6 @@ import { Schema } from 'effect';
 export const DateFromAny = Schema.transform(Schema.Union(Schema.String, Schema.Number, Schema.Date), Schema.instanceOf(Date), {
   decode: (u) => new Date(u),
   encode: (d) => d,
-  strict: true,
 });
 
 export const DropStatus = Schema.Literal('ACTIVE', 'EXPIRED', 'UPCOMING');
@@ -92,11 +91,7 @@ export const GqlResponseSchema = <A, I, R>(data: Schema.Schema<A, I, R>) =>
     extensions: Schema.optional(GqlExtensionsSchema),
   });
 
-export interface GqlResponse<A> {
-  readonly data: A;
-  readonly errors?: ReadonlyArray<GqlError>;
-  readonly extensions?: GqlExtensions;
-}
+export type GqlResponse<A> = Schema.Schema.Type<ReturnType<typeof GqlResponseSchema<A, never, never>>>;
 
 export const ViewerDropsDashboardSchema = Schema.Struct({
   currentUser: Schema.Struct({
