@@ -97,11 +97,6 @@ export const TwitchSocketLayer = (authToken: string): Layer.Layer<TwitchSocketTa
           catch: (e) => new TwitchSocketError({ message: 'TwitchSocket: Failed to parse raw message', cause: e }),
         }).pipe(Effect.option);
 
-      const handleReconnect = (raw: unknown): Effect.Effect<void> =>
-        isObjectLike<{ readonly type: string }>(raw) && raw.type === 'RECONNECT'
-          ? Effect.logWarning('TwitchSocket: Received RECONNECT instruction from server').pipe(Effect.zipRight(client.disconnect(false)))
-          : Effect.void;
-
       const extractPayload = (raw: unknown): Effect.Effect<Option.Option<unknown>> =>
         Effect.gen(function* () {
           if (!isObjectLike<{ readonly type: string; readonly data: unknown }>(raw) || raw.type !== 'MESSAGE') {
@@ -139,7 +134,6 @@ export const TwitchSocketLayer = (authToken: string): Layer.Layer<TwitchSocketTa
         Stream.filterMap((event) => (event._tag === 'Message' ? Option.some(event.data) : Option.none())),
         Stream.mapEffect(parseMessage),
         Stream.filterMap((o) => o),
-        Stream.tap(handleReconnect),
         Stream.mapEffect(extractPayload),
         Stream.filterMap((o) => o),
         Stream.tap((payload) =>
