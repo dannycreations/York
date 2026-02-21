@@ -67,5 +67,5 @@ export const OfflineWorkflow = (state: MainState, configStore: StoreClient<Clien
       yield* Effect.sleep(`${Math.floor(Math.random() * 5000)} millis`);
     });
 
-    yield* Effect.repeat(loop, Schedule.spaced('120 seconds')).pipe(Effect.asVoid);
+    yield* Effect.repeat(loop, Schedule.spaced('120 seconds'));
   });

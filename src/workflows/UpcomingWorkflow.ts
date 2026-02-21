@@ -82,5 +82,5 @@ export const UpcomingWorkflow = (state: MainState) =>
       yield* processUpcomingCampaign(upcoming[0], upcoming.length, state, campaignStore, isMainCall, isMainCallSleep);
     });
 
-    yield* Effect.repeat(loop, Schedule.spaced('120 seconds')).pipe(Effect.asVoid);
+    yield* Effect.repeat(loop, Schedule.spaced('120 seconds'));
   });

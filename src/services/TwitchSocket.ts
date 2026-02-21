@@ -1,6 +1,6 @@
 import { chalk, randomString } from '@vegapunk/utilities';
 import { isObjectLike } from '@vegapunk/utilities/common';
-import { Context, Data, Effect, Layer, Option, Ref, Schema, Stream } from 'effect';
+import { Context, Data, Effect, identity, Layer, Option, Ref, Schema, Stream } from 'effect';
 
 import { Twitch } from '../core/Constants';
 import { SocketMessageSchema } from '../core/Schemas';
@@ -133,9 +133,9 @@ export const TwitchSocketLayer = (authToken: string): Layer.Layer<TwitchSocketTa
       const messages: Stream.Stream<SocketMessage, never, never> = client.events.pipe(
         Stream.filterMap((event) => (event._tag === 'Message' ? Option.some(event.data) : Option.none())),
         Stream.mapEffect(parseMessage),
-        Stream.filterMap((o) => o),
+        Stream.filterMap(identity),
         Stream.mapEffect(extractPayload),
-        Stream.filterMap((o) => o),
+        Stream.filterMap(identity),
         Stream.tap((payload) =>
           isObjectLike<{ topicType: unknown; topicId: unknown }>(payload) && 'topicType' in payload && 'topicId' in payload
             ? Effect.logDebug(chalk`TwitchSocket: Emitted ${String(payload.topicType)}.${String(payload.topicId)}`, payload)
@@ -147,7 +147,7 @@ export const TwitchSocketLayer = (authToken: string): Layer.Layer<TwitchSocketTa
             Effect.catchAll(() => Effect.succeed(Option.none())),
           ),
         ),
-        Stream.filterMap((o) => o),
+        Stream.filterMap(identity),
       );
 
       yield* client.events.pipe(
@@ -160,7 +160,6 @@ export const TwitchSocketLayer = (authToken: string): Layer.Layer<TwitchSocketTa
             yield* Effect.forEach(topics, (topicKey) => performListen(topicKey), { discard: true });
           }),
         ),
-        Effect.annotateLogs({ service: 'TwitchSocket', operation: 'resubscribe' }),
         Effect.forkScoped,
       );
 

@@ -53,7 +53,7 @@ const claimChannelPoints = (channel: Channel, api: TwitchApi, configStore: Store
     const availableClaim = channelData.community.channel.self.communityPoints.availableClaim;
 
     if (availableClaim) {
-      yield* api.claimPoints(channel.id, availableClaim.id).pipe(Effect.ignore);
+      yield* api.claimPoints(channel.id, availableClaim.id);
       yield* Effect.logInfo(chalk`{green ${channel.login}} | {yellow Points claimed}`);
     }
   });
@@ -509,17 +509,6 @@ const mainLoop = (
   Effect.gen(function* () {
     yield* initializeCampaignState(state, campaignStore, configStore);
 
-    const activeCampaigns = yield* campaignStore.getSortedActive;
-    if (Array.isEmptyReadonlyArray(activeCampaigns)) {
-      yield* handleNoActiveCampaigns(campaignStore);
-      return;
-    }
-
-    yield* processActiveCampaigns(state, api, socket, campaignStore, watchService, configStore, activeCampaigns[0]).pipe(Effect.orDie);
-  });
-
-const updatePriorities = (campaignStore: CampaignStore, configStore: StoreClient<ClientConfig>): Effect.Effect<void> =>
-  Effect.gen(function* () {
     const config = yield* configStore.get;
     yield* Ref.update(campaignStore.campaigns, (map) => {
       const next = new Map(map);
@@ -528,6 +517,14 @@ const updatePriorities = (campaignStore: CampaignStore, configStore: StoreClient
       }
       return next;
     });
+
+    const activeCampaigns = yield* campaignStore.getSortedActive;
+    if (Array.isEmptyReadonlyArray(activeCampaigns)) {
+      yield* handleNoActiveCampaigns(campaignStore);
+      return;
+    }
+
+    yield* processActiveCampaigns(state, api, socket, campaignStore, watchService, configStore, activeCampaigns[0]);
   });
 
 const ensureSettingsDir = Effect.gen(function* () {
@@ -569,17 +566,15 @@ export const MainWorkflow: Effect.Effect<
 
   yield* SocketWorkflow(state, configStore).pipe(Effect.orDie);
 
-  const mainTaskLoop = (): Effect.Effect<void, never, CampaignStoreTag | TwitchApiTag | ConfigStoreTag | TwitchSocketTag | WatchServiceTag> =>
-    Effect.repeat(
-      Effect.gen(function* () {
-        yield* updatePriorities(campaignStore, configStore);
-        yield* mainLoop(state, api, socket, campaignStore, watchService, configStore).pipe(Effect.orDie);
-        yield* Effect.sleep('10 seconds');
-      }),
-      Schedule.forever,
-    ).pipe(Effect.asVoid);
+  const mainTaskLoop = Effect.repeat(
+    Effect.gen(function* () {
+      yield* mainLoop(state, api, socket, campaignStore, watchService, configStore).pipe(Effect.orDie);
+      yield* Effect.sleep('10 seconds');
+    }),
+    Schedule.forever,
+  );
 
-  yield* Effect.all([mainTaskLoop(), UpcomingWorkflow(state), OfflineWorkflow(state, configStore), cycleUntilMidnight], {
+  yield* Effect.all([mainTaskLoop, UpcomingWorkflow(state), OfflineWorkflow(state, configStore), cycleUntilMidnight], {
     concurrency: 'unbounded',
   });
 });

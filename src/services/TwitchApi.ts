@@ -188,7 +188,6 @@ export const TwitchApiLayer = (authToken: string, isDebug = false): Layer.Layer<
           return response;
         }).pipe(
           Effect.mapError((e) => (e instanceof HttpClientError ? new TwitchApiError(e) : new TwitchApiError({ message: String(e), cause: e }))),
-          Effect.annotateLogs({ service: 'TwitchApi', operation: 'request' }),
         );
 
       const unique = request<string>({
@@ -222,7 +221,7 @@ export const TwitchApiLayer = (authToken: string, isDebug = false): Layer.Layer<
         ),
       );
 
-      const init = Effect.all([unique, validate], { concurrency: 'unbounded' }).pipe(Effect.asVoid);
+      const init = Effect.all([unique, validate], { concurrency: 'unbounded' });
 
       const graphql = <A, I, R>(
         requests: GraphqlRequest | ReadonlyArray<GraphqlRequest>,
@@ -272,23 +271,24 @@ export const TwitchApiLayer = (authToken: string, isDebug = false): Layer.Layer<
             while: (e) => e.message === 'Retryable GraphQL Error',
             schedule: Schedule.exponential('1 seconds').pipe(Schedule.compose(Schedule.recurs(5))),
           }),
-          Effect.annotateLogs({ service: 'TwitchApi', operation: 'graphql' }),
         );
 
-      const dropsDashboard = graphql(GqlQueries.dropsDashboard, ViewerDropsDashboardSchema).pipe(Effect.map((res) => res[0]));
+      const mapFirst = <A, E, R>(effect: Effect.Effect<ReadonlyArray<A>, E, R>) => effect.pipe(Effect.map((res) => res[0]));
 
-      const inventory = graphql(GqlQueries.inventory, InventorySchema).pipe(Effect.map((res) => res[0]));
+      const dropsDashboard = mapFirst(graphql(GqlQueries.dropsDashboard, ViewerDropsDashboardSchema));
 
-      const currentDrops = graphql(GqlQueries.currentDrops, CurrentDropsSchema).pipe(Effect.map((res) => res[0]));
+      const inventory = mapFirst(graphql(GqlQueries.inventory, InventorySchema));
+
+      const currentDrops = mapFirst(graphql(GqlQueries.currentDrops, CurrentDropsSchema));
 
       const gameDirectory = (slug: string): Effect.Effect<Schema.Schema.Type<typeof GameDirectorySchema>, TwitchApiError> =>
-        graphql(GqlQueries.gameDirectory(slug), GameDirectorySchema).pipe(Effect.map((res) => res[0]));
+        mapFirst(graphql(GqlQueries.gameDirectory(slug), GameDirectorySchema));
 
       const channelPoints = (channelLogin: string): Effect.Effect<Schema.Schema.Type<typeof ChannelPointsSchema>, TwitchApiError> =>
-        graphql(GqlQueries.channelPoints(channelLogin), ChannelPointsSchema).pipe(Effect.map((res) => res[0]));
+        mapFirst(graphql(GqlQueries.channelPoints(channelLogin), ChannelPointsSchema));
 
       const channelLive = (channelLogin: string): Effect.Effect<Schema.Schema.Type<typeof ChannelLiveSchema>, TwitchApiError> =>
-        graphql(GqlQueries.channelLive(channelLogin), ChannelLiveSchema).pipe(Effect.map((res) => res[0]));
+        mapFirst(graphql(GqlQueries.channelLive(channelLogin), ChannelLiveSchema));
 
       const helixStreams = (userId: string): Effect.Effect<Schema.Schema.Type<typeof HelixStreamsSchema>, TwitchApiError> =>
         request<Schema.Schema.Encoded<typeof HelixStreamsSchema>>({
@@ -302,28 +302,28 @@ export const TwitchApiLayer = (authToken: string, isDebug = false): Layer.Layer<
         );
 
       const channelStreams = (logins: readonly string[]): Effect.Effect<Schema.Schema.Type<typeof ChannelStreamsSchema>, TwitchApiError> =>
-        graphql(GqlQueries.channelStreams(logins), ChannelStreamsSchema).pipe(Effect.map((res) => res[0]));
+        mapFirst(graphql(GqlQueries.channelStreams(logins), ChannelStreamsSchema));
 
       const channelDrops = (channelID: string): Effect.Effect<Schema.Schema.Type<typeof ChannelDropsSchema>, TwitchApiError> =>
-        graphql(GqlQueries.channelDrops(channelID), ChannelDropsSchema).pipe(Effect.map((res) => res[0]));
+        mapFirst(graphql(GqlQueries.channelDrops(channelID), ChannelDropsSchema));
 
       const claimPoints = (channelID: string, claimID: string): Effect.Effect<Schema.Schema.Type<typeof ClaimPointsSchema>, TwitchApiError> =>
-        graphql(GqlQueries.claimPoints(channelID, claimID), ClaimPointsSchema).pipe(Effect.map((res) => res[0]));
+        mapFirst(graphql(GqlQueries.claimPoints(channelID, claimID), ClaimPointsSchema));
 
       const claimMoments = (momentID: string): Effect.Effect<Schema.Schema.Type<typeof ClaimMomentsSchema>, TwitchApiError> =>
-        graphql(GqlQueries.claimMoments(momentID), ClaimMomentsSchema).pipe(Effect.map((res) => res[0]));
+        mapFirst(graphql(GqlQueries.claimMoments(momentID), ClaimMomentsSchema));
 
       const claimDrops = (dropInstanceID: string): Effect.Effect<Schema.Schema.Type<typeof ClaimDropsSchema>, TwitchApiError> =>
-        graphql(GqlQueries.claimDrops(dropInstanceID), ClaimDropsSchema).pipe(Effect.map((res) => res[0]));
+        mapFirst(graphql(GqlQueries.claimDrops(dropInstanceID), ClaimDropsSchema));
 
       const campaignDetails = (
         dropID: string,
         channelLogin?: string,
       ): Effect.Effect<Schema.Schema.Type<typeof CampaignDetailsSchema>, TwitchApiError> =>
-        graphql(GqlQueries.campaignDetails(dropID, channelLogin), CampaignDetailsSchema).pipe(Effect.map((res) => res[0]));
+        mapFirst(graphql(GqlQueries.campaignDetails(dropID, channelLogin), CampaignDetailsSchema));
 
       const playbackToken = (login: string): Effect.Effect<Schema.Schema.Type<typeof PlaybackTokenSchema>, TwitchApiError> =>
-        graphql(GqlQueries.playbackToken(login), PlaybackTokenSchema).pipe(Effect.map((res) => res[0]));
+        mapFirst(graphql(GqlQueries.playbackToken(login), PlaybackTokenSchema));
 
       return {
         userId: getUserId,

@@ -243,51 +243,53 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
     const rewardsRef = yield* Ref.make<ReadonlyArray<Reward>>([]);
     const stateRef = yield* Ref.make<CampaignStoreState>(CampaignStoreState.Initial());
 
-    const updateCampaigns: Effect.Effect<void, TwitchApiError> = Effect.gen(function* () {
-      const response = yield* api.dropsDashboard;
-      const existingCampaigns = yield* Ref.get(campaignsRef);
+    const updateCampaigns: Effect.Effect<void, TwitchApiError> = api.dropsDashboard.pipe(
+      Effect.flatMap((response) =>
+        Effect.gen(function* () {
+          const existingCampaigns = yield* Ref.get(campaignsRef);
+          const newCampaignsList = yield* Effect.forEach(
+            response.currentUser.dropCampaigns,
+            (data) => processCampaignData(data, existingCampaigns, configStore),
+            { concurrency: 10 },
+          );
 
-      const newCampaignsList = yield* Effect.forEach(
-        response.currentUser.dropCampaigns,
-        (data) => processCampaignData(data, existingCampaigns, configStore),
-        { concurrency: 10 },
-      );
-
-      const newCampaigns = new Map<string, Campaign>();
-      for (const campaignOpt of newCampaignsList) {
-        if (Option.isSome(campaignOpt)) {
-          newCampaigns.set(campaignOpt.value.id, campaignOpt.value);
-        }
-      }
-
-      yield* Ref.set(campaignsRef, newCampaigns);
-    });
-
-    const updateProgress: Effect.Effect<void, TwitchApiError> = Effect.gen(function* () {
-      const config = yield* configStore.get;
-      const response = yield* api.inventory;
-      const now = Date.now();
-
-      const newRewards = response.currentUser.inventory.gameEventDrops
-        .map((d) => ({ id: d.id, lastAwardedAt: d.lastAwardedAt }))
-        .filter((r) => now - r.lastAwardedAt.getTime() < REWARD_EXPIRED_MS);
-
-      yield* Ref.set(rewardsRef, newRewards);
-
-      const newProgress = processInventoryDrops(response.currentUser.inventory.dropCampaignsInProgress, config, newRewards, now);
-
-      yield* Ref.update(progressRef, (current) =>
-        Array.reduce(newProgress, [...current], (acc, drop) => {
-          const index = acc.findIndex((d) => d.id === drop.id);
-          if (index !== -1) {
-            acc[index] = drop;
-          } else {
-            acc.push(drop);
+          const newCampaigns = new Map<string, Campaign>();
+          for (const campaignOpt of newCampaignsList) {
+            if (Option.isSome(campaignOpt)) {
+              newCampaigns.set(campaignOpt.value.id, campaignOpt.value);
+            }
           }
-          return acc;
+          yield* Ref.set(campaignsRef, newCampaigns);
         }),
-      );
-    });
+      ),
+    );
+
+    const updateProgress: Effect.Effect<void, TwitchApiError> = Effect.all([configStore.get, api.inventory]).pipe(
+      Effect.flatMap(([config, response]) => {
+        const now = Date.now();
+        const newRewards = response.currentUser.inventory.gameEventDrops
+          .map((d) => ({ id: d.id, lastAwardedAt: d.lastAwardedAt }))
+          .filter((r) => now - r.lastAwardedAt.getTime() < REWARD_EXPIRED_MS);
+
+        const newProgress = processInventoryDrops(response.currentUser.inventory.dropCampaignsInProgress, config, newRewards, now);
+
+        return Effect.all([
+          Ref.set(rewardsRef, newRewards),
+          Ref.update(progressRef, (current) => {
+            const next = [...current];
+            for (const drop of newProgress) {
+              const index = next.findIndex((d) => d.id === drop.id);
+              if (index !== -1) {
+                next[index] = drop;
+              } else {
+                next.push(drop);
+              }
+            }
+            return next;
+          }),
+        ]);
+      }),
+    );
 
     const getDropsForCampaign = (campaignId: string): Effect.Effect<ReadonlyArray<Drop>, TwitchApiError> =>
       Effect.gen(function* () {
@@ -332,17 +334,18 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
           name: truncate(`${i + 1}/${activeDrops.length}, ${drop.name}`),
         }));
 
-        yield* Ref.update(progressRef, (current) =>
-          Array.reduce(result, [...current], (acc, drop) => {
-            const index = acc.findIndex((d) => d.id === drop.id);
+        yield* Ref.update(progressRef, (current) => {
+          const next = [...current];
+          for (const drop of result) {
+            const index = next.findIndex((d) => d.id === drop.id);
             if (index !== -1) {
-              acc[index] = drop;
+              next[index] = drop;
             } else {
-              acc.push(drop);
+              next.push(drop);
             }
-            return acc;
-          }),
-        );
+          }
+          return next;
+        });
 
         return result;
       });

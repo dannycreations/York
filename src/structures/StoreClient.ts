@@ -9,7 +9,7 @@ const ensureDir = (path: string): Effect.Effect<void, StoreClientError> =>
   Effect.tryPromise({
     try: () => mkdir(dirname(path), { recursive: true }),
     catch: (cause) => new StoreClientError({ message: `Failed to ensure directory: ${dirname(path)}`, cause }),
-  }).pipe(Effect.asVoid);
+  });
 
 export class StoreClientError extends Data.TaggedError('StoreClientError')<{
   readonly message: string;
