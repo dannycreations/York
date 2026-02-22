@@ -99,16 +99,15 @@ export const TwitchSocketLayer = (authToken: string): Layer.Layer<TwitchSocketTa
 
       const extractPayload = (raw: unknown): Effect.Effect<Option.Option<unknown>> =>
         Effect.gen(function* () {
-          if (!isObjectLike<{ readonly type: string; readonly data: unknown }>(raw) || raw.type !== 'MESSAGE') {
+          if (
+            !isObjectLike<{ readonly type: string; readonly data: { readonly topic: string; readonly message: string } }>(raw) ||
+            raw.type !== 'MESSAGE'
+          ) {
             return Option.none();
           }
 
           const { data } = raw;
-          if (
-            !isObjectLike<{ readonly topic: string; readonly message: string }>(data) ||
-            typeof data.topic !== 'string' ||
-            typeof data.message !== 'string'
-          ) {
+          if (typeof data.topic !== 'string' || typeof data.message !== 'string') {
             return Option.none();
           }
 
@@ -130,22 +129,27 @@ export const TwitchSocketLayer = (authToken: string): Layer.Layer<TwitchSocketTa
           );
         });
 
-      const messages: Stream.Stream<SocketMessage, never, never> = client.events.pipe(
-        Stream.filterMap((event) => (event._tag === 'Message' ? Option.some(event.data) : Option.none())),
-        Stream.mapEffect(parseMessage),
-        Stream.filterMap(identity),
-        Stream.mapEffect(extractPayload),
-        Stream.filterMap(identity),
-        Stream.tap((payload) =>
-          isObjectLike<{ topicType: unknown; topicId: unknown }>(payload) && 'topicType' in payload && 'topicId' in payload
-            ? Effect.logDebug(chalk`TwitchSocket: Emitted ${String(payload.topicType)}.${String(payload.topicId)}`, payload)
-            : Effect.void,
-        ),
-        Stream.mapEffect((payload) =>
-          Schema.decodeUnknown(SocketMessageSchema)(payload).pipe(
-            Effect.map(Option.some),
-            Effect.catchAll(() => Effect.succeed(Option.none())),
-          ),
+      const messages: Stream.Stream<SocketMessage, never, never> = Stream.filterMap(client.events, (event) =>
+        event._tag === 'Message' ? Option.some(event.data) : Option.none(),
+      ).pipe(
+        Stream.mapEffect((data) =>
+          Effect.gen(function* () {
+            const msgOpt = yield* parseMessage(data);
+            if (Option.isNone(msgOpt)) return Option.none();
+
+            const payloadOpt = yield* extractPayload(msgOpt.value);
+            if (Option.isNone(payloadOpt)) return Option.none();
+
+            const payload = payloadOpt.value;
+            if (isObjectLike<{ topicType: unknown; topicId: unknown }>(payload) && 'topicType' in payload && 'topicId' in payload) {
+              yield* Effect.logDebug(chalk`TwitchSocket: Emitted ${String(payload.topicType)}.${String(payload.topicId)}`, payload);
+            }
+
+            return yield* Schema.decodeUnknown(SocketMessageSchema)(payload).pipe(
+              Effect.map(Option.some),
+              Effect.catchAll(() => Effect.succeed(Option.none())),
+            );
+          }),
         ),
         Stream.filterMap(identity),
       );

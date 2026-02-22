@@ -91,7 +91,7 @@ const updateChannelInfo = (state: MainState, api: TwitchApi, chan: Channel): Eff
       return Option.none();
     }
 
-    const updated = {
+    const updated: Channel = {
       ...chan,
       currentSid: live.id,
       currentGameId: live.game_id,

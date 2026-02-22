@@ -79,13 +79,12 @@ export class TwitchApiTag extends Context.Tag('@services/TwitchApi')<TwitchApiTa
 const parseUniqueCookies = (setCookie: readonly string[]): Readonly<Record<string, string>> => {
   const result: Record<string, string> = {};
   for (const cookie of setCookie) {
-    const isSessionId = cookie.startsWith('server_session_id=');
-    const isUniqueId = cookie.startsWith('unique_id=');
-    if (isSessionId || isUniqueId) {
-      const start = isSessionId ? 18 : 10;
-      const end = cookie.indexOf(';', start);
-      const value = end === -1 ? cookie.substring(start) : cookie.substring(start, end);
-      result[isSessionId ? 'client-session-id' : 'x-device-id'] = value;
+    if (cookie.startsWith('server_session_id=')) {
+      const end = cookie.indexOf(';', 18);
+      result['client-session-id'] = end === -1 ? cookie.substring(18) : cookie.substring(18, end);
+    } else if (cookie.startsWith('unique_id=')) {
+      const end = cookie.indexOf(';', 10);
+      result['x-device-id'] = end === -1 ? cookie.substring(10) : cookie.substring(10, end);
     }
   }
   return result;
@@ -94,18 +93,12 @@ const parseUniqueCookies = (setCookie: readonly string[]): Readonly<Record<strin
 const RETRYABLE_GQL_ERRORS = new Set(['service unavailable', 'service timeout', 'context deadline exceeded']);
 
 const handleGraphqlErrors = (errors: ReadonlyArray<{ readonly message: string }>): Effect.Effect<never, TwitchApiError> => {
-  const retryCount = errors.filter((e) => RETRYABLE_GQL_ERRORS.has(e.message.toLowerCase())).length;
+  const hasRetryable = errors.some((e) => RETRYABLE_GQL_ERRORS.has(e.message.toLowerCase()));
 
-  if (retryCount > 0) {
-    return Effect.logWarning(chalk`{yellow GraphQL response has ${retryCount} retryable errors}`).pipe(
-      Effect.zipRight(
-        Effect.fail(
-          new TwitchApiError({
-            message: 'Retryable GraphQL Error',
-            cause: errors,
-          }),
-        ),
-      ),
+  if (hasRetryable) {
+    return Effect.logWarning(chalk`{yellow GraphQL response has retryable errors}`).pipe(
+      Effect.as(new TwitchApiError({ message: 'Retryable GraphQL Error', cause: errors })),
+      Effect.flatMap(Effect.fail),
     );
   }
 
@@ -194,16 +187,21 @@ export const TwitchApiLayer = (authToken: string, isDebug = false): Layer.Layer<
         headers: { accept: 'text/html' },
       }).pipe(
         Effect.catchAll((e) => Effect.dieMessage(chalk`{red Could not fetch your unique (client-version/cookies): ${e.message}}`)),
-        Effect.flatMap((response) => {
-          const setCookie = response.headers['set-cookie'];
-          const updateCookies =
-            setCookie && Array.isArray(setCookie) ? Ref.update(headersRef, (h) => ({ ...h, ...parseUniqueCookies(setCookie) })) : Effect.void;
+        Effect.flatMap((response) =>
+          Ref.update(headersRef, (h) => {
+            const next = { ...h };
+            const setCookie = response.headers['set-cookie'];
+            if (setCookie && Array.isArray(setCookie)) {
+              Object.assign(next, parseUniqueCookies(setCookie));
+            }
 
-          const match = /twilightBuildID="([-a-z0-9]+)"/.exec(response.body);
-          const updateVersion = match && match[1] ? Ref.update(headersRef, (h) => ({ ...h, 'client-version': match[1]! })) : Effect.void;
-
-          return Effect.all([updateCookies, updateVersion], { discard: true });
-        }),
+            const match = /twilightBuildID="([-a-z0-9]+)"/.exec(response.body);
+            if (match && match[1]) {
+              next['client-version'] = match[1];
+            }
+            return next;
+          }),
+        ),
       );
 
       const validate = request<{ user_id: string }>({

@@ -210,8 +210,10 @@ const processInventoryDrops = (
   now: number,
 ): ReadonlyArray<Drop> =>
   Array.flatMap(campaigns, (campaign) => {
-    const sortedDrops = [...campaign.timeBasedDrops].sort((a, b) => a.requiredMinutesWatched - b.requiredMinutesWatched);
-    const filtered = Array.filterMap(sortedDrops, (data) => processDrop(data, campaign.id, config, rewardsMap, now, true));
+    const filtered = Array.filterMap(
+      [...campaign.timeBasedDrops].sort((a, b) => a.requiredMinutesWatched - b.requiredMinutesWatched),
+      (data) => processDrop(data, campaign.id, config, rewardsMap, now, true),
+    );
 
     return filtered.map((drop, i) => ({
       ...drop,
@@ -220,17 +222,12 @@ const processInventoryDrops = (
   });
 
 const groupCampaigns = (campaigns: ReadonlyArray<Campaign>): ReadonlyArray<Campaign> => {
-  const result: Campaign[] = [];
-  const seenGameIds = new Set<string>();
-
-  for (const campaign of campaigns) {
-    const gameId = campaign.game.id;
-    if (!seenGameIds.has(gameId)) {
-      result.push(campaign);
-      seenGameIds.add(gameId);
-    }
-  }
-  return result;
+  const seen = new Set<string>();
+  return campaigns.filter((c) => {
+    if (seen.has(c.game.id)) return false;
+    seen.add(c.game.id);
+    return true;
+  });
 };
 
 export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiTag | ConfigStoreTag | TwitchSocketTag> = Layer.effect(
@@ -254,8 +251,7 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
             { concurrency: 10 },
           );
 
-          const newCampaigns = new Map(Array.filterMap(newCampaignsList, (opt) => Option.map(opt, (c) => [c.id, c] as const)));
-          yield* Ref.set(campaignsRef, newCampaigns);
+          yield* Ref.set(campaignsRef, new Map(Array.filterMap(newCampaignsList, (opt) => Option.map(opt, (c) => [c.id, c] as const))));
         }),
       ),
     );
@@ -264,8 +260,7 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
       Effect.flatMap(([config, response]) => {
         const now = Date.now();
         const rewardsMap = new Map<string, Date>();
-        const eventDrops = response.currentUser.inventory.gameEventDrops;
-        for (const drop of eventDrops) {
+        for (const drop of response.currentUser.inventory.gameEventDrops) {
           if (now - drop.lastAwardedAt.getTime() < REWARD_EXPIRED_MS) {
             rewardsMap.set(drop.id, drop.lastAwardedAt);
           }
@@ -328,9 +323,7 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
 
         yield* Ref.update(progressRef, (current) => {
           const dropMap = new Map(current.map((d) => [d.id, d]));
-          for (const drop of result) {
-            dropMap.set(drop.id, drop);
-          }
+          for (const drop of result) dropMap.set(drop.id, drop);
           return Array.fromIterable(dropMap.values());
         });
 
@@ -338,24 +331,20 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
       });
 
     const getSortedActive: Effect.Effect<ReadonlyArray<Campaign>> = Effect.gen(function* () {
-      const campaignsMap = yield* Ref.get(campaignsRef);
       const currentState = yield* Ref.get(stateRef);
       const config = yield* configStore.get;
       const now = Date.now();
 
-      const activeCampaigns = Array.fromIterable(campaignsMap.values()).filter((c) => {
-        if (c.isOffline) return false;
-        const status = getDropStatus(c.startAt, c.endAt, now);
-        if (status.isExpired) return false;
-        if (currentState._tag === 'PriorityOnly' && !config.priorityList.has(c.game.displayName)) return false;
-        return true;
-      });
-
-      const sortedByEndAt = [...activeCampaigns].sort((a, b) => a.endAt.getTime() - b.endAt.getTime());
-
-      const grouped = groupCampaigns(sortedByEndAt);
-
-      return [...grouped].sort((a, b) => b.priority - a.priority);
+      return [
+        ...groupCampaigns(
+          [...(yield* Ref.get(campaignsRef)).values()]
+            .filter((c) => {
+              if (c.isOffline || getDropStatus(c.startAt, c.endAt, now).isExpired) return false;
+              return currentState._tag !== 'PriorityOnly' || config.priorityList.has(c.game.displayName);
+            })
+            .sort((a, b) => a.endAt.getTime() - b.endAt.getTime()),
+        ),
+      ].sort((a, b) => b.priority - a.priority);
     });
 
     const getSortedUpcoming: Effect.Effect<ReadonlyArray<Campaign>> = Effect.gen(function* () {
