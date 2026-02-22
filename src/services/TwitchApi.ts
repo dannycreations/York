@@ -79,25 +79,25 @@ export class TwitchApiTag extends Context.Tag('@services/TwitchApi')<TwitchApiTa
 const parseUniqueCookies = (setCookie: readonly string[]): Readonly<Record<string, string>> => {
   const result: Record<string, string> = {};
   for (const cookie of setCookie) {
-    const match = cookie.match(/(?<=\=)\w+(?=\;)/);
-    if (!match || !match[0]) continue;
-
-    const value = match[0];
-    if (cookie.startsWith('server_session_id')) {
-      result['client-session-id'] = value;
-    } else if (cookie.startsWith('unique_id') && !cookie.startsWith('unique_id_durable')) {
-      result['x-device-id'] = value;
+    const isSessionId = cookie.startsWith('server_session_id=');
+    const isUniqueId = cookie.startsWith('unique_id=');
+    if (isSessionId || isUniqueId) {
+      const start = isSessionId ? 18 : 10;
+      const end = cookie.indexOf(';', start);
+      const value = end === -1 ? cookie.substring(start) : cookie.substring(start, end);
+      result[isSessionId ? 'client-session-id' : 'x-device-id'] = value;
     }
   }
   return result;
 };
 
-const handleGraphqlErrors = (errors: ReadonlyArray<{ readonly message: string }>): Effect.Effect<never, TwitchApiError> => {
-  const retryableErrors = ['service unavailable', 'service timeout', 'context deadline exceeded'];
-  const retries = errors.filter((e) => retryableErrors.includes(e.message.toLowerCase()));
+const RETRYABLE_GQL_ERRORS = new Set(['service unavailable', 'service timeout', 'context deadline exceeded']);
 
-  if (retries.length > 0) {
-    return Effect.logWarning(chalk`{yellow GraphQL response has ${retries.length} retryable errors}`).pipe(
+const handleGraphqlErrors = (errors: ReadonlyArray<{ readonly message: string }>): Effect.Effect<never, TwitchApiError> => {
+  const retryCount = errors.filter((e) => RETRYABLE_GQL_ERRORS.has(e.message.toLowerCase())).length;
+
+  if (retryCount > 0) {
+    return Effect.logWarning(chalk`{yellow GraphQL response has ${retryCount} retryable errors}`).pipe(
       Effect.zipRight(
         Effect.fail(
           new TwitchApiError({
@@ -232,9 +232,11 @@ export const TwitchApiLayer = (authToken: string, isDebug = false): Layer.Layer<
           const requestsArray = Array.isArray(requests) ? requests : [requests];
           const bodyPayload = requestsArray.map((r) => {
             const isCampaignDetails = r.operationName === 'DropCampaignDetails';
+            const variables = isCampaignDetails && !r.variables.channelLogin && userId ? { ...r.variables, channelLogin: userId } : r.variables;
+
             return {
               operationName: r.operationName,
-              variables: isCampaignDetails && !r.variables.channelLogin && userId ? { ...r.variables, channelLogin: userId } : r.variables,
+              variables,
               query: r.query,
               extensions: r.hash
                 ? {

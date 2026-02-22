@@ -63,52 +63,50 @@ export const makeSocketClient = (options: SocketClientOptions): Effect.Effect<So
       readonly deferred: Deferred.Deferred<void, SocketClientError>;
     }>();
 
-    const processSendQueue = Queue.take(sendQueue).pipe(
-      Effect.flatMap(({ data, deferred }) => {
-        const sendTask = Effect.gen(function* () {
-          const ws = yield* Effect.gen(function* () {
-            const openedDeferred = yield* Ref.get(openedDeferredRef);
-            yield* Deferred.await(openedDeferred);
+    const processSendQueue = Effect.gen(function* () {
+      const { data, deferred } = yield* Queue.take(sendQueue);
+      const sendTask = Effect.gen(function* () {
+        const ws = yield* Effect.gen(function* () {
+          const openedDeferred = yield* Ref.get(openedDeferredRef);
+          yield* Deferred.await(openedDeferred);
 
-            const wsOpt = yield* Ref.get(wsRef);
-            if (Option.isNone(wsOpt)) return yield* Effect.fail('Not Ready');
+          const wsOpt = yield* Ref.get(wsRef);
+          if (Option.isNone(wsOpt)) return yield* Effect.fail('Not Ready');
 
-            const ws = wsOpt.value;
-            if (ws.readyState !== WsClient.OPEN || ws.bufferedAmount > 1_048_576) {
-              return yield* Effect.fail('Not Ready');
-            }
+          const ws = wsOpt.value;
+          if (ws.readyState !== WsClient.OPEN || ws.bufferedAmount > 1_048_576) {
+            return yield* Effect.fail('Not Ready');
+          }
 
-            return ws;
-          }).pipe(
-            Effect.retry({
-              while: (e) => e === 'Not Ready',
-              schedule: Schedule.fixed('100 millis'),
-            }),
-            Effect.mapError((e) => new SocketClientError({ message: String(e) })),
-          );
-
-          return yield* Effect.async<void, SocketClientError>((resume) => {
-            ws.send(data, (err) => {
-              if (err) {
-                resume(Effect.fail(new SocketClientError({ message: 'SocketClient: Failed to send message', cause: err })));
-              } else {
-                resume(Effect.void);
-              }
-            });
-          });
+          return ws;
         }).pipe(
           Effect.retry({
-            schedule: Schedule.exponential('1 seconds').pipe(Schedule.compose(Schedule.recurs(2))),
+            while: (e) => e === 'Not Ready',
+            schedule: Schedule.fixed('100 millis'),
           }),
+          Effect.mapError((e) => new SocketClientError({ message: String(e) })),
         );
 
-        return Effect.matchEffect(sendTask, {
-          onFailure: (err) => Deferred.fail(deferred, err),
-          onSuccess: () => Deferred.succeed(deferred, undefined),
+        return yield* Effect.async<void, SocketClientError>((resume) => {
+          ws.send(data, (err) => {
+            if (err) {
+              resume(Effect.fail(new SocketClientError({ message: 'SocketClient: Failed to send message', cause: err })));
+            } else {
+              resume(Effect.void);
+            }
+          });
         });
-      }),
-      Effect.forever,
-    );
+      }).pipe(
+        Effect.retry({
+          schedule: Schedule.exponential('1 seconds').pipe(Schedule.compose(Schedule.recurs(2))),
+        }),
+      );
+
+      yield* Effect.matchEffect(sendTask, {
+        onFailure: (err) => Deferred.fail(deferred, err),
+        onSuccess: () => Deferred.succeed(deferred, undefined),
+      });
+    }).pipe(Effect.forever);
 
     yield* Effect.forkScoped(processSendQueue);
 
@@ -209,7 +207,7 @@ export const makeSocketClient = (options: SocketClientOptions): Effect.Effect<So
                 const attempts = yield* Ref.get(reconnectAttempts);
                 if (attempts < reconnectMaxAttempts) {
                   yield* Ref.update(reconnectAttempts, (n) => n + 1);
-                  const baseDelay = reconnectBaseMs * 1.5 ** attempts;
+                  const baseDelay = reconnectBaseMs * Math.pow(1.5, attempts);
                   const jitter = baseDelay * 0.4 * (Math.random() - 0.5);
                   const delay = Math.min(reconnectMaxMs, Math.floor(baseDelay + jitter));
                   yield* Effect.logDebug(
@@ -241,7 +239,8 @@ export const makeSocketClient = (options: SocketClientOptions): Effect.Effect<So
       if (connecting) return;
 
       const wsOpt = yield* Ref.get(wsRef);
-      if (Option.isNone(wsOpt)) return;
+      const ws = Option.getOrUndefined(wsOpt);
+      if (!ws) return;
 
       const lastPong = yield* Ref.get(lastPongReceivedAt);
       const now = Date.now();
@@ -254,11 +253,12 @@ export const makeSocketClient = (options: SocketClientOptions): Effect.Effect<So
 
     const pingLoop = Effect.gen(function* () {
       const wsOpt = yield* Ref.get(wsRef);
-      if (Option.isSome(wsOpt) && wsOpt.value.readyState === WsClient.OPEN) {
+      const ws = Option.getOrUndefined(wsOpt);
+      if (ws && ws.readyState === WsClient.OPEN) {
         if (pingPayload) {
           yield* send(pingPayload);
         } else {
-          yield* Effect.sync(() => wsOpt.value.ping());
+          yield* Effect.sync(() => ws.ping());
         }
       }
     }).pipe(Effect.repeat(Schedule.spaced(`${pingIntervalMs} millis`)));

@@ -120,6 +120,18 @@ export const WatchServiceLayer: Layer.Layer<WatchServiceTag, never, HttpClientTa
         };
       }).pipe(Effect.catchAll(() => Effect.succeed({ success: false })));
 
+    const findLastHttpUrl = (text: string): Option.Option<string> => {
+      let end = text.length;
+      while (end > 0) {
+        const prevNewline = text.lastIndexOf('\n', end - 1);
+        const start = prevNewline === -1 ? 0 : prevNewline + 1;
+        const line = text.substring(start, end).trim();
+        if (line.startsWith('http')) return Option.some(line);
+        end = prevNewline;
+      }
+      return Option.none();
+    };
+
     const getHlsUrl = (login: string): Effect.Effect<string, WatchError> =>
       api.graphql(GqlQueries.playbackToken(login), PlaybackTokenSchema).pipe(
         Effect.flatMap((playback) => {
@@ -129,36 +141,15 @@ export const WatchServiceLayer: Layer.Layer<WatchServiceTag, never, HttpClientTa
             searchParams: { sig: token.signature, token: token.value },
           });
         }),
-        Effect.flatMap((hls) => {
-          const hlsLines = hls.body.split('\n');
-          let found: string | undefined;
-          for (let i = hlsLines.length - 1; i >= 0; i--) {
-            const line = hlsLines[i].trim();
-            if (line.startsWith('http')) {
-              found = line;
-              break;
-            }
-          }
-          return found ? Effect.succeed(found) : Effect.fail(new WatchError({ message: 'HLS URL not found' }));
-        }),
+        Effect.flatMap((hls) => findLastHttpUrl(hls.body)),
+        Effect.catchTag('NoSuchElementException', () => Effect.fail(new WatchError({ message: 'HLS URL not found' }))),
         Effect.mapError((e) => (e instanceof WatchError ? e : new WatchError({ message: 'Failed to get HLS URL', cause: e }))),
       );
 
     const checkStream = (hlsUrl: string): Effect.Effect<boolean, WatchError> =>
       Effect.gen(function* () {
         const hls = yield* http.request({ url: hlsUrl });
-        const hlsLines = hls.body.split('\n');
-        let chunkUrl: string | undefined;
-        for (let i = hlsLines.length - 1; i >= 0; i--) {
-          const line = hlsLines[i].trim();
-          if (line.startsWith('http')) {
-            chunkUrl = line;
-            break;
-          }
-        }
-        if (!chunkUrl) {
-          return false;
-        }
+        const chunkUrl = yield* findLastHttpUrl(hls.body);
 
         const res = yield* http.request({ method: 'HEAD', url: chunkUrl });
         return res.statusCode === 200;

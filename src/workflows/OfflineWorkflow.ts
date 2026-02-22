@@ -23,10 +23,10 @@ const processOfflineCampaign = (campaign: Campaign, state: MainState, campaignSt
     }
 
     const drops = yield* campaignStore.getDropsForCampaign(campaign.id).pipe(Effect.orDie);
-    if (Array.isEmptyReadonlyArray(drops)) return;
+    if (drops.length === 0) return;
 
     const channels = yield* campaignStore.getChannelsForCampaign(campaign).pipe(Effect.orDie);
-    if (Array.isNonEmptyReadonlyArray(channels)) {
+    if (channels.length > 0) {
       yield* Effect.logInfo(chalk`{bold.yellow ${campaign.name}} | {bold.yellow {strikethrough Offline}}`);
       yield* campaignStore.setOffline(campaign.id, false);
 

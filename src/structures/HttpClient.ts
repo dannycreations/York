@@ -14,7 +14,7 @@ export class HttpClientError extends Data.TaggedError('HttpClientError')<{
   readonly cause?: unknown;
 }> {}
 
-export const ERROR_CODES: ReadonlyArray<string> = [
+export const ERROR_CODES: ReadonlySet<string> = new Set([
   'EADDRINUSE',
   'EAI_AGAIN',
   'ECONNREFUSED',
@@ -26,9 +26,9 @@ export const ERROR_CODES: ReadonlyArray<string> = [
   'ERR_CANCELED',
   'ECONNABORTED',
   'UND_ERR_CONNECT_TIMEOUT',
-];
+]);
 
-export const ERROR_STATUS_CODES: ReadonlyArray<number> = [408, 413, 429, 500, 502, 503, 504, 521, 522, 524];
+export const ERROR_STATUS_CODES: ReadonlySet<number> = new Set([408, 413, 429, 500, 502, 503, 504, 521, 522, 524]);
 
 export interface DefaultOptions extends Omit<Options, 'prefixUrl' | 'retry' | 'timeout' | 'resolveBodyOnly'> {
   readonly retry?: number;
@@ -47,14 +47,17 @@ export interface HttpClient {
 export class HttpClientTag extends Context.Tag('@structures/HttpClient')<HttpClientTag, HttpClient>() {}
 
 export const isTimeoutError = (error: unknown): boolean =>
-  isErrorLike<{ readonly _tag: string }>(error) &&
-  (error._tag === 'TimeoutException' || error.code === 'ETIMEDOUT' || error.message?.toLowerCase().includes('timeout'));
+  isErrorLike<{ readonly _tag: string; readonly code?: string; readonly message?: string }>(error) &&
+  (error._tag === 'TimeoutException' ||
+    error.code === 'ETIMEDOUT' ||
+    (typeof error.message === 'string' && error.message.toLowerCase().includes('timeout')));
 
 export const isNetworkError = (error: unknown): boolean => {
-  const isError = isErrorLike<{ readonly status: number }>(error);
-  const isNetworkError = isError && ERROR_CODES.includes(error.code);
-  const isRetryableStatus = isError && ERROR_STATUS_CODES.includes(error.status);
-  return isNetworkError || isRetryableStatus || isTimeoutError(error);
+  const isError = isErrorLike<{ readonly status?: number; readonly code?: string }>(error);
+  if (!isError) return false;
+  const isNetwork = typeof error.code === 'string' && ERROR_CODES.has(error.code);
+  const isRetryableStatus = typeof error.status === 'number' && ERROR_STATUS_CODES.has(error.status);
+  return isNetwork || isRetryableStatus || isTimeoutError(error);
 };
 
 export const request = <T = string>(options: string | DefaultOptions): Effect.Effect<Response<T>, HttpClientError, HttpClientTag> =>
@@ -67,58 +70,57 @@ const makeHttpClient = Effect.gen(function* () {
   const gotInstance: Got = got.bind(got);
   const userAgent = new UserAgent({ deviceCategory: 'desktop' });
 
-  const requestFn = <T = string>(options: string | DefaultOptions): Effect.Effect<Response<T>, HttpClientError> =>
-    Effect.gen(function* () {
-      const isString = typeof options === 'string';
-      const payload: DefaultOptions = defaultsDeep({}, isString ? { url: options } : options, {
-        headers: { 'user-agent': userAgent.toString() },
-        http2: true,
-      });
-
-      const retryCount = isString ? 3 : (options.retry ?? 3);
-      const { initial = 10_000, transmission = 30_000, total = 60_000 } = payload.timeout || {};
-
-      return yield* Effect.async<Response<T>, HttpClientError>((resume) => {
-        const promise = gotInstance({
-          ...payload,
-          retry: 0,
-          timeout: {
-            lookup: initial,
-            connect: initial,
-            secureConnect: initial,
-            socket: transmission,
-            response: transmission,
-            send: transmission,
-            request: total,
-          },
-          resolveBodyOnly: false,
-        }) as CancelableRequest<Response<T>>;
-
-        promise
-          .then((response) => resume(Effect.succeed(response)))
-          .catch((cause) =>
-            resume(
-              Effect.fail(
-                new HttpClientError({
-                  message: cause.message || 'Request failed',
-                  code: cause.code,
-                  status: cause.response?.statusCode,
-                  cause,
-                }),
-              ),
-            ),
-          );
-
-        return Effect.sync(() => {
-          promise.cancel();
-        });
-      }).pipe(
-        Effect.retry({
-          while: isNetworkError,
-          schedule: retryCount < 0 ? Schedule.forever : Schedule.recurs(retryCount),
-        }),
-      );
+  const requestFn = <T = string>(options: string | DefaultOptions): Effect.Effect<Response<T>, HttpClientError> => {
+    const isString = typeof options === 'string';
+    const payload: DefaultOptions = defaultsDeep({}, isString ? { url: options } : options, {
+      headers: { 'user-agent': userAgent.toString() },
+      http2: true,
     });
+
+    const retryCount = isString ? 3 : (options.retry ?? 3);
+    const { initial = 10_000, transmission = 30_000, total = 60_000 } = payload.timeout || {};
+
+    return Effect.async<Response<T>, HttpClientError>((resume) => {
+      const promise = gotInstance({
+        ...payload,
+        retry: 0,
+        timeout: {
+          lookup: initial,
+          connect: initial,
+          secureConnect: initial,
+          socket: transmission,
+          response: transmission,
+          send: transmission,
+          request: total,
+        },
+        resolveBodyOnly: false,
+      }) as CancelableRequest<Response<T>>;
+
+      promise
+        .then((response) => resume(Effect.succeed(response)))
+        .catch((cause) =>
+          resume(
+            Effect.fail(
+              new HttpClientError({
+                message: cause.message || 'Request failed',
+                code: cause.code,
+                status: cause.response?.statusCode,
+                cause,
+              }),
+            ),
+          ),
+        );
+
+      return Effect.sync(() => {
+        promise.cancel();
+      });
+    }).pipe(
+      Effect.retry({
+        while: isNetworkError,
+        schedule: retryCount < 0 ? Schedule.forever : Schedule.recurs(retryCount),
+      }),
+    );
+  };
 
   const waitForConnectionFn = (total?: number): Effect.Effect<void> => {
     const retryMs = total ?? 10_000;
@@ -131,7 +133,11 @@ const makeHttpClient = Effect.gen(function* () {
       timeout: { total: retryMs },
     });
 
-    return Effect.firstSuccessOf([checkGoogle, checkApple]).pipe(Effect.sandbox, Effect.retry(Schedule.spaced(`${retryMs} millis`)), Effect.ignore);
+    return Effect.firstSuccessOf([checkGoogle, checkApple]).pipe(
+      Effect.sandbox,
+      Effect.retry(Schedule.spaced(`${retryMs} millis`)),
+      Effect.catchAll(() => Effect.void),
+    );
   };
 
   return {

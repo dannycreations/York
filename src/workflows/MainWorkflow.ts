@@ -1,6 +1,6 @@
 import { mkdir } from 'node:fs/promises';
 import { chalk } from '@vegapunk/utilities';
-import { Array, Data, Effect, Option, Ref, Schedule, Scope } from 'effect';
+import { Data, Effect, Option, Ref, Schedule, Scope } from 'effect';
 
 import { ConfigStoreTag } from '../core/Config';
 import { WsTopic } from '../core/Constants';
@@ -61,19 +61,22 @@ const claimChannelPoints = (channel: Channel, api: TwitchApi, configStore: Store
 const checkHigherPriority = (state: MainState, campaign: Campaign, campaignStore: CampaignStore): Effect.Effect<boolean> =>
   Effect.gen(function* () {
     const activeCampaigns = yield* campaignStore.getSortedActive;
-    if (Array.isEmptyReadonlyArray(activeCampaigns) || activeCampaigns[0].id === campaign.id) return false;
+    if (activeCampaigns.length === 0 || activeCampaigns[0].id === campaign.id) return false;
 
     const higherPriority = activeCampaigns[0];
-    const currentDrop = yield* Ref.get(state.currentDrop);
-    const isDifferentGame = higherPriority.game.id !== campaign.game.id;
-    const shouldPrioritize = Option.isSome(currentDrop) && isDifferentGame && currentDrop.value.endAt >= higherPriority.endAt;
+    if (higherPriority.priority <= campaign.priority) {
+      const currentDropOpt = yield* Ref.get(state.currentDrop);
+      if (Option.isNone(currentDropOpt)) return false;
 
-    if (shouldPrioritize || higherPriority.priority > campaign.priority) {
-      yield* Effect.logInfo(chalk`{yellow Switching to higher priority campaign: ${higherPriority.name}}`);
-      yield* Ref.set(state.currentChannel, Option.none());
-      return true;
+      const currentDrop = currentDropOpt.value;
+      const isDifferentGame = higherPriority.game.id !== campaign.game.id;
+      const shouldPrioritize = isDifferentGame && currentDrop.endAt >= higherPriority.endAt;
+      if (!shouldPrioritize) return false;
     }
-    return false;
+
+    yield* Effect.logInfo(chalk`{yellow Switching to higher priority campaign: ${higherPriority.name}}`);
+    yield* Ref.set(state.currentChannel, Option.none());
+    return true;
   });
 
 const updateChannelInfo = (state: MainState, api: TwitchApi, chan: Channel): Effect.Effect<Option.Option<Channel>, MainWorkflowError> =>
@@ -266,7 +269,7 @@ const performWatchLoop = (
     const campaign = campaignOpt.value;
 
     const channels = yield* campaignStore.getChannelsForCampaign(campaign);
-    if (Array.isEmptyReadonlyArray(channels)) {
+    if (channels.length === 0) {
       yield* Effect.logInfo(chalk`${campaign.name} | {red Campaigns offline}`);
       yield* campaignStore.setOffline(campaign.id, true);
       yield* Ref.set(state.currentChannel, Option.none());
@@ -442,7 +445,7 @@ const processCampaignLogic = (
   drops: ReadonlyArray<Drop>,
 ): Effect.Effect<void, TwitchApiError | TwitchSocketError | MainWorkflowError | WatchError> =>
   Effect.gen(function* () {
-    if (Array.isEmptyReadonlyArray(drops)) {
+    if (drops.length === 0) {
       yield* Effect.logInfo(chalk`${campaign.name} | {red No active drops}`);
       yield* campaignStore.setOffline(campaign.id, true);
       return;
@@ -517,13 +520,13 @@ const mainLoop = (
       return next;
     });
 
-    const activeCampaigns = yield* campaignStore.getSortedActive;
-    if (Array.isEmptyReadonlyArray(activeCampaigns)) {
+    const activeList = yield* campaignStore.getSortedActive;
+    if (activeList.length === 0) {
       yield* handleNoActiveCampaigns(campaignStore);
       return;
     }
 
-    yield* processActiveCampaigns(state, api, socket, campaignStore, watchService, configStore, activeCampaigns[0]);
+    yield* processActiveCampaigns(state, api, socket, campaignStore, watchService, configStore, activeList[0]);
   });
 
 const ensureSettingsDir = Effect.gen(function* () {

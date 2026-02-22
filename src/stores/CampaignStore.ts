@@ -52,7 +52,7 @@ const processDrop = (
   drop: RawDrop,
   campaignId: string,
   config: ClientConfig,
-  currentRewards: ReadonlyArray<Reward>,
+  rewardsMap: ReadonlyMap<string, Date>,
   now: number,
   allowUpcomingIfHasAward: boolean,
 ): Option.Option<Drop> => {
@@ -63,9 +63,12 @@ const processDrop = (
   if (isClaimed) return Option.none();
 
   const benefits = drop.benefitEdges.map((e) => e.benefit.id);
-  const alreadyClaimed = benefits.some((id) => currentRewards.some((r) => r.id === id && r.lastAwardedAt >= startAt));
-
-  if (alreadyClaimed) return Option.none();
+  for (const benefitId of benefits) {
+    const lastAwardedAt = rewardsMap.get(benefitId);
+    if (lastAwardedAt !== undefined && lastAwardedAt >= startAt) {
+      return Option.none();
+    }
+  }
 
   const currentMinutes = drop.self?.currentMinutesWatched ?? 0;
   const isWatched = drop.self ? isMinutesWatchedMet({ ...drop.self, requiredMinutesWatched }) : false;
@@ -99,7 +102,7 @@ const processDrop = (
 export interface CampaignStore {
   readonly campaigns: Ref.Ref<ReadonlyMap<string, Campaign>>;
   readonly progress: Ref.Ref<ReadonlyArray<Drop>>;
-  readonly rewards: Ref.Ref<ReadonlyArray<Reward>>;
+  readonly rewards: Ref.Ref<ReadonlyMap<string, Date>>;
   readonly state: Ref.Ref<CampaignStoreState>;
   readonly updateCampaigns: Effect.Effect<void, TwitchApiError>;
   readonly updateProgress: Effect.Effect<void, TwitchApiError>;
@@ -119,34 +122,32 @@ const filterChannelsByCampaign = (
   api: TwitchApi,
   channels: readonly Channel[],
   campaignId: string,
-): Effect.Effect<ReadonlyArray<Channel>, TwitchApiError> =>
-  Array.isEmptyReadonlyArray(channels)
-    ? Effect.succeed([])
-    : api
-        .graphql(
-          channels.map((c) => GqlQueries.channelDrops(c.id)),
-          ChannelDropsSchema,
-        )
-        .pipe(
-          Effect.map((responses) => channels.filter((_, i) => responses[i].channel.viewerDropCampaigns?.some((vc) => vc.id === campaignId) ?? false)),
-        );
+): Effect.Effect<ReadonlyArray<Channel>, TwitchApiError> => {
+  if (channels.length === 0) return Effect.succeed([]);
 
-const cleanupSocketListeners = (socket: TwitchSocket | undefined, channels: readonly Channel[]): Effect.Effect<void, TwitchSocketError> =>
-  !socket || Array.isEmptyReadonlyArray(channels)
-    ? Effect.void
-    : Effect.forEach(
-        channels,
-        (c) =>
-          Effect.all(
-            [
-              socket.unlisten(WsTopic.ChannelStream, c.id),
-              socket.unlisten(WsTopic.ChannelMoment, c.id),
-              socket.unlisten(WsTopic.ChannelUpdate, c.id),
-            ],
-            { discard: true },
-          ),
+  return api
+    .graphql(
+      channels.map((c) => GqlQueries.channelDrops(c.id)),
+      ChannelDropsSchema,
+    )
+    .pipe(
+      Effect.map((responses) => channels.filter((_, i) => responses[i].channel.viewerDropCampaigns?.some((vc) => vc.id === campaignId) ?? false)),
+    );
+};
+
+const cleanupSocketListeners = (socket: TwitchSocket | undefined, channels: readonly Channel[]): Effect.Effect<void, TwitchSocketError> => {
+  if (!socket || channels.length === 0) return Effect.void;
+
+  return Effect.forEach(
+    channels,
+    (c) =>
+      Effect.all(
+        [socket.unlisten(WsTopic.ChannelStream, c.id), socket.unlisten(WsTopic.ChannelMoment, c.id), socket.unlisten(WsTopic.ChannelUpdate, c.id)],
         { discard: true },
-      );
+      ),
+    { discard: true },
+  );
+};
 
 const processOnlineChannels = (
   api: TwitchApi,
@@ -156,9 +157,10 @@ const processOnlineChannels = (
 ): Effect.Effect<ReadonlyArray<Channel>, TwitchApiError | TwitchSocketError> =>
   Effect.gen(function* () {
     const filtered = yield* filterChannelsByCampaign(api, channels, campaignId);
+    const filteredIds = new Set(filtered.map((f) => f.id));
     yield* cleanupSocketListeners(
       socket,
-      channels.filter((oc) => !filtered.some((f) => f.id === oc.id)),
+      channels.filter((oc) => !filteredIds.has(oc.id)),
     );
     return filtered;
   });
@@ -204,12 +206,12 @@ const processInventoryDrops = (
     readonly timeBasedDrops: ReadonlyArray<RawDrop>;
   }>,
   config: ClientConfig,
-  currentRewards: ReadonlyArray<Reward>,
+  rewardsMap: ReadonlyMap<string, Date>,
   now: number,
 ): ReadonlyArray<Drop> =>
   Array.flatMap(campaigns, (campaign) => {
     const sortedDrops = [...campaign.timeBasedDrops].sort((a, b) => a.requiredMinutesWatched - b.requiredMinutesWatched);
-    const filtered = Array.filterMap(sortedDrops, (data) => processDrop(data, campaign.id, config, currentRewards, now, true));
+    const filtered = Array.filterMap(sortedDrops, (data) => processDrop(data, campaign.id, config, rewardsMap, now, true));
 
     return filtered.map((drop, i) => ({
       ...drop,
@@ -218,14 +220,17 @@ const processInventoryDrops = (
   });
 
 const groupCampaigns = (campaigns: ReadonlyArray<Campaign>): ReadonlyArray<Campaign> => {
-  const map = new Map<string, Campaign>();
+  const result: Campaign[] = [];
+  const seenGameIds = new Set<string>();
+
   for (const campaign of campaigns) {
-    const existing = map.get(campaign.game.id);
-    if (!existing || campaign.startAt < existing.startAt) {
-      map.set(campaign.game.id, campaign);
+    const gameId = campaign.game.id;
+    if (!seenGameIds.has(gameId)) {
+      result.push(campaign);
+      seenGameIds.add(gameId);
     }
   }
-  return Array.fromIterable(map.values());
+  return result;
 };
 
 export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiTag | ConfigStoreTag | TwitchSocketTag> = Layer.effect(
@@ -236,7 +241,7 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
     const socket = yield* Effect.serviceOption(TwitchSocketTag).pipe(Effect.map(Option.getOrUndefined));
     const campaignsRef = yield* Ref.make<ReadonlyMap<string, Campaign>>(new Map());
     const progressRef = yield* Ref.make<ReadonlyArray<Drop>>([]);
-    const rewardsRef = yield* Ref.make<ReadonlyArray<Reward>>([]);
+    const rewardsRef = yield* Ref.make<ReadonlyMap<string, Date>>(new Map());
     const stateRef = yield* Ref.make<CampaignStoreState>(CampaignStoreState.Initial());
 
     const updateCampaigns: Effect.Effect<void, TwitchApiError> = api.dropsDashboard.pipe(
@@ -249,12 +254,7 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
             { concurrency: 10 },
           );
 
-          const newCampaigns = new Map<string, Campaign>();
-          for (const campaignOpt of newCampaignsList) {
-            if (Option.isSome(campaignOpt)) {
-              newCampaigns.set(campaignOpt.value.id, campaignOpt.value);
-            }
-          }
+          const newCampaigns = new Map(Array.filterMap(newCampaignsList, (opt) => Option.map(opt, (c) => [c.id, c] as const)));
           yield* Ref.set(campaignsRef, newCampaigns);
         }),
       ),
@@ -263,17 +263,20 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
     const updateProgress: Effect.Effect<void, TwitchApiError> = Effect.all([configStore.get, api.inventory]).pipe(
       Effect.flatMap(([config, response]) => {
         const now = Date.now();
-        const newRewards = response.currentUser.inventory.gameEventDrops
-          .map((d) => ({ id: d.id, lastAwardedAt: d.lastAwardedAt }))
-          .filter((r) => now - r.lastAwardedAt.getTime() < REWARD_EXPIRED_MS);
+        const rewardsMap = new Map<string, Date>();
+        const eventDrops = response.currentUser.inventory.gameEventDrops;
+        for (const drop of eventDrops) {
+          if (now - drop.lastAwardedAt.getTime() < REWARD_EXPIRED_MS) {
+            rewardsMap.set(drop.id, drop.lastAwardedAt);
+          }
+        }
 
-        const newProgress = processInventoryDrops(response.currentUser.inventory.dropCampaignsInProgress, config, newRewards, now);
+        const newProgress = processInventoryDrops(response.currentUser.inventory.dropCampaignsInProgress, config, rewardsMap, now);
 
         return Effect.all([
-          Ref.set(rewardsRef, newRewards),
+          Ref.set(rewardsRef, rewardsMap),
           Ref.update(progressRef, (current) => {
-            const next = [...current];
-            const dropMap = new Map(next.map((d) => [d.id, d]));
+            const dropMap = new Map(current.map((d) => [d.id, d]));
             for (const drop of newProgress) {
               dropMap.set(drop.id, drop);
             }
@@ -312,11 +315,11 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
 
         if (!dropDetail.timeBasedDrops) return [];
 
-        const currentRewards = yield* Ref.get(rewardsRef);
+        const rewardsMap = yield* Ref.get(rewardsRef);
         const sortedDrops = [...dropDetail.timeBasedDrops].sort((a, b) => a.requiredMinutesWatched - b.requiredMinutesWatched);
 
         const config = yield* configStore.get;
-        const activeDrops = Array.filterMap(sortedDrops, (data) => processDrop(data, campaignId, config, currentRewards, Date.now(), false));
+        const activeDrops = Array.filterMap(sortedDrops, (data) => processDrop(data, campaignId, config, rewardsMap, Date.now(), false));
 
         const result = activeDrops.map((drop, i) => ({
           ...drop,
@@ -335,23 +338,24 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
       });
 
     const getSortedActive: Effect.Effect<ReadonlyArray<Campaign>> = Effect.gen(function* () {
-      const map = yield* Ref.get(campaignsRef);
-      const state = yield* Ref.get(stateRef);
+      const campaignsMap = yield* Ref.get(campaignsRef);
+      const currentState = yield* Ref.get(stateRef);
       const config = yield* configStore.get;
+      const now = Date.now();
 
-      const activeCampaigns = Array.fromIterable(map.values()).filter((c) => {
+      const activeCampaigns = Array.fromIterable(campaignsMap.values()).filter((c) => {
         if (c.isOffline) return false;
-        const status = getDropStatus(c.startAt, c.endAt, Date.now());
+        const status = getDropStatus(c.startAt, c.endAt, now);
         if (status.isExpired) return false;
-        if (state._tag === 'PriorityOnly' && !config.priorityList.has(c.game.displayName)) return false;
+        if (currentState._tag === 'PriorityOnly' && !config.priorityList.has(c.game.displayName)) return false;
         return true;
       });
 
       const sortedByEndAt = [...activeCampaigns].sort((a, b) => a.endAt.getTime() - b.endAt.getTime());
 
-      const dropCampaigns = groupCampaigns(sortedByEndAt);
+      const grouped = groupCampaigns(sortedByEndAt);
 
-      return [...dropCampaigns].sort((a, b) => b.priority - a.priority);
+      return [...grouped].sort((a, b) => b.priority - a.priority);
     });
 
     const getSortedUpcoming: Effect.Effect<ReadonlyArray<Campaign>> = Effect.gen(function* () {
@@ -391,44 +395,44 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
       Effect.gen(function* () {
         if (campaign.allowChannels.length > 0) {
           const response = yield* api.channelStreams(campaign.allowChannels.slice(0, 30));
-          const onlineChannels = Array.filterMap(response.users, (user) => {
-            if (!user.stream) {
-              return Option.none();
-            }
-            return Option.some({
-              id: user.id,
-              login: user.login,
-              gameId: campaign.game.id,
-              isOnline: true,
-            } satisfies Channel);
-          });
+          const onlineChannels = response.users
+            .filter((u) => u.stream !== null)
+            .map(
+              (u) =>
+                ({
+                  id: u.id,
+                  login: u.login,
+                  gameId: campaign.game.id,
+                  isOnline: true,
+                }) satisfies Channel,
+            );
           return yield* processOnlineChannels(api, socket, campaign.id, onlineChannels);
         }
 
         const response = yield* api.gameDirectory(campaign.game.slug || '');
         if (!response.game) return [];
 
-        const onlineChannels = Array.filterMap(response.game.streams.edges, (edge) => {
-          if (!edge.node.broadcaster) {
-            return Option.none();
-          }
-          return Option.some({
-            id: edge.node.broadcaster.id,
-            login: edge.node.broadcaster.login,
-            gameId: campaign.game.id,
-            isOnline: true,
-          } satisfies Channel);
-        });
+        const onlineChannels = response.game.streams.edges
+          .filter((e) => e.node.broadcaster !== null)
+          .map(
+            (e) =>
+              ({
+                id: e.node.broadcaster.id,
+                login: e.node.broadcaster.login,
+                gameId: campaign.game.id,
+                isOnline: true,
+              }) satisfies Channel,
+          );
         return yield* processOnlineChannels(api, socket, campaign.id, onlineChannels);
       });
 
     const addRewards = (rewards: ReadonlyArray<Reward>): Effect.Effect<void> =>
       Ref.update(rewardsRef, (current) => {
-        const rewardMap = new Map(current.map((r) => [r.id, r]));
+        const next = new Map(current);
         for (const reward of rewards) {
-          rewardMap.set(reward.id, reward);
+          next.set(reward.id, reward.lastAwardedAt);
         }
-        return Array.fromIterable(rewardMap.values());
+        return next;
       });
 
     return {

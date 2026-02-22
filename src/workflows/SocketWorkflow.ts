@@ -183,34 +183,38 @@ const processMessage = (
   userId: string,
 ): Effect.Effect<void, never, TwitchApiTag | TwitchSocketTag> =>
   Effect.gen(function* () {
-    const currentChannelOpt = yield* Ref.get(state.currentChannel);
-    const currentDrop = yield* Ref.get(state.currentDrop);
+    const channelOpt = yield* Ref.get(state.currentChannel);
+    if (Option.isNone(channelOpt)) return;
+    const channel = channelOpt.value;
 
-    if (Option.isNone(currentChannelOpt)) return;
+    const isUserTopic = msg.topicId === userId;
+    const isChannelTopic = msg.topicId === channel.id;
 
-    const channel = currentChannelOpt.value;
-
-    if (msg.topicId !== channel.id && msg.topicId !== userId) {
-      if (msg.topicType === WsTopic.ChannelStream || msg.topicType === WsTopic.ChannelMoment || msg.topicType === WsTopic.ChannelUpdate) {
+    if (!isUserTopic && !isChannelTopic) {
+      const type = msg.topicType;
+      if (type === WsTopic.ChannelStream || type === WsTopic.ChannelMoment || type === WsTopic.ChannelUpdate) {
         const socket = yield* TwitchSocketTag;
-        yield* socket.unlisten(msg.topicType, msg.topicId).pipe(Effect.ignore);
+        yield* socket.unlisten(type, msg.topicId).pipe(Effect.ignore);
       }
       return;
     }
 
     yield* api.writeDebugFile(msg, `${msg.topicType}-${msg.payload.type ?? uniqueId()}`);
 
-    const handlers: Record<string, () => Effect.Effect<void, never, TwitchApiTag | TwitchSocketTag>> = {
-      [WsTopic.ChannelStream]: () => handleChannelStream(msg, channel, state),
-      [WsTopic.UserPoint]: () => handleUserPoint(msg.payload, channel, state, api, configStore),
-      [WsTopic.ChannelMoment]: () => handleChannelMoment(msg, channel, api, configStore),
-      [WsTopic.ChannelUpdate]: () => handleChannelUpdate(msg, channel, state),
-      [WsTopic.UserDrop]: () => handleUserDrop(msg.payload, currentDrop, state),
-    };
+    const payload = msg.payload;
+    const type = msg.topicType;
 
-    const handler = handlers[msg.topicType];
-    if (handler) {
-      yield* handler();
+    if (type === WsTopic.UserDrop) {
+      const dropOpt = yield* Ref.get(state.currentDrop);
+      yield* handleUserDrop(payload, dropOpt, state);
+    } else if (type === WsTopic.UserPoint) {
+      yield* handleUserPoint(payload, channel, state, api, configStore);
+    } else if (type === WsTopic.ChannelStream) {
+      yield* handleChannelStream(msg, channel, state);
+    } else if (type === WsTopic.ChannelMoment) {
+      yield* handleChannelMoment(msg, channel, api, configStore);
+    } else if (type === WsTopic.ChannelUpdate) {
+      yield* handleChannelUpdate(msg, channel, state);
     }
   });
 
