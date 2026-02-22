@@ -507,19 +507,6 @@ const mainLoop = (
   Effect.gen(function* () {
     yield* initializeCampaignState(state, campaignStore, configStore);
 
-    const config = yield* configStore.get;
-    yield* Ref.update(campaignStore.campaigns, (map) => {
-      const next = new Map(map);
-      const priorityList = config.priorityList;
-      for (const [id, campaign] of next) {
-        const newPriority = priorityList.has(campaign.game.displayName) ? 1 : 0;
-        if (campaign.priority !== newPriority) {
-          next.set(id, { ...campaign, priority: newPriority });
-        }
-      }
-      return next;
-    });
-
     const activeList = yield* campaignStore.getSortedActive;
     if (activeList.length === 0) {
       yield* handleNoActiveCampaigns(campaignStore);

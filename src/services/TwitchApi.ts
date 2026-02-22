@@ -79,13 +79,12 @@ export class TwitchApiTag extends Context.Tag('@services/TwitchApi')<TwitchApiTa
 const parseUniqueCookies = (setCookie: readonly string[]): Readonly<Record<string, string>> => {
   const result: Record<string, string> = {};
   for (const cookie of setCookie) {
-    if (cookie.startsWith('server_session_id=')) {
-      const end = cookie.indexOf(';', 18);
-      result['client-session-id'] = end === -1 ? cookie.substring(18) : cookie.substring(18, end);
-    } else if (cookie.startsWith('unique_id=')) {
-      const end = cookie.indexOf(';', 10);
-      result['x-device-id'] = end === -1 ? cookie.substring(10) : cookie.substring(10, end);
-    }
+    const [name, rest] = cookie.split('=', 2);
+    if (!rest) continue;
+    const value = rest.split(';', 1)[0];
+
+    if (name === 'server_session_id') result['client-session-id'] = value;
+    else if (name === 'unique_id') result['x-device-id'] = value;
   }
   return result;
 };
@@ -228,13 +227,13 @@ export const TwitchApiLayer = (authToken: string, isDebug = false): Layer.Layer<
         Effect.gen(function* () {
           const userId = waitForUserId ? yield* getUserId : '';
           const requestsArray = Array.isArray(requests) ? requests : [requests];
-          const bodyPayload = requestsArray.map((r) => {
-            const isCampaignDetails = r.operationName === 'DropCampaignDetails';
-            const variables = isCampaignDetails && !r.variables.channelLogin && userId ? { ...r.variables, channelLogin: userId } : r.variables;
-
-            return {
+          const body = JSON.stringify(
+            requestsArray.map((r) => ({
               operationName: r.operationName,
-              variables,
+              variables:
+                r.operationName === 'DropCampaignDetails' && !r.variables.channelLogin && userId
+                  ? { ...r.variables, channelLogin: userId }
+                  : r.variables,
               query: r.query,
               extensions: r.hash
                 ? {
@@ -244,9 +243,8 @@ export const TwitchApiLayer = (authToken: string, isDebug = false): Layer.Layer<
                     },
                   }
                 : undefined,
-            };
-          });
-          const body = JSON.stringify(bodyPayload);
+            })),
+          );
 
           const response = yield* request<ReadonlyArray<GqlResponse<unknown>>>({
             method: 'POST',

@@ -114,19 +114,19 @@ export const TwitchSocketLayer = (authToken: string): Layer.Layer<TwitchSocketTa
           const [topicType, topicId] = data.topic.split('.');
           const messageOpt = yield* parseMessage(data.message);
 
-          return Option.flatMap(messageOpt, (value) =>
-            isObjectLike<{ readonly data: unknown; readonly topic_id: unknown }>(value)
-              ? Option.some({
-                  topicType,
-                  topicId,
-                  payload: {
-                    ...value,
-                    ...(isObjectLike(value.data) ? value.data : {}),
-                    topic_id: typeof value.topic_id === 'string' ? value.topic_id : topicId,
-                  },
-                })
-              : Option.none(),
-          );
+          return Option.flatMap(messageOpt, (value) => {
+            if (!isObjectLike<{ readonly data: unknown; readonly topic_id: unknown }>(value)) return Option.none();
+            const payloadData = isObjectLike(value.data) ? value.data : {};
+            return Option.some({
+              topicType,
+              topicId,
+              payload: {
+                ...value,
+                ...payloadData,
+                topic_id: typeof value.topic_id === 'string' ? value.topic_id : topicId,
+              },
+            });
+          });
         });
 
       const messages: Stream.Stream<SocketMessage, never, never> = Stream.filterMap(client.events, (event) =>
@@ -141,8 +141,8 @@ export const TwitchSocketLayer = (authToken: string): Layer.Layer<TwitchSocketTa
             if (Option.isNone(payloadOpt)) return Option.none();
 
             const payload = payloadOpt.value;
-            if (isObjectLike<{ topicType: unknown; topicId: unknown }>(payload) && 'topicType' in payload && 'topicId' in payload) {
-              yield* Effect.logDebug(chalk`TwitchSocket: Emitted ${String(payload.topicType)}.${String(payload.topicId)}`, payload);
+            if (isObjectLike<{ topicType: string; topicId: string }>(payload)) {
+              yield* Effect.logDebug(chalk`TwitchSocket: Emitted ${payload.topicType}.${payload.topicId}`, payload);
             }
 
             return yield* Schema.decodeUnknown(SocketMessageSchema)(payload).pipe(

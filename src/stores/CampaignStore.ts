@@ -259,12 +259,11 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
     const updateProgress: Effect.Effect<void, TwitchApiError> = Effect.all([configStore.get, api.inventory]).pipe(
       Effect.flatMap(([config, response]) => {
         const now = Date.now();
-        const rewardsMap = new Map<string, Date>();
-        for (const drop of response.currentUser.inventory.gameEventDrops) {
-          if (now - drop.lastAwardedAt.getTime() < REWARD_EXPIRED_MS) {
-            rewardsMap.set(drop.id, drop.lastAwardedAt);
-          }
-        }
+        const rewardsMap = new Map(
+          response.currentUser.inventory.gameEventDrops
+            .filter((drop) => now - drop.lastAwardedAt.getTime() < REWARD_EXPIRED_MS)
+            .map((drop) => [drop.id, drop.lastAwardedAt]),
+        );
 
         const newProgress = processInventoryDrops(response.currentUser.inventory.dropCampaignsInProgress, config, rewardsMap, now);
 
@@ -272,9 +271,7 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
           Ref.set(rewardsRef, rewardsMap),
           Ref.update(progressRef, (current) => {
             const dropMap = new Map(current.map((d) => [d.id, d]));
-            for (const drop of newProgress) {
-              dropMap.set(drop.id, drop);
-            }
+            for (const drop of newProgress) dropMap.set(drop.id, drop);
             return Array.fromIterable(dropMap.values());
           }),
         ]);
@@ -335,16 +332,15 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
       const config = yield* configStore.get;
       const now = Date.now();
 
-      return [
-        ...groupCampaigns(
-          [...(yield* Ref.get(campaignsRef)).values()]
-            .filter((c) => {
-              if (c.isOffline || getDropStatus(c.startAt, c.endAt, now).isExpired) return false;
-              return currentState._tag !== 'PriorityOnly' || config.priorityList.has(c.game.displayName);
-            })
-            .sort((a, b) => a.endAt.getTime() - b.endAt.getTime()),
-        ),
-      ].sort((a, b) => b.priority - a.priority);
+      const campaigns = yield* Ref.get(campaignsRef);
+      const filtered = groupCampaigns(
+        Array.fromIterable(campaigns.values()).filter((c) => {
+          if (c.isOffline || getDropStatus(c.startAt, c.endAt, now).isExpired) return false;
+          return currentState._tag !== 'PriorityOnly' || config.priorityList.has(c.game.displayName);
+        }),
+      );
+
+      return [...filtered].sort((a, b) => b.priority - a.priority || a.endAt.getTime() - b.endAt.getTime());
     });
 
     const getSortedUpcoming: Effect.Effect<ReadonlyArray<Campaign>> = Effect.gen(function* () {

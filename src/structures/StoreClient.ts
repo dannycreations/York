@@ -123,9 +123,9 @@ export const makeStoreClient = <A extends object, I, R>(
 
     return {
       get: Ref.get(dataRef),
-      set: (partial: Partial<A>) => Ref.update(dataRef, (current) => ({ ...current, ...partial })).pipe(Effect.zipRight(Ref.set(dirtyRef, true))),
-      update: (f: (data: A) => A) => Ref.update(dataRef, f).pipe(Effect.zipRight(Ref.set(dirtyRef, true))),
-      setDelay: (delayMs: number) => Ref.set(delayRef, Math.max(1000, delayMs)),
+      set: (partial) => Ref.update(dataRef, (current) => ({ ...current, ...partial })).pipe(Effect.zipRight(Ref.set(dirtyRef, true))),
+      update: (f) => Ref.update(dataRef, f).pipe(Effect.zipRight(Ref.set(dirtyRef, true))),
+      setDelay: (delayMs) => Ref.set(delayRef, Math.max(1000, delayMs)),
     } satisfies StoreClient<A>;
   });
 
