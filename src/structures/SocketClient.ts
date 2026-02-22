@@ -65,27 +65,28 @@ export const makeSocketClient = (options: SocketClientOptions): Effect.Effect<So
 
     const processSendQueue = Queue.take(sendQueue).pipe(
       Effect.flatMap(({ data, deferred }) => {
-        const waitForReady = Effect.gen(function* () {
-          const openedDeferred = yield* Ref.get(openedDeferredRef);
-          yield* Deferred.await(openedDeferred);
-
-          const wsOpt = yield* Ref.get(wsRef);
-          if (Option.isNone(wsOpt)) {
-            yield* Effect.sleep('1 seconds');
-            return yield* Effect.fail('Not Ready');
-          }
-
-          const ws = wsOpt.value;
-          if (ws.readyState !== WsClient.OPEN || ws.bufferedAmount > 1_048_576) {
-            yield* Effect.sleep('100 millis');
-            return yield* Effect.fail('Not Ready');
-          }
-
-          return ws;
-        }).pipe(Effect.retry({ while: (e): e is string => e === 'Not Ready' }));
-
         const sendTask = Effect.gen(function* () {
-          const ws = yield* waitForReady.pipe(Effect.mapError((e) => new SocketClientError({ message: String(e) })));
+          const ws = yield* Effect.gen(function* () {
+            const openedDeferred = yield* Ref.get(openedDeferredRef);
+            yield* Deferred.await(openedDeferred);
+
+            const wsOpt = yield* Ref.get(wsRef);
+            if (Option.isNone(wsOpt)) return yield* Effect.fail('Not Ready');
+
+            const ws = wsOpt.value;
+            if (ws.readyState !== WsClient.OPEN || ws.bufferedAmount > 1_048_576) {
+              return yield* Effect.fail('Not Ready');
+            }
+
+            return ws;
+          }).pipe(
+            Effect.retry({
+              while: (e) => e === 'Not Ready',
+              schedule: Schedule.fixed('100 millis'),
+            }),
+            Effect.mapError((e) => new SocketClientError({ message: String(e) })),
+          );
+
           return yield* Effect.async<void, SocketClientError>((resume) => {
             ws.send(data, (err) => {
               if (err) {
@@ -226,7 +227,7 @@ export const makeSocketClient = (options: SocketClientOptions): Effect.Effect<So
             }
           }),
         ),
-        Stream.runForEach((event) => (event._tag === 'Pong' ? Effect.void : PubSub.publish(eventsPubSub, event))),
+        Stream.runForEach((event) => (event._tag === 'Pong' ? Effect.void : eventsPubSub.publish(event))),
         Effect.forkScoped,
       );
 

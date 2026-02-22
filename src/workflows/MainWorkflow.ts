@@ -276,17 +276,12 @@ const performWatchLoop = (
     const drops = yield* campaignStore.getDropsForCampaign(campaign.id);
     yield* Effect.logInfo(chalk`${campaign.name} | {yellow Found ${drops.length} drops / ${channels.length} channels}`);
 
-    yield* Effect.forEach(
-      channels,
-      (channel) =>
-        Effect.gen(function* () {
-          const dropOpt = yield* Ref.get(state.currentDrop);
-          if (Option.isSome(dropOpt) && isMinutesWatchedMet(dropOpt.value)) return;
+    for (const channel of channels) {
+      const dropOpt = yield* Ref.get(state.currentDrop);
+      if (Option.isSome(dropOpt) && isMinutesWatchedMet(dropOpt.value)) break;
 
-          yield* processChannelWatch(state, api, socket, campaignStore, watchService, configStore, campaign, channel);
-        }),
-      { discard: true, concurrency: 1 },
-    );
+      yield* processChannelWatch(state, api, socket, campaignStore, watchService, configStore, campaign, channel);
+    }
     yield* Ref.set(state.currentChannel, Option.none());
   });
 
@@ -512,8 +507,12 @@ const mainLoop = (
     const config = yield* configStore.get;
     yield* Ref.update(campaignStore.campaigns, (map) => {
       const next = new Map(map);
+      const priorityList = config.priorityList;
       for (const [id, campaign] of next) {
-        next.set(id, { ...campaign, priority: config.priorityList.has(campaign.game.displayName) ? 1 : 0 });
+        const newPriority = priorityList.has(campaign.game.displayName) ? 1 : 0;
+        if (campaign.priority !== newPriority) {
+          next.set(id, { ...campaign, priority: newPriority });
+        }
       }
       return next;
     });

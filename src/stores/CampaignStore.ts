@@ -1,5 +1,5 @@
 import { truncate } from '@vegapunk/utilities/common';
-import { Array, Context, Data, Effect, Layer, Option, Order, Ref, Schema } from 'effect';
+import { Array, Context, Data, Effect, Layer, Option, Ref, Schema } from 'effect';
 
 import { ConfigStoreTag } from '../core/Config';
 import { WsTopic } from '../core/Constants';
@@ -56,18 +56,23 @@ const processDrop = (
   now: number,
   allowUpcomingIfHasAward: boolean,
 ): Option.Option<Drop> => {
-  const benefits = drop.benefitEdges.map((e) => e.benefit.id);
-  const { startAt, endAt, requiredMinutesWatched } = drop;
+  const { startAt, endAt, requiredMinutesWatched, requiredSubs } = drop;
+  const subsCount = requiredSubs ?? 0;
+  const isClaimed = subsCount > 0 || (drop.self?.isClaimed ?? false);
 
-  const isClaimed = (drop.requiredSubs ?? 0) > 0 || (drop.self?.isClaimed ?? false);
-  const isWatched = drop.self ? isMinutesWatchedMet({ ...drop.self, requiredMinutesWatched }) : false;
+  if (isClaimed) return Option.none();
+
+  const benefits = drop.benefitEdges.map((e) => e.benefit.id);
   const alreadyClaimed = benefits.some((id) => currentRewards.some((r) => r.id === id && r.lastAwardedAt >= startAt));
 
-  if ((isWatched && !config.isClaimDrops) || alreadyClaimed || isClaimed) {
-    return Option.none();
-  }
+  if (alreadyClaimed) return Option.none();
 
-  const minutesLeft = requiredMinutesWatched - (drop.self?.currentMinutesWatched ?? 0);
+  const currentMinutes = drop.self?.currentMinutesWatched ?? 0;
+  const isWatched = drop.self ? isMinutesWatchedMet({ ...drop.self, requiredMinutesWatched }) : false;
+
+  if (isWatched && !config.isClaimDrops) return Option.none();
+
+  const minutesLeft = requiredMinutesWatched - currentMinutes;
   const status = getDropStatus(startAt, endAt, now, minutesLeft);
   const hasAward = !!drop.self?.dropInstanceID;
 
@@ -77,16 +82,16 @@ const processDrop = (
 
   return Option.some({
     id: drop.id,
-    name: truncate(drop.benefitEdges[0]?.benefit.name?.trim() ?? drop.name.trim()),
+    name: truncate((drop.benefitEdges[0]?.benefit.name || drop.name).trim()),
     benefits,
     campaignId,
     startAt,
     endAt,
     requiredMinutesWatched,
-    requiredSubs: (drop.requiredSubs ?? 0) > 0 ? drop.requiredSubs! : undefined,
+    requiredSubs: subsCount > 0 ? subsCount : undefined,
     isClaimed,
     hasPreconditionsMet: drop.self?.hasPreconditionsMet ?? true,
-    currentMinutesWatched: drop.self?.currentMinutesWatched ?? 0,
+    currentMinutesWatched: currentMinutes,
     dropInstanceID: drop.self?.dropInstanceID || undefined,
   } satisfies Drop);
 };
@@ -203,10 +208,7 @@ const processInventoryDrops = (
   now: number,
 ): ReadonlyArray<Drop> =>
   Array.flatMap(campaigns, (campaign) => {
-    const sortedDrops = Array.sort(
-      campaign.timeBasedDrops,
-      Order.mapInput(Order.number, (d: { readonly requiredMinutesWatched: number }) => d.requiredMinutesWatched),
-    );
+    const sortedDrops = [...campaign.timeBasedDrops].sort((a, b) => a.requiredMinutesWatched - b.requiredMinutesWatched);
     const filtered = Array.filterMap(sortedDrops, (data) => processDrop(data, campaign.id, config, currentRewards, now, true));
 
     return filtered.map((drop, i) => ({
@@ -215,22 +217,16 @@ const processInventoryDrops = (
     }));
   });
 
-const groupCampaigns = (campaigns: ReadonlyArray<Campaign>): ReadonlyArray<Campaign> =>
-  Array.reduce(campaigns, [] as Campaign[], (acc, campaign) => {
-    const existingIndex = acc.findIndex((c) => c.game.id === campaign.game.id);
-    if (existingIndex === -1) {
-      return [...acc, campaign];
+const groupCampaigns = (campaigns: ReadonlyArray<Campaign>): ReadonlyArray<Campaign> => {
+  const map = new Map<string, Campaign>();
+  for (const campaign of campaigns) {
+    const existing = map.get(campaign.game.id);
+    if (!existing || campaign.startAt < existing.startAt) {
+      map.set(campaign.game.id, campaign);
     }
-
-    const existing = acc[existingIndex];
-    if (campaign.startAt < existing.startAt) {
-      const next = [...acc];
-      next[existingIndex] = campaign;
-      return next;
-    }
-
-    return acc;
-  });
+  }
+  return Array.fromIterable(map.values());
+};
 
 export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiTag | ConfigStoreTag | TwitchSocketTag> = Layer.effect(
   CampaignStoreTag,
@@ -277,15 +273,11 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
           Ref.set(rewardsRef, newRewards),
           Ref.update(progressRef, (current) => {
             const next = [...current];
+            const dropMap = new Map(next.map((d) => [d.id, d]));
             for (const drop of newProgress) {
-              const index = next.findIndex((d) => d.id === drop.id);
-              if (index !== -1) {
-                next[index] = drop;
-              } else {
-                next.push(drop);
-              }
+              dropMap.set(drop.id, drop);
             }
-            return next;
+            return Array.fromIterable(dropMap.values());
           }),
         ]);
       }),
@@ -321,10 +313,7 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
         if (!dropDetail.timeBasedDrops) return [];
 
         const currentRewards = yield* Ref.get(rewardsRef);
-        const sortedDrops = Array.sort(
-          dropDetail.timeBasedDrops,
-          Order.mapInput(Order.number, (d: { readonly requiredMinutesWatched: number }) => d.requiredMinutesWatched),
-        );
+        const sortedDrops = [...dropDetail.timeBasedDrops].sort((a, b) => a.requiredMinutesWatched - b.requiredMinutesWatched);
 
         const config = yield* configStore.get;
         const activeDrops = Array.filterMap(sortedDrops, (data) => processDrop(data, campaignId, config, currentRewards, Date.now(), false));
@@ -335,16 +324,11 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
         }));
 
         yield* Ref.update(progressRef, (current) => {
-          const next = [...current];
+          const dropMap = new Map(current.map((d) => [d.id, d]));
           for (const drop of result) {
-            const index = next.findIndex((d) => d.id === drop.id);
-            if (index !== -1) {
-              next[index] = drop;
-            } else {
-              next.push(drop);
-            }
+            dropMap.set(drop.id, drop);
           }
-          return next;
+          return Array.fromIterable(dropMap.values());
         });
 
         return result;
@@ -363,14 +347,11 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
         return true;
       });
 
-      const sortedByEndAt = Array.sort(
-        activeCampaigns,
-        Order.mapInput(Order.number, (c: Campaign) => c.endAt.getTime()),
-      );
+      const sortedByEndAt = [...activeCampaigns].sort((a, b) => a.endAt.getTime() - b.endAt.getTime());
 
       const dropCampaigns = groupCampaigns(sortedByEndAt);
 
-      return Array.sort(dropCampaigns, Order.reverse(Order.mapInput(Order.number, (c: Campaign) => c.priority)));
+      return [...dropCampaigns].sort((a, b) => b.priority - a.priority);
     });
 
     const getSortedUpcoming: Effect.Effect<ReadonlyArray<Campaign>> = Effect.gen(function* () {
@@ -442,17 +423,13 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
       });
 
     const addRewards = (rewards: ReadonlyArray<Reward>): Effect.Effect<void> =>
-      Ref.update(rewardsRef, (current) =>
-        Array.reduce(rewards, [...current], (acc, reward) => {
-          const index = acc.findIndex((r) => r.id === reward.id);
-          if (index !== -1) {
-            acc[index] = reward;
-          } else {
-            acc.push(reward);
-          }
-          return acc;
-        }),
-      );
+      Ref.update(rewardsRef, (current) => {
+        const rewardMap = new Map(current.map((r) => [r.id, r]));
+        for (const reward of rewards) {
+          rewardMap.set(reward.id, reward);
+        }
+        return Array.fromIterable(rewardMap.values());
+      });
 
     return {
       campaigns: campaignsRef,

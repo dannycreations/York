@@ -76,22 +76,21 @@ export interface TwitchApi {
 
 export class TwitchApiTag extends Context.Tag('@services/TwitchApi')<TwitchApiTag, TwitchApi>() {}
 
-const parseUniqueCookies = (setCookie: readonly string[]): Readonly<Record<string, string>> =>
-  setCookie.reduce<Record<string, string>>((acc, cookie) => {
+const parseUniqueCookies = (setCookie: readonly string[]): Readonly<Record<string, string>> => {
+  const result: Record<string, string> = {};
+  for (const cookie of setCookie) {
     const match = cookie.match(/(?<=\=)\w+(?=\;)/);
-    if (!match || !match[0]) return acc;
+    if (!match || !match[0]) continue;
 
     const value = match[0];
     if (cookie.startsWith('server_session_id')) {
-      return { ...acc, 'client-session-id': value };
+      result['client-session-id'] = value;
+    } else if (cookie.startsWith('unique_id') && !cookie.startsWith('unique_id_durable')) {
+      result['x-device-id'] = value;
     }
-
-    if (cookie.startsWith('unique_id') && !cookie.startsWith('unique_id_durable')) {
-      return { ...acc, 'x-device-id': value };
-    }
-
-    return acc;
-  }, {});
+  }
+  return result;
+};
 
 const handleGraphqlErrors = (errors: ReadonlyArray<{ readonly message: string }>): Effect.Effect<never, TwitchApiError> => {
   const retryableErrors = ['service unavailable', 'service timeout', 'context deadline exceeded'];
@@ -230,13 +229,12 @@ export const TwitchApiLayer = (authToken: string, isDebug = false): Layer.Layer<
       ): Effect.Effect<ReadonlyArray<A>, TwitchApiError, R> =>
         Effect.gen(function* () {
           const userId = waitForUserId ? yield* getUserId : '';
-          const body = JSON.stringify(
-            (Array.isArray(requests) ? requests : [requests]).map((r) => ({
+          const requestsArray = Array.isArray(requests) ? requests : [requests];
+          const bodyPayload = requestsArray.map((r) => {
+            const isCampaignDetails = r.operationName === 'DropCampaignDetails';
+            return {
               operationName: r.operationName,
-              variables:
-                r.operationName === 'DropCampaignDetails' && !r.variables.channelLogin && userId
-                  ? { ...r.variables, channelLogin: userId }
-                  : r.variables,
+              variables: isCampaignDetails && !r.variables.channelLogin && userId ? { ...r.variables, channelLogin: userId } : r.variables,
               query: r.query,
               extensions: r.hash
                 ? {
@@ -246,8 +244,9 @@ export const TwitchApiLayer = (authToken: string, isDebug = false): Layer.Layer<
                     },
                   }
                 : undefined,
-            })),
-          );
+            };
+          });
+          const body = JSON.stringify(bodyPayload);
 
           const response = yield* request<ReadonlyArray<GqlResponse<unknown>>>({
             method: 'POST',

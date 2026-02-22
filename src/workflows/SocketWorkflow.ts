@@ -200,27 +200,17 @@ const processMessage = (
 
     yield* api.writeDebugFile(msg, `${msg.topicType}-${msg.payload.type ?? uniqueId()}`);
 
-    switch (msg.topicType) {
-      case WsTopic.ChannelStream: {
-        yield* handleChannelStream(msg, channel, state);
-        break;
-      }
-      case WsTopic.UserPoint: {
-        yield* handleUserPoint(msg.payload, channel, state, api, configStore);
-        break;
-      }
-      case WsTopic.ChannelMoment: {
-        yield* handleChannelMoment(msg, channel, api, configStore);
-        break;
-      }
-      case WsTopic.ChannelUpdate: {
-        yield* handleChannelUpdate(msg, channel, state);
-        break;
-      }
-      case WsTopic.UserDrop: {
-        yield* handleUserDrop(msg.payload, currentDrop, state);
-        break;
-      }
+    const handlers: Record<string, () => Effect.Effect<void, never, TwitchApiTag | TwitchSocketTag>> = {
+      [WsTopic.ChannelStream]: () => handleChannelStream(msg, channel, state),
+      [WsTopic.UserPoint]: () => handleUserPoint(msg.payload, channel, state, api, configStore),
+      [WsTopic.ChannelMoment]: () => handleChannelMoment(msg, channel, api, configStore),
+      [WsTopic.ChannelUpdate]: () => handleChannelUpdate(msg, channel, state),
+      [WsTopic.UserDrop]: () => handleUserDrop(msg.payload, currentDrop, state),
+    };
+
+    const handler = handlers[msg.topicType];
+    if (handler) {
+      yield* handler();
     }
   });
 

@@ -130,11 +130,15 @@ export const WatchServiceLayer: Layer.Layer<WatchServiceTag, never, HttpClientTa
           });
         }),
         Effect.flatMap((hls) => {
-          const found = hls.body
-            .split('\n')
-            .filter(Boolean)
-            .reverse()
-            .find((url) => url.startsWith('http'));
+          const hlsLines = hls.body.split('\n');
+          let found: string | undefined;
+          for (let i = hlsLines.length - 1; i >= 0; i--) {
+            const line = hlsLines[i].trim();
+            if (line.startsWith('http')) {
+              found = line;
+              break;
+            }
+          }
           return found ? Effect.succeed(found) : Effect.fail(new WatchError({ message: 'HLS URL not found' }));
         }),
         Effect.mapError((e) => (e instanceof WatchError ? e : new WatchError({ message: 'Failed to get HLS URL', cause: e }))),
@@ -143,8 +147,15 @@ export const WatchServiceLayer: Layer.Layer<WatchServiceTag, never, HttpClientTa
     const checkStream = (hlsUrl: string): Effect.Effect<boolean, WatchError> =>
       Effect.gen(function* () {
         const hls = yield* http.request({ url: hlsUrl });
-        const hlsFilter = hls.body.split('\n').filter(Boolean).reverse();
-        const chunkUrl = hlsFilter.find((url) => url.startsWith('http'));
+        const hlsLines = hls.body.split('\n');
+        let chunkUrl: string | undefined;
+        for (let i = hlsLines.length - 1; i >= 0; i--) {
+          const line = hlsLines[i].trim();
+          if (line.startsWith('http')) {
+            chunkUrl = line;
+            break;
+          }
+        }
         if (!chunkUrl) {
           return false;
         }
