@@ -403,7 +403,7 @@ const handleNoActiveCampaigns = (campaignStore: CampaignStore): Effect.Effect<vo
   Effect.gen(function* () {
     const currentState = yield* Ref.get(campaignStore.state);
     if (currentState._tag === 'PriorityOnly') {
-      yield* Ref.set(campaignStore.state, CampaignStoreState.All());
+      yield* Ref.set(campaignStore.state, CampaignStoreState.Initial());
       return;
     }
     yield* Ref.set(campaignStore.state, CampaignStoreState.Initial());
@@ -476,10 +476,6 @@ const processCampaignLogic = (
     }
 
     yield* performWatchLoop(state, api, socket, campaignStore, watchService, configStore);
-    const currentState = yield* Ref.get(campaignStore.state);
-    if (currentState._tag === 'All') {
-      yield* Ref.set(campaignStore.state, CampaignStoreState.Initial());
-    }
   });
 
 const processActiveCampaigns = (
