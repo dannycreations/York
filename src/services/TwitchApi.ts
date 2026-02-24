@@ -115,9 +115,9 @@ export const TwitchApiLayer = (authToken: string, isDebug = false): Layer.Layer<
     Effect.gen(function* () {
       const http = yield* HttpClientTag;
       const userIdDeferred = yield* Deferred.make<string>();
-      const userAgent = new UserAgent({ deviceCategory: 'mobile' });
+      const userAgent = new UserAgent({ deviceCategory: 'mobile' }).toString();
       const headersRef = yield* Ref.make<Record<string, string>>({
-        'user-agent': userAgent.toString(),
+        'user-agent': userAgent,
         authorization: `OAuth ${authToken}`,
         'client-id': 'kd1unb4b3q4t58fwlpcbzcbnm76a8fp',
       });
@@ -152,6 +152,7 @@ export const TwitchApiLayer = (authToken: string, isDebug = false): Layer.Layer<
           const response = yield* http.request<T>({
             ...payload,
             headers: { ...commonHeaders, ...payload.headers },
+            retry: -1,
           });
 
           if (response.statusCode === 401) {
@@ -181,41 +182,44 @@ export const TwitchApiLayer = (authToken: string, isDebug = false): Layer.Layer<
           Effect.mapError((e) => (e instanceof HttpClientError ? new TwitchApiError(e) : new TwitchApiError({ message: String(e), cause: e }))),
         );
 
-      const unique = request<string>({
-        url: Twitch.WebUrl,
-        headers: { accept: 'text/html' },
-      }).pipe(
-        Effect.catchAll((e) => Effect.dieMessage(chalk`{red Could not fetch your unique (client-version/cookies): ${e.message}}`)),
-        Effect.flatMap((response) =>
-          Ref.update(headersRef, (h) => {
-            const next = { ...h };
-            const setCookie = response.headers['set-cookie'];
-            if (setCookie && Array.isArray(setCookie)) {
-              Object.assign(next, parseUniqueCookies(setCookie));
-            }
+      const unique = Effect.gen(function* () {
+        const response = yield* request<string>({
+          url: Twitch.WebUrl,
+          headers: { accept: 'text/html' },
+        }).pipe(Effect.catchAll((e) => Effect.dieMessage(chalk`{red Could not fetch your unique (client-version/cookies): ${e.message}}`)));
 
-            const match = /twilightBuildID="([-a-z0-9]+)"/.exec(response.body);
-            if (match && match[1]) {
-              next['client-version'] = match[1];
-            }
-            return next;
-          }),
-        ),
-      );
+        yield* Ref.update(headersRef, (h) => {
+          const next = { ...h };
+          const setCookie = response.headers['set-cookie'];
+          if (setCookie && Array.isArray(setCookie)) {
+            Object.assign(next, parseUniqueCookies(setCookie));
+          }
 
-      const validate = request<{ user_id: string }>({
-        url: 'https://id.twitch.tv/oauth2/validate',
-        responseType: 'json',
-      }).pipe(
-        Effect.catchAll((e) =>
-          Effect.logError(chalk`{red Could not validate your auth token: ${e.message}}`).pipe(Effect.flatMap(() => Effect.die(e))),
-        ),
-        Effect.flatMap((response) =>
-          response.statusCode === 401
-            ? Effect.die(new TwitchApiError({ message: 'Unauthorized: Invalid OAuth token detected during validation' }))
-            : Deferred.succeed(userIdDeferred, response.body.user_id).pipe(Effect.as(response.body.user_id)),
-        ),
-      );
+          const match = /twilightBuildID="([-a-z0-9]+)"/.exec(response.body);
+          if (match && match[1]) {
+            next['client-version'] = match[1];
+          }
+          return next;
+        });
+      });
+
+      const validate = Effect.gen(function* () {
+        const response = yield* request<{ user_id: string }>({
+          url: 'https://id.twitch.tv/oauth2/validate',
+          responseType: 'json',
+        }).pipe(
+          Effect.catchAll((e) =>
+            Effect.logError(chalk`{red Could not validate your auth token: ${e.message}}`).pipe(Effect.flatMap(() => Effect.die(e))),
+          ),
+        );
+
+        if (response.statusCode === 401) {
+          return yield* Effect.die(new TwitchApiError({ message: 'Unauthorized: Invalid OAuth token detected during validation' }));
+        }
+
+        yield* Deferred.succeed(userIdDeferred, response.body.user_id);
+        return response.body.user_id;
+      });
 
       const init = Effect.all([unique, validate], { concurrency: 'unbounded' });
 
@@ -288,15 +292,20 @@ export const TwitchApiLayer = (authToken: string, isDebug = false): Layer.Layer<
         mapFirst(graphql(GqlQueries.channelLive(channelLogin), ChannelLiveSchema));
 
       const helixStreams = (userId: string): Effect.Effect<Schema.Schema.Type<typeof HelixStreamsSchema>, TwitchApiError> =>
-        request<Schema.Schema.Encoded<typeof HelixStreamsSchema>>({
-          url: 'https://api.twitch.tv/helix/streams',
-          headers: { 'client-id': 'uaw3vx1k0ttq74u9b2zfvt768eebh1' },
-          searchParams: { user_id: userId },
-          responseType: 'json',
-        }).pipe(
-          Effect.flatMap((res) => Schema.decodeUnknown(HelixStreamsSchema)(res.body)),
-          Effect.mapError((e) => (e instanceof TwitchApiError ? e : new TwitchApiError({ message: `Helix validation failed: ${e}`, cause: e }))),
-        );
+        Effect.gen(function* () {
+          const res = yield* request<Schema.Schema.Encoded<typeof HelixStreamsSchema>>({
+            url: 'https://api.twitch.tv/helix/streams',
+            headers: { 'client-id': 'uaw3vx1k0ttq74u9b2zfvt768eebh1' },
+            searchParams: { user_id: userId },
+            responseType: 'json',
+          });
+
+          const decoded = yield* Schema.decodeUnknown(HelixStreamsSchema)(res.body).pipe(
+            Effect.mapError((e) => new TwitchApiError({ message: `Helix validation failed: ${e}`, cause: e })),
+          );
+
+          return decoded;
+        });
 
       const channelStreams = (logins: readonly string[]): Effect.Effect<Schema.Schema.Type<typeof ChannelStreamsSchema>, TwitchApiError> =>
         mapFirst(graphql(GqlQueries.channelStreams(logins), ChannelStreamsSchema));

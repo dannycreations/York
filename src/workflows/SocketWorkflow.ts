@@ -9,7 +9,6 @@ import { TwitchSocketTag } from '../services/TwitchSocket';
 import type { ClientConfig } from '../core/Config';
 import type { Channel, Drop, SocketMessage } from '../core/Schemas';
 import type { TwitchApi } from '../services/TwitchApi';
-import type { TwitchSocket } from '../services/TwitchSocket';
 import type { StoreClient } from '../structures/StoreClient';
 import type { MainState } from './MainWorkflow';
 
@@ -223,11 +222,11 @@ export const SocketWorkflow = (
   configStore: StoreClient<ClientConfig>,
 ): Effect.Effect<void, never, TwitchApiTag | TwitchSocketTag | Scope.Scope> =>
   Effect.gen(function* () {
-    const api: TwitchApi = yield* TwitchApiTag;
-    const socket: TwitchSocket = yield* TwitchSocketTag;
+    const api = yield* TwitchApiTag;
+    const socket = yield* TwitchSocketTag;
     const userId = yield* api.userId.pipe(Effect.orDie);
 
-    yield* socket.messages.pipe(
+    const messageStream = socket.messages.pipe(
       Stream.filterEffect(() =>
         Effect.gen(function* () {
           const currentCampaign = yield* Ref.get(state.currentCampaign);
@@ -236,6 +235,7 @@ export const SocketWorkflow = (
         }),
       ),
       Stream.runForEach((msg) => processMessage(msg, state, api, configStore, userId)),
-      Effect.forkScoped,
     );
+
+    yield* Effect.forkScoped(messageStream);
   });

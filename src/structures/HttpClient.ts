@@ -1,5 +1,4 @@
 import { lookup } from 'node:dns/promises';
-import { defaultsDeep } from '@vegapunk/utilities/common';
 import { isErrorLike } from '@vegapunk/utilities/result';
 import { Context, Data, Effect, Layer, Schedule } from 'effect';
 import got from 'got';
@@ -68,77 +67,81 @@ export const waitForConnection = (total?: number): Effect.Effect<void, never, Ht
 
 const makeHttpClient = Effect.gen(function* () {
   const gotInstance: Got = got.bind(got);
-  const userAgent = new UserAgent({ deviceCategory: 'desktop' });
+  const userAgent = new UserAgent({ deviceCategory: 'desktop' }).toString();
 
-  const requestFn = <T = string>(options: string | DefaultOptions): Effect.Effect<Response<T>, HttpClientError> => {
-    const isString = typeof options === 'string';
-    const payload: DefaultOptions = defaultsDeep({}, isString ? { url: options } : options, {
-      headers: { 'user-agent': userAgent.toString() },
-      http2: true,
-    });
+  const requestFn = <T = string>(options: string | DefaultOptions): Effect.Effect<Response<T>, HttpClientError> =>
+    Effect.gen(function* () {
+      const isString = typeof options === 'string';
+      const payload: DefaultOptions = isString ? { url: options } : options;
 
-    const retryCount = isString ? 3 : (options.retry ?? 3);
-    const { initial = 10_000, transmission = 30_000, total = 60_000 } = payload.timeout || {};
+      const headers = { 'user-agent': userAgent, ...payload.headers };
+      const retryCount = isString ? 3 : (payload.retry ?? 3);
+      const { initial = 10_000, transmission = 30_000, total = 60_000 } = payload.timeout || {};
 
-    return Effect.async<Response<T>, HttpClientError>((resume) => {
-      const promise = gotInstance({
-        ...payload,
-        retry: 0,
-        timeout: {
-          lookup: initial,
-          connect: initial,
-          secureConnect: initial,
-          socket: transmission,
-          response: transmission,
-          send: transmission,
-          request: total,
-        },
-        resolveBodyOnly: false,
-      }) as CancelableRequest<Response<T>>;
+      const response = yield* Effect.async<Response<T>, HttpClientError>((resume) => {
+        const promise = gotInstance({
+          ...payload,
+          headers,
+          http2: true,
+          retry: 0,
+          timeout: {
+            lookup: initial,
+            connect: initial,
+            secureConnect: initial,
+            socket: transmission,
+            response: transmission,
+            send: transmission,
+            request: total,
+          },
+          resolveBodyOnly: false,
+        }) as CancelableRequest<Response<T>>;
 
-      promise
-        .then((response) => resume(Effect.succeed(response)))
-        .catch((cause) =>
-          resume(
-            Effect.fail(
-              new HttpClientError({
-                message: cause.message || 'Request failed',
-                code: cause.code,
-                status: cause.response?.statusCode,
-                cause,
-              }),
+        promise
+          .then((response) => resume(Effect.succeed(response)))
+          .catch((cause) =>
+            resume(
+              Effect.fail(
+                new HttpClientError({
+                  message: cause.message || 'Request failed',
+                  code: cause.code,
+                  status: cause.response?.statusCode,
+                  cause,
+                }),
+              ),
             ),
-          ),
-        );
+          );
 
-      return Effect.sync(() => {
-        promise.cancel();
-      });
-    }).pipe(
-      Effect.retry({
-        while: isNetworkError,
-        schedule: retryCount < 0 ? Schedule.forever : Schedule.recurs(retryCount),
-      }),
-    );
-  };
+        return Effect.sync(() => {
+          promise.cancel();
+        });
+      }).pipe(
+        Effect.retry({
+          while: isNetworkError,
+          schedule: retryCount < 0 ? Schedule.forever : Schedule.recurs(retryCount),
+        }),
+      );
 
-  const waitForConnectionFn = (total?: number): Effect.Effect<void> => {
-    const retryMs = total ?? 10_000;
-
-    const checkGoogle = Effect.promise(() => lookup('google.com'));
-
-    const checkApple = requestFn({
-      url: 'https://captive.apple.com/hotspot-detect.html',
-      headers: { 'user-agent': 'CaptiveNetworkSupport/1.0 wispr' },
-      timeout: { total: retryMs },
+      return response;
     });
 
-    return Effect.firstSuccessOf([checkGoogle, checkApple]).pipe(
-      Effect.sandbox,
-      Effect.retry(Schedule.spaced(`${retryMs} millis`)),
-      Effect.catchAll(() => Effect.void),
-    );
-  };
+  const waitForConnectionFn = (total?: number): Effect.Effect<void> =>
+    Effect.gen(function* () {
+      const retryMs = total ?? 10_000;
+
+      const checkGoogle = Effect.promise(() => lookup('google.com'));
+
+      const checkApple = requestFn({
+        url: 'https://captive.apple.com/hotspot-detect.html',
+        headers: { 'user-agent': 'CaptiveNetworkSupport/1.0 wispr' },
+        timeout: { total: retryMs },
+      });
+
+      yield* Effect.firstSuccessOf([checkGoogle, checkApple]).pipe(
+        Effect.sandbox,
+        Effect.retry(Schedule.spaced(`${retryMs} millis`)),
+        Effect.catchAll(() => Effect.void),
+      );
+    });
 
   return {
     request: requestFn,

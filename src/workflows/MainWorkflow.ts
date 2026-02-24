@@ -39,10 +39,13 @@ export interface MainState {
 }
 
 const resetChannel = (state: MainState): Effect.Effect<void> =>
-  Ref.update(
-    state.currentChannel,
-    Option.map((ch) => ({ ...ch, isOnline: false })),
-  ).pipe(Effect.zipRight(Ref.set(state.currentChannel, Option.none())));
+  Effect.gen(function* () {
+    yield* Ref.update(
+      state.currentChannel,
+      Option.map((ch) => ({ ...ch, isOnline: false })),
+    );
+    yield* Ref.set(state.currentChannel, Option.none());
+  });
 
 const claimChannelPoints = (channel: Channel, api: TwitchApi, configStore: StoreClient<ClientConfig>): Effect.Effect<void, TwitchApiError> =>
   Effect.gen(function* () {
@@ -198,12 +201,15 @@ const manageChannelSockets = (
   socket: TwitchSocket,
   channelId: string,
 ): {
-  readonly acquire: Effect.Effect<void[], TwitchSocketError>;
+  readonly acquire: Effect.Effect<void, TwitchSocketError>;
   readonly release: Effect.Effect<void>;
 } => {
   const topics = [WsTopic.ChannelStream, WsTopic.ChannelMoment, WsTopic.ChannelUpdate];
 
-  const acquire = Effect.forEach(topics, (topic) => socket.listen(topic, channelId), { concurrency: 'unbounded' });
+  const acquire = Effect.forEach(topics, (topic) => socket.listen(topic, channelId), {
+    concurrency: 'unbounded',
+    discard: true,
+  });
 
   const release = Effect.forEach(topics, (topic) => socket.unlisten(topic, channelId), {
     concurrency: 'unbounded',
@@ -298,7 +304,13 @@ const tryClaim = (state: MainState, api: TwitchApi, campaignStore: CampaignStore
 
     if (Option.isSome(claimRes) && claimRes.value.claimDropRewards) {
       yield* Effect.logInfo(chalk`{green ${drop.name}} | {yellow Drops claimed}`);
-      yield* campaignStore.addRewards(drop.benefits.map((id) => ({ id, lastAwardedAt: new Date() })));
+
+      const rewards = [];
+      for (const id of drop.benefits) {
+        rewards.push({ id, lastAwardedAt: new Date() });
+      }
+      yield* campaignStore.addRewards(rewards);
+
       return true;
     }
     return false;
@@ -551,15 +563,13 @@ export const MainWorkflow: Effect.Effect<
 
   yield* SocketWorkflow(state, configStore).pipe(Effect.orDie);
 
-  const mainTaskLoop = Effect.repeat(
+  const mainTaskLoop = () =>
     Effect.gen(function* () {
       yield* mainLoop(state, api, socket, campaignStore, watchService, configStore).pipe(Effect.orDie);
       yield* Effect.sleep('10 seconds');
-    }),
-    Schedule.forever,
-  );
+    }).pipe(Effect.repeat(Schedule.forever));
 
-  yield* Effect.all([mainTaskLoop, UpcomingWorkflow(state), OfflineWorkflow(state, configStore), cycleUntilMidnight], {
+  yield* Effect.all([mainTaskLoop(), UpcomingWorkflow(state), OfflineWorkflow(state, configStore), cycleUntilMidnight], {
     concurrency: 'unbounded',
   });
 });

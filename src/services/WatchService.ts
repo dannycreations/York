@@ -36,68 +36,66 @@ export const WatchServiceLayer: Layer.Layer<WatchServiceTag, never, HttpClientTa
       cache: Ref.Ref<Option.Option<string>>,
       errorMessage: string,
     ): Effect.Effect<string, WatchError> =>
-      Ref.get(cache).pipe(
-        Effect.flatMap(
-          Option.match({
-            onNone: () =>
-              http.request({ url }).pipe(
-                Effect.mapError((e) => new WatchError({ message: 'Failed to fetch URL', cause: e })),
-                Effect.flatMap((response) => {
-                  const match = response.body.match(regex);
-                  if (match && match[0]) {
-                    return Ref.set(cache, Option.some(match[0])).pipe(Effect.as(match[0]));
-                  }
-                  return Effect.fail(new WatchError({ message: errorMessage }));
-                }),
-              ),
-            onSome: Effect.succeed,
-          }),
-        ),
-      );
+      Effect.gen(function* () {
+        const cached = yield* Ref.get(cache);
+        if (Option.isSome(cached)) return cached.value;
 
-    const getSettingUrl = fetchRegexUrl(Twitch.WebUrl, Twitch.SettingReg, settingUrlRef, 'Could not parse Settings URL');
+        const response = yield* http.request({ url }).pipe(Effect.mapError((e) => new WatchError({ message: 'Failed to fetch URL', cause: e })));
 
-    const getSpadeUrl = getSettingUrl.pipe(
-      Effect.flatMap((settingUrl) => fetchRegexUrl(settingUrl, Twitch.SpadeReg, spadeUrlRef, 'Could not parse Spade URL')),
-    );
+        const match = response.body.match(regex);
+        if (match && match[0]) {
+          const result = match[0];
+          yield* Ref.set(cache, Option.some(result));
+          return result;
+        }
+
+        return yield* Effect.fail(new WatchError({ message: errorMessage }));
+      });
+
+    const getSettingUrl = () => fetchRegexUrl(Twitch.WebUrl, Twitch.SettingReg, settingUrlRef, 'Could not parse Settings URL');
+
+    const getSpadeUrl = () =>
+      Effect.gen(function* () {
+        const settingUrl = yield* getSettingUrl();
+        return yield* fetchRegexUrl(settingUrl, Twitch.SpadeReg, spadeUrlRef, 'Could not parse Spade URL');
+      });
 
     const watch = (channel: Channel): Effect.Effect<{ readonly success: boolean; readonly hlsUrl?: string }, WatchError> =>
       Effect.gen(function* () {
         if (!channel.currentSid) return { success: false };
 
-        const spadeUrl = yield* getSpadeUrl;
+        const spadeUrl = yield* getSpadeUrl();
         const userId = yield* api.userId;
 
-        const sendEvent = http
-          .request({
+        const sendEvent = Effect.gen(function* () {
+          const body = JSON.stringify([
+            {
+              event: 'minute-watched',
+              properties: {
+                hidden: false,
+                live: true,
+                location: 'channel',
+                logged_in: true,
+                muted: false,
+                player: 'site',
+                channel: channel.login,
+                channel_id: channel.id,
+                broadcast_id: channel.currentSid,
+                user_id: userId,
+                game: channel.currentGameName,
+                game_id: channel.currentGameId,
+              },
+            },
+          ]);
+
+          const response = yield* http.request({
             method: 'POST',
             url: spadeUrl,
-            body: Buffer.from(
-              JSON.stringify([
-                {
-                  event: 'minute-watched',
-                  properties: {
-                    hidden: false,
-                    live: true,
-                    location: 'channel',
-                    logged_in: true,
-                    muted: false,
-                    player: 'site',
-                    channel: channel.login,
-                    channel_id: channel.id,
-                    broadcast_id: channel.currentSid,
-                    user_id: userId,
-                    game: channel.currentGameName,
-                    game_id: channel.currentGameId,
-                  },
-                },
-              ]),
-            ).toString('base64'),
-          })
-          .pipe(
-            Effect.map((res) => res.statusCode === 204),
-            Effect.catchAll(() => Effect.succeed(false)),
-          );
+            body: Buffer.from(body).toString('base64'),
+          });
+
+          return response.statusCode === 204;
+        }).pipe(Effect.catchAll(() => Effect.succeed(false)));
 
         const sendStream = Effect.gen(function* () {
           const hlsUrl = channel.hlsUrl ? channel.hlsUrl : yield* getHlsUrl(channel.login);
@@ -133,18 +131,22 @@ export const WatchServiceLayer: Layer.Layer<WatchServiceTag, never, HttpClientTa
     };
 
     const getHlsUrl = (login: string): Effect.Effect<string, WatchError> =>
-      api.graphql(GqlQueries.playbackToken(login), PlaybackTokenSchema).pipe(
-        Effect.flatMap((playback) => {
-          const token = playback[0].streamPlaybackAccessToken;
-          return http.request({
-            url: `https://usher.ttvnw.net/api/channel/hls/${login}.m3u8`,
-            searchParams: { sig: token.signature, token: token.value },
-          });
-        }),
-        Effect.flatMap((hls) => findLastHttpUrl(hls.body)),
-        Effect.catchTag('NoSuchElementException', () => Effect.fail(new WatchError({ message: 'HLS URL not found' }))),
-        Effect.mapError((e) => (e instanceof WatchError ? e : new WatchError({ message: 'Failed to get HLS URL', cause: e }))),
-      );
+      Effect.gen(function* () {
+        const playback = yield* api.graphql(GqlQueries.playbackToken(login), PlaybackTokenSchema);
+        const token = playback[0].streamPlaybackAccessToken;
+
+        const hls = yield* http.request({
+          url: `https://usher.ttvnw.net/api/channel/hls/${login}.m3u8`,
+          searchParams: { sig: token.signature, token: token.value },
+        });
+
+        const hlsUrlOpt = findLastHttpUrl(hls.body);
+        if (Option.isNone(hlsUrlOpt)) {
+          return yield* Effect.fail(new WatchError({ message: 'HLS URL not found' }));
+        }
+
+        return hlsUrlOpt.value;
+      }).pipe(Effect.mapError((e) => (e instanceof WatchError ? e : new WatchError({ message: 'Failed to get HLS URL', cause: e }))));
 
     const checkStream = (hlsUrl: string): Effect.Effect<boolean, WatchError> =>
       Effect.gen(function* () {

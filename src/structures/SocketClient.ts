@@ -114,30 +114,26 @@ export const makeSocketClient = (options: SocketClientOptions): Effect.Effect<So
     const reconnectAttempts = yield* Ref.make(0);
 
     const disconnect = (graceful = false): Effect.Effect<void> =>
-      Ref.get(wsRef).pipe(
-        Effect.flatMap(
-          Option.match({
-            onNone: () => Effect.void,
-            onSome: (ws) =>
-              Effect.gen(function* () {
-                yield* Effect.sync(() => {
-                  ws.removeAllListeners();
-                  // SAFETY: Prevent late error
-                  ws.on('error', () => {});
-                  if (graceful) {
-                    ws.close(1000);
-                  } else {
-                    ws.terminate();
-                  }
-                });
-                yield* Ref.set(wsRef, Option.none());
-                const nextDeferred = yield* Deferred.make<void, SocketClientError>();
-                yield* Ref.set(openedDeferredRef, nextDeferred);
-                yield* PubSub.publish(eventsPubSub, SocketState.Close());
-              }),
-          }),
-        ),
-      );
+      Effect.gen(function* () {
+        const wsOpt = yield* Ref.get(wsRef);
+        if (Option.isNone(wsOpt)) return;
+
+        const ws = wsOpt.value;
+        yield* Effect.sync(() => {
+          ws.removeAllListeners();
+          ws.on('error', () => {});
+          if (graceful) {
+            ws.close(1000);
+          } else {
+            ws.terminate();
+          }
+        });
+
+        yield* Ref.set(wsRef, Option.none());
+        const nextDeferred = yield* Deferred.make<void, SocketClientError>();
+        yield* Ref.set(openedDeferredRef, nextDeferred);
+        yield* PubSub.publish(eventsPubSub, SocketState.Close());
+      });
 
     const makeRawStream = (ws: WsClient): Stream.Stream<SocketState, never, never> =>
       Stream.async<SocketState>((emit) => {
@@ -273,7 +269,7 @@ export const makeSocketClient = (options: SocketClientOptions): Effect.Effect<So
         const data = typeof payload === 'string' ? payload : JSON.stringify(payload);
         const deferred = yield* Deferred.make<void, SocketClientError>();
         yield* Queue.offer(sendQueue, { data, deferred });
-        return yield* Deferred.await(deferred);
+        yield* Deferred.await(deferred);
       });
 
     return {

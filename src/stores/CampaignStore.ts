@@ -241,42 +241,49 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
     const rewardsRef = yield* Ref.make<ReadonlyMap<string, Date>>(new Map());
     const stateRef = yield* Ref.make<CampaignStoreState>(CampaignStoreState.Initial());
 
-    const updateCampaigns: Effect.Effect<void, TwitchApiError> = api.dropsDashboard.pipe(
-      Effect.flatMap((response) =>
-        Effect.gen(function* () {
-          const existingCampaigns = yield* Ref.get(campaignsRef);
-          const newCampaignsList = yield* Effect.forEach(
-            response.currentUser.dropCampaigns,
-            (data) => processCampaignData(data, existingCampaigns, configStore),
-            { concurrency: 10 },
-          );
+    const updateCampaigns: Effect.Effect<void, TwitchApiError> = Effect.gen(function* () {
+      const response = yield* api.dropsDashboard;
+      const existingCampaigns = yield* Ref.get(campaignsRef);
 
-          yield* Ref.set(campaignsRef, new Map(Array.filterMap(newCampaignsList, (opt) => Option.map(opt, (c) => [c.id, c] as const))));
-        }),
-      ),
-    );
+      const newCampaignsList = yield* Effect.forEach(
+        response.currentUser.dropCampaigns,
+        (data) => processCampaignData(data, existingCampaigns, configStore),
+        { concurrency: 10 },
+      );
 
-    const updateProgress: Effect.Effect<void, TwitchApiError> = Effect.all([configStore.get, api.inventory]).pipe(
-      Effect.flatMap(([config, response]) => {
-        const now = Date.now();
-        const rewardsMap = new Map(
-          response.currentUser.inventory.gameEventDrops
-            .filter((drop) => now - drop.lastAwardedAt.getTime() < REWARD_EXPIRED_MS)
-            .map((drop) => [drop.id, drop.lastAwardedAt]),
-        );
+      const campaignMap = new Map<string, Campaign>();
+      for (const opt of newCampaignsList) {
+        if (Option.isSome(opt)) {
+          campaignMap.set(opt.value.id, opt.value);
+        }
+      }
 
-        const newProgress = processInventoryDrops(response.currentUser.inventory.dropCampaignsInProgress, config, rewardsMap, now);
+      yield* Ref.set(campaignsRef, campaignMap);
+    });
 
-        return Effect.all([
-          Ref.set(rewardsRef, rewardsMap),
-          Ref.update(progressRef, (current) => {
-            const dropMap = new Map(current.map((d) => [d.id, d]));
-            for (const drop of newProgress) dropMap.set(drop.id, drop);
-            return Array.fromIterable(dropMap.values());
-          }),
-        ]);
-      }),
-    );
+    const updateProgress: Effect.Effect<void, TwitchApiError> = Effect.gen(function* () {
+      const config = yield* configStore.get;
+      const response = yield* api.inventory;
+
+      const now = Date.now();
+      const rewardsMap = new Map<string, Date>();
+      for (const drop of response.currentUser.inventory.gameEventDrops) {
+        if (now - drop.lastAwardedAt.getTime() < REWARD_EXPIRED_MS) {
+          rewardsMap.set(drop.id, drop.lastAwardedAt);
+        }
+      }
+
+      const newProgress = processInventoryDrops(response.currentUser.inventory.dropCampaignsInProgress, config, rewardsMap, now);
+
+      yield* Ref.set(rewardsRef, rewardsMap);
+      yield* Ref.update(progressRef, (current) => {
+        const dropMap = new Map(current.map((d) => [d.id, d]));
+        for (const drop of newProgress) {
+          dropMap.set(drop.id, drop);
+        }
+        return Array.fromIterable(dropMap.values());
+      });
+    });
 
     const getDropsForCampaign = (campaignId: string): Effect.Effect<ReadonlyArray<Drop>, TwitchApiError> =>
       Effect.gen(function* () {
@@ -378,36 +385,37 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
 
     const getChannelsForCampaign = (campaign: Campaign): Effect.Effect<ReadonlyArray<Channel>, TwitchApiError | TwitchSocketError> =>
       Effect.gen(function* () {
+        const onlineChannels: Channel[] = [];
+
         if (campaign.allowChannels.length > 0) {
           const response = yield* api.channelStreams(campaign.allowChannels.slice(0, 30));
-          const onlineChannels = response.users
-            .filter((u) => u.stream !== null)
-            .map(
-              (u) =>
-                ({
-                  id: u.id,
-                  login: u.login,
-                  gameId: campaign.game.id,
-                  isOnline: true,
-                }) satisfies Channel,
-            );
-          return yield* processOnlineChannels(api, socket, campaign.id, onlineChannels);
-        }
-
-        const response = yield* api.gameDirectory(campaign.game.slug || '');
-        if (!response.game) return [];
-
-        const onlineChannels = response.game.streams.edges
-          .filter((e) => e.node.broadcaster !== null)
-          .map(
-            (e) =>
-              ({
-                id: e.node.broadcaster.id,
-                login: e.node.broadcaster.login,
+          for (const u of response.users) {
+            if (u.stream !== null) {
+              onlineChannels.push({
+                id: u.id,
+                login: u.login,
                 gameId: campaign.game.id,
                 isOnline: true,
-              }) satisfies Channel,
-          );
+              });
+            }
+          }
+        } else {
+          const response = yield* api.gameDirectory(campaign.game.slug || '');
+          if (response.game) {
+            for (const e of response.game.streams.edges) {
+              if (e.node.broadcaster !== null) {
+                onlineChannels.push({
+                  id: e.node.broadcaster.id,
+                  login: e.node.broadcaster.login,
+                  gameId: campaign.game.id,
+                  isOnline: true,
+                });
+              }
+            }
+          }
+        }
+
+        if (onlineChannels.length === 0) return [];
         return yield* processOnlineChannels(api, socket, campaign.id, onlineChannels);
       });
 
