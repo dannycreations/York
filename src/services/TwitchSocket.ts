@@ -91,33 +91,38 @@ export const TwitchSocketLayer = (authToken: string): Layer.Layer<TwitchSocketTa
           return [performUnlisten(topicKey).pipe(Effect.tap(() => Effect.logDebug(`TwitchSocket: Unsubscribed ${topicKey}`))), next];
         }).pipe(Effect.flatten);
 
-      const parseMessage = (data: string): Effect.Effect<Option.Option<unknown>> =>
-        Effect.try({
-          try: () => JSON.parse(data),
-          catch: (e) => new TwitchSocketError({ message: 'TwitchSocket: Failed to parse raw message', cause: e }),
-        }).pipe(Effect.option);
+      const messages: Stream.Stream<SocketMessage, never, never> = Stream.filterMap(client.events, (event) =>
+        event._tag === 'Message' ? Option.some(event.data) : Option.none(),
+      ).pipe(
+        Stream.mapEffect((data) =>
+          Effect.gen(function* () {
+            const raw = yield* Effect.try({
+              try: () => JSON.parse(data),
+              catch: () => undefined,
+            }).pipe(Effect.orDie);
 
-      const extractPayload = (raw: unknown): Effect.Effect<Option.Option<unknown>> =>
-        Effect.gen(function* () {
-          if (
-            !isObjectLike<{ readonly type: string; readonly data: { readonly topic: string; readonly message: string } }>(raw) ||
-            raw.type !== 'MESSAGE'
-          ) {
-            return Option.none();
-          }
+            if (
+              !isObjectLike<{ readonly type: string; readonly data: { readonly topic: string; readonly message: string } }>(raw) ||
+              raw.type !== 'MESSAGE'
+            ) {
+              return Option.none();
+            }
 
-          const { data } = raw;
-          if (typeof data.topic !== 'string' || typeof data.message !== 'string') {
-            return Option.none();
-          }
+            const { topic, message } = raw.data;
+            if (typeof topic !== 'string' || typeof message !== 'string') {
+              return Option.none();
+            }
 
-          const [topicType, topicId] = data.topic.split('.');
-          const messageOpt = yield* parseMessage(data.message);
+            const [topicType, topicId] = topic.split('.');
+            const value = yield* Effect.try({
+              try: () => JSON.parse(message),
+              catch: () => undefined,
+            }).pipe(Effect.orDie);
 
-          return Option.flatMap(messageOpt, (value) => {
             if (!isObjectLike<{ readonly data: unknown; readonly topic_id: unknown }>(value)) return Option.none();
+
             const payloadData = isObjectLike(value.data) ? value.data : {};
-            return Option.some({
+            const payload = {
               topicType,
               topicId,
               payload: {
@@ -125,25 +130,9 @@ export const TwitchSocketLayer = (authToken: string): Layer.Layer<TwitchSocketTa
                 ...payloadData,
                 topic_id: typeof value.topic_id === 'string' ? value.topic_id : topicId,
               },
-            });
-          });
-        });
+            };
 
-      const messages: Stream.Stream<SocketMessage, never, never> = Stream.filterMap(client.events, (event) =>
-        event._tag === 'Message' ? Option.some(event.data) : Option.none(),
-      ).pipe(
-        Stream.mapEffect((data) =>
-          Effect.gen(function* () {
-            const msgOpt = yield* parseMessage(data);
-            if (Option.isNone(msgOpt)) return Option.none();
-
-            const payloadOpt = yield* extractPayload(msgOpt.value);
-            if (Option.isNone(payloadOpt)) return Option.none();
-
-            const payload = payloadOpt.value;
-            if (isObjectLike<{ topicType: string; topicId: string }>(payload)) {
-              yield* Effect.logDebug(chalk`TwitchSocket: Emitted ${payload.topicType}.${payload.topicId}`, payload);
-            }
+            yield* Effect.logDebug(chalk`TwitchSocket: Emitted ${topicType}.${topicId}`, payload);
 
             return yield* Schema.decodeUnknown(SocketMessageSchema)(payload).pipe(
               Effect.map(Option.some),

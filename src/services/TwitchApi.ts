@@ -230,12 +230,14 @@ export const TwitchApiLayer = (authToken: string, isDebug = false): Layer.Layer<
         requests: GraphqlRequest | ReadonlyArray<GraphqlRequest>,
         schema: Schema.Schema<A, I, R>,
         waitForUserId = true,
-      ): Effect.Effect<ReadonlyArray<A>, TwitchApiError, R> =>
-        Effect.gen(function* () {
+      ): Effect.Effect<ReadonlyArray<A>, TwitchApiError, R> => {
+        const isArray = Array.isArray(requests);
+        const requestsArray = isArray ? requests : [requests];
+        const len = requestsArray.length;
+        const decode = Schema.decodeUnknown(schema);
+
+        return Effect.gen(function* () {
           const userId = waitForUserId ? yield* getUserId : '';
-          const isArray = Array.isArray(requests);
-          const requestsArray = isArray ? requests : [requests];
-          const len = requestsArray.length;
           const payload = new Array(len);
 
           for (let i = 0; i < len; i++) {
@@ -260,16 +262,12 @@ export const TwitchApiLayer = (authToken: string, isDebug = false): Layer.Layer<
             };
           }
 
-          const body = JSON.stringify(payload);
-
           const response = yield* request<ReadonlyArray<GqlResponse<unknown>>>({
             method: 'POST',
             url: Twitch.ApiUrl,
-            body,
+            body: JSON.stringify(payload),
             responseType: 'json',
           });
-
-          const decode = Schema.decodeUnknown(schema);
 
           return yield* Effect.forEach(
             response.body,
@@ -285,6 +283,7 @@ export const TwitchApiLayer = (authToken: string, isDebug = false): Layer.Layer<
             schedule: Schedule.exponential('1 seconds').pipe(Schedule.compose(Schedule.recurs(5))),
           }),
         );
+      };
 
       const mapFirst = <A, E, R>(effect: Effect.Effect<ReadonlyArray<A>, E, R>) => effect.pipe(Effect.map((res) => res[0]));
 

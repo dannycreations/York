@@ -119,15 +119,10 @@ export const WatchServiceLayer: Layer.Layer<WatchServiceTag, never, HttpClientTa
       }).pipe(Effect.catchAll(() => Effect.succeed({ success: false })));
 
     const findLastHttpUrl = (text: string): string | undefined => {
-      let end = text.length;
-      while (end > 0) {
-        const prevNewline = text.lastIndexOf('\n', end - 1);
-        const start = prevNewline === -1 ? 0 : prevNewline + 1;
-        const line = text.substring(start, end).trim();
-        if (line.startsWith('http')) return line;
-        end = prevNewline;
-      }
-      return undefined;
+      const start = text.lastIndexOf('\nhttp') + 1;
+      if (start === 0) return text.startsWith('http') ? text.split('\n', 1)[0].trim() : undefined;
+      const end = text.indexOf('\n', start);
+      return (end === -1 ? text.substring(start) : text.substring(start, end)).trim();
     };
 
     const getHlsUrl = (login: string): Effect.Effect<string, WatchError> =>

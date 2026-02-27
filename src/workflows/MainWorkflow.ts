@@ -47,9 +47,8 @@ const resetChannel = (state: MainState): Effect.Effect<void> =>
     yield* Ref.set(state.currentChannel, Option.none());
   });
 
-const claimChannelPoints = (channel: Channel, api: TwitchApi, configStore: StoreClient<ClientConfig>): Effect.Effect<void, TwitchApiError> =>
+const claimChannelPoints = (channel: Channel, api: TwitchApi, config: ClientConfig): Effect.Effect<void, TwitchApiError> =>
   Effect.gen(function* () {
-    const config = yield* configStore.get;
     if (!config.isClaimPoints) return;
 
     const channelData = yield* api.channelPoints(channel.login);
@@ -60,7 +59,6 @@ const claimChannelPoints = (channel: Channel, api: TwitchApi, configStore: Store
       yield* Effect.logInfo(chalk`{green ${channel.login}} | {yellow Points claimed}`);
     }
   });
-
 
 const updateChannelInfo = (state: MainState, api: TwitchApi, chan: Channel): Effect.Effect<Option.Option<Channel>, MainWorkflowError> =>
   Effect.gen(function* () {
@@ -172,7 +170,10 @@ const watchChannelTick = (
 
     const { success, hlsUrl } = yield* watchService.watch(updatedChan);
     if (hlsUrl !== updatedChan.hlsUrl) {
-      yield* Ref.update(state.currentChannel, Option.map((ch) => ({ ...ch, hlsUrl })));
+      yield* Ref.update(
+        state.currentChannel,
+        Option.map((ch) => ({ ...ch, hlsUrl })),
+      );
     }
 
     const currentTimeMs = Date.now();
@@ -228,7 +229,7 @@ const processChannelWatch = (
   socket: TwitchSocket,
   campaignStore: CampaignStore,
   watchService: WatchService,
-  configStore: StoreClient<ClientConfig>,
+  config: ClientConfig,
   campaign: Campaign,
   channel: Channel,
 ): Effect.Effect<void, TwitchApiError | TwitchSocketError | MainWorkflowError | WatchError> =>
@@ -239,7 +240,7 @@ const processChannelWatch = (
     if (Option.isNone(chanOpt)) return;
     const chan = chanOpt.value;
 
-    yield* claimChannelPoints(chan, api, configStore);
+    yield* claimChannelPoints(chan, api, config);
 
     const { acquire, release } = manageChannelSockets(socket, chan.id);
 
@@ -261,7 +262,7 @@ const performWatchLoop = (
   socket: TwitchSocket,
   campaignStore: CampaignStore,
   watchService: WatchService,
-  configStore: StoreClient<ClientConfig>,
+  config: ClientConfig,
 ): Effect.Effect<void, TwitchApiError | TwitchSocketError | MainWorkflowError | WatchError> =>
   Effect.gen(function* () {
     const campaignOpt = yield* Ref.get(state.currentCampaign);
@@ -283,7 +284,7 @@ const performWatchLoop = (
       const dropOpt = yield* Ref.get(state.currentDrop);
       if (Option.isSome(dropOpt) && isMinutesWatchedMet(dropOpt.value)) break;
 
-      yield* processChannelWatch(state, api, socket, campaignStore, watchService, configStore, campaign, channel);
+      yield* processChannelWatch(state, api, socket, campaignStore, watchService, config, campaign, channel);
     }
     yield* Ref.set(state.currentChannel, Option.none());
   });
@@ -446,7 +447,7 @@ const processCampaignLogic = (
   socket: TwitchSocket,
   campaignStore: CampaignStore,
   watchService: WatchService,
-  configStore: StoreClient<ClientConfig>,
+  config: ClientConfig,
   campaign: Campaign,
   drops: ReadonlyArray<Drop>,
 ): Effect.Effect<void, TwitchApiError | TwitchSocketError | MainWorkflowError | WatchError> =>
@@ -474,14 +475,13 @@ const processCampaignLogic = (
     }
 
     if (isMinutesWatchedMet(drop)) {
-      const config = yield* configStore.get;
       if (config.isClaimDrops) {
         return yield* performClaimDrops(state, api, campaignStore, campaign, drop);
       }
       return yield* Ref.set(state.currentCampaign, Option.none());
     }
 
-    yield* performWatchLoop(state, api, socket, campaignStore, watchService, configStore);
+    yield* performWatchLoop(state, api, socket, campaignStore, watchService, config);
   });
 
 const processActiveCampaigns = (
@@ -490,12 +490,12 @@ const processActiveCampaigns = (
   socket: TwitchSocket,
   campaignStore: CampaignStore,
   watchService: WatchService,
-  configStore: StoreClient<ClientConfig>,
+  config: ClientConfig,
   activeCampaign: Campaign,
 ): Effect.Effect<void, TwitchApiError | TwitchSocketError | MainWorkflowError | WatchError> =>
   Effect.gen(function* () {
     const { campaign, drops } = yield* refreshCampaignAndDrops(state, campaignStore, activeCampaign);
-    yield* processCampaignLogic(state, api, socket, campaignStore, watchService, configStore, campaign, drops);
+    yield* processCampaignLogic(state, api, socket, campaignStore, watchService, config, campaign, drops);
   });
 
 const mainLoop = (
@@ -508,6 +508,7 @@ const mainLoop = (
 ): Effect.Effect<void, TwitchApiError | TwitchSocketError | MainWorkflowError | WatchError> =>
   Effect.gen(function* () {
     yield* initializeCampaignState(state, campaignStore, configStore);
+    const config = yield* configStore.get;
 
     const activeList = yield* campaignStore.getSortedActive;
     if (activeList.length === 0) {
@@ -515,7 +516,7 @@ const mainLoop = (
       return;
     }
 
-    yield* processActiveCampaigns(state, api, socket, campaignStore, watchService, configStore, activeList[0]);
+    yield* processActiveCampaigns(state, api, socket, campaignStore, watchService, config, activeList[0]);
   });
 
 const ensureSettingsDir = Effect.gen(function* () {
