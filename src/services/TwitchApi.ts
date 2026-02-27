@@ -231,25 +231,20 @@ export const TwitchApiLayer = (authToken: string, isDebug = false): Layer.Layer<
         schema: Schema.Schema<A, I, R>,
         waitForUserId = true,
       ): Effect.Effect<ReadonlyArray<A>, TwitchApiError, R> => {
-        const isArray = Array.isArray(requests);
-        const requestsArray = isArray ? requests : [requests];
-        const len = requestsArray.length;
+        const requestsArray = Array.isArray(requests) ? requests : [requests];
         const decode = Schema.decodeUnknown(schema);
 
         return Effect.gen(function* () {
           const userId = waitForUserId ? yield* getUserId : '';
-          const payload = new Array(len);
-
-          for (let i = 0; i < len; i++) {
-            const r = requestsArray[i];
-            let vars = r.variables;
-            if (r.operationName === 'DropCampaignDetails' && !vars.channelLogin && userId) {
-              vars = { ...vars, channelLogin: userId };
+          const payload = requestsArray.map((r) => {
+            let variables = r.variables;
+            if (r.operationName === 'DropCampaignDetails' && !variables.channelLogin && userId) {
+              variables = { ...variables, channelLogin: userId };
             }
 
-            payload[i] = {
+            return {
               operationName: r.operationName,
-              variables: vars,
+              variables,
               query: r.query,
               extensions: r.hash
                 ? {
@@ -260,7 +255,7 @@ export const TwitchApiLayer = (authToken: string, isDebug = false): Layer.Layer<
                   }
                 : undefined,
             };
-          }
+          });
 
           const response = yield* request<ReadonlyArray<GqlResponse<unknown>>>({
             method: 'POST',

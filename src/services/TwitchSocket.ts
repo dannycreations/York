@@ -103,17 +103,16 @@ export const TwitchSocketLayer = (authToken: string): Layer.Layer<TwitchSocketTa
 
             if (
               !isObjectLike<{ readonly type: string; readonly data: { readonly topic: string; readonly message: string } }>(raw) ||
-              raw.type !== 'MESSAGE'
+              raw.type !== 'MESSAGE' ||
+              typeof raw.data.topic !== 'string' ||
+              typeof raw.data.message !== 'string'
             ) {
               return Option.none();
             }
 
             const { topic, message } = raw.data;
-            if (typeof topic !== 'string' || typeof message !== 'string') {
-              return Option.none();
-            }
-
             const [topicType, topicId] = topic.split('.');
+
             const value = yield* Effect.try({
               try: () => JSON.parse(message),
               catch: () => undefined,

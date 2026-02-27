@@ -66,24 +66,16 @@ export const makeSocketClient = (options: SocketClientOptions): Effect.Effect<So
     const processSendQueue = Effect.gen(function* () {
       const { data, deferred } = yield* Queue.take(sendQueue);
       const sendTask = Effect.gen(function* () {
-        const ws = yield* Effect.gen(function* () {
-          const openedDeferred = yield* Ref.get(openedDeferredRef);
-          yield* Deferred.await(openedDeferred);
-
-          const wsOpt = yield* Ref.get(wsRef);
-          if (Option.isNone(wsOpt)) return yield* Effect.fail('Not Ready');
-
-          const ws = wsOpt.value;
-          if (ws.readyState !== WsClient.OPEN || ws.bufferedAmount > 1_048_576) {
-            return yield* Effect.fail('Not Ready');
-          }
-
-          return ws;
-        }).pipe(
+        const ws = yield* Ref.get(wsRef).pipe(
+          Effect.filterOrFail(
+            (wsOpt) => Option.isSome(wsOpt) && wsOpt.value.readyState === WsClient.OPEN && wsOpt.value.bufferedAmount <= 1_048_576,
+            () => 'Not Ready',
+          ),
           Effect.retry({
             while: (e) => e === 'Not Ready',
             schedule: Schedule.fixed('100 millis'),
           }),
+          Effect.map((wsOpt) => (wsOpt as Option.Some<WsClient>).value),
           Effect.mapError((e) => new SocketClientError({ message: String(e) })),
         );
 
@@ -114,26 +106,29 @@ export const makeSocketClient = (options: SocketClientOptions): Effect.Effect<So
     const reconnectAttempts = yield* Ref.make(0);
 
     const disconnect = (graceful = false): Effect.Effect<void> =>
-      Effect.gen(function* () {
-        const wsOpt = yield* Ref.get(wsRef);
-        if (Option.isNone(wsOpt)) return;
+      Ref.getAndSet(wsRef, Option.none()).pipe(
+        Effect.flatMap(
+          Option.match({
+            onNone: () => Effect.void,
+            onSome: (ws) =>
+              Effect.gen(function* () {
+                yield* Effect.sync(() => {
+                  ws.removeAllListeners();
+                  ws.on('error', () => {});
+                  if (graceful) {
+                    ws.close(1000);
+                  } else {
+                    ws.terminate();
+                  }
+                });
 
-        const ws = wsOpt.value;
-        yield* Effect.sync(() => {
-          ws.removeAllListeners();
-          ws.on('error', () => {});
-          if (graceful) {
-            ws.close(1000);
-          } else {
-            ws.terminate();
-          }
-        });
-
-        yield* Ref.set(wsRef, Option.none());
-        const nextDeferred = yield* Deferred.make<void, SocketClientError>();
-        yield* Ref.set(openedDeferredRef, nextDeferred);
-        yield* PubSub.publish(eventsPubSub, SocketState.Close());
-      });
+                const nextDeferred = yield* Deferred.make<void, SocketClientError>();
+                yield* Ref.set(openedDeferredRef, nextDeferred);
+                yield* PubSub.publish(eventsPubSub, SocketState.Close());
+              }),
+          }),
+        ),
+      );
 
     const makeRawStream = (ws: WsClient): Stream.Stream<SocketState, never, never> =>
       Stream.async<SocketState>((emit) => {

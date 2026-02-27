@@ -127,9 +127,12 @@ const handleUserDrop = (payload: SocketMessage['payload'], currentDrop: Option.O
 const handleChannelStream = (msg: SocketMessage, channel: Channel, state: MainState): Effect.Effect<void> =>
   msg.payload.type !== 'stream-down'
     ? Effect.void
-    : Ref.update(state.currentChannel, (c) => Option.map(c, (ch) => ({ ...ch, isOnline: false }))).pipe(
-        Effect.zipRight(Effect.logInfo(chalk`{red ${channel.login}} | {red Stream down}`)),
-      );
+    : Ref.update(state.currentChannel, (current) =>
+        Option.match(current, {
+          onNone: () => current,
+          onSome: (c) => (c.id === channel.id ? Option.some({ ...c, isOnline: false }) : current),
+        }),
+      ).pipe(Effect.zipRight(Effect.logInfo(chalk`{red ${channel.login}} | {red Stream down}`)));
 
 const handleChannelMoment = (
   msg: SocketMessage,
@@ -161,15 +164,26 @@ const handleChannelUpdate = (msg: SocketMessage, channel: Channel, state: MainSt
       }
       const currentGameId = String(payload.data.game_id);
       if (channel.gameId && currentGameId !== channel.gameId) {
-        yield* Ref.update(state.currentChannel, (c) => Option.map(c, (ch) => ({ ...ch, isOnline: false })));
+        yield* Ref.update(state.currentChannel, (current) =>
+          Option.match(current, {
+            onNone: () => current,
+            onSome: (c) => (c.id === channel.id ? Option.some({ ...c, isOnline: false }) : current),
+          }),
+        );
         yield* Effect.logInfo(chalk`{red ${channel.login}} | {red Game changed to ${payload.data.game}}`);
       }
-      yield* Ref.update(state.currentChannel, (c) =>
-        Option.map(c, (ch) => ({
-          ...ch,
-          currentGameId,
-          currentGameName: payload.data.game,
-        })),
+      yield* Ref.update(state.currentChannel, (current) =>
+        Option.match(current, {
+          onNone: () => current,
+          onSome: (c) =>
+            c.id === channel.id
+              ? Option.some({
+                  ...c,
+                  currentGameId,
+                  currentGameName: payload.data.game,
+                })
+              : current,
+        }),
       );
     }
   });

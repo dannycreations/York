@@ -48,17 +48,17 @@ const resetChannel = (state: MainState): Effect.Effect<void> =>
   });
 
 const claimChannelPoints = (channel: Channel, api: TwitchApi, config: ClientConfig): Effect.Effect<void, TwitchApiError> =>
-  Effect.gen(function* () {
-    if (!config.isClaimPoints) return;
+  !config.isClaimPoints
+    ? Effect.void
+    : Effect.gen(function* () {
+        const channelData = yield* api.channelPoints(channel.login);
+        const availableClaim = channelData.community.channel.self.communityPoints.availableClaim;
 
-    const channelData = yield* api.channelPoints(channel.login);
-    const availableClaim = channelData.community.channel.self.communityPoints.availableClaim;
-
-    if (availableClaim) {
-      yield* api.claimPoints(channel.id, availableClaim.id);
-      yield* Effect.logInfo(chalk`{green ${channel.login}} | {yellow Points claimed}`);
-    }
-  });
+        if (availableClaim) {
+          yield* api.claimPoints(channel.id, availableClaim.id);
+          yield* Effect.logInfo(chalk`{green ${channel.login}} | {yellow Points claimed}`);
+        }
+      });
 
 const updateChannelInfo = (state: MainState, api: TwitchApi, chan: Channel): Effect.Effect<Option.Option<Channel>, MainWorkflowError> =>
   Effect.gen(function* () {
@@ -79,7 +79,12 @@ const updateChannelInfo = (state: MainState, api: TwitchApi, chan: Channel): Eff
       currentGameId: live.game_id,
       currentGameName: live.game_name,
     };
-    yield* Ref.set(state.currentChannel, Option.some(updated));
+    yield* Ref.update(state.currentChannel, (current) =>
+      Option.match(current, {
+        onNone: () => Option.some(updated),
+        onSome: (c) => (c.id === updated.id ? Option.some(updated) : current),
+      }),
+    );
     return Option.some(updated);
   });
 
@@ -170,9 +175,11 @@ const watchChannelTick = (
 
     const { success, hlsUrl } = yield* watchService.watch(updatedChan);
     if (hlsUrl !== updatedChan.hlsUrl) {
-      yield* Ref.update(
-        state.currentChannel,
-        Option.map((ch) => ({ ...ch, hlsUrl })),
+      yield* Ref.update(state.currentChannel, (current) =>
+        Option.match(current, {
+          onNone: () => current,
+          onSome: (c) => (c.id === updatedChan.id ? Option.some({ ...c, hlsUrl }) : current),
+        }),
       );
     }
 
@@ -199,7 +206,7 @@ const manageChannelSockets = (
   readonly acquire: Effect.Effect<void, TwitchSocketError>;
   readonly release: Effect.Effect<void>;
 } => {
-  const topics = [WsTopic.ChannelStream, WsTopic.ChannelMoment, WsTopic.ChannelUpdate];
+  const topics = [WsTopic.ChannelStream, WsTopic.ChannelMoment, WsTopic.ChannelUpdate] as const;
 
   const acquire = Effect.forEach(topics, (topic) => socket.listen(topic, channelId), {
     concurrency: 'unbounded',

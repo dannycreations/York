@@ -276,7 +276,9 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
 
       yield* Ref.set(rewardsRef, rewardsMap);
       yield* Ref.update(progressRef, (current) => {
+        if (newProgress.length === 0) return current;
         if (current.length === 0) return newProgress;
+
         const currentMap = new Map(current.map((d) => [d.id, d]));
         let changed = false;
         for (const drop of newProgress) {
@@ -287,8 +289,7 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
           }
         }
         if (!changed) return current;
-        const updated = Array.from(currentMap.values());
-        return updated.length === current.length && updated.every((v, i) => v === current[i]) ? current : updated;
+        return Array.from(currentMap.values());
       });
     });
 
@@ -340,6 +341,8 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
 
         yield* Ref.update(progressRef, (current) => {
           if (result.length === 0) return current;
+          if (current.length === 0) return result;
+
           const currentMap = new Map(current.map((d) => [d.id, d]));
           let changed = false;
           for (const drop of result) {
@@ -350,8 +353,7 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
             }
           }
           if (!changed) return current;
-          const updated = Array.from(currentMap.values());
-          return updated.length === current.length && updated.every((v, i) => v === current[i]) ? current : updated;
+          return Array.from(currentMap.values());
         });
 
         return result;

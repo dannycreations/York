@@ -67,7 +67,7 @@ export const UpcomingWorkflow = (state: MainState) =>
 
       if (isMainCall || now >= nextRefresh) {
         yield* campaignStore.updateCampaigns.pipe(Effect.orDie);
-        yield* Ref.set(nextRefreshRef, now + sleepTime);
+        yield* Ref.set(nextRefreshRef, Date.now() + sleepTime);
       }
 
       const upcoming = yield* campaignStore.getSortedUpcoming;
