@@ -118,16 +118,16 @@ export const WatchServiceLayer: Layer.Layer<WatchServiceTag, never, HttpClientTa
         };
       }).pipe(Effect.catchAll(() => Effect.succeed({ success: false })));
 
-    const findLastHttpUrl = (text: string): Option.Option<string> => {
+    const findLastHttpUrl = (text: string): string | undefined => {
       let end = text.length;
       while (end > 0) {
         const prevNewline = text.lastIndexOf('\n', end - 1);
         const start = prevNewline === -1 ? 0 : prevNewline + 1;
         const line = text.substring(start, end).trim();
-        if (line.startsWith('http')) return Option.some(line);
+        if (line.startsWith('http')) return line;
         end = prevNewline;
       }
-      return Option.none();
+      return undefined;
     };
 
     const getHlsUrl = (login: string): Effect.Effect<string, WatchError> =>
@@ -138,20 +138,22 @@ export const WatchServiceLayer: Layer.Layer<WatchServiceTag, never, HttpClientTa
         const hls = yield* http.request({
           url: `https://usher.ttvnw.net/api/channel/hls/${login}.m3u8`,
           searchParams: { sig: token.signature, token: token.value },
+          headers: { accept: 'application/x-mpegURL' },
         });
 
-        const hlsUrlOpt = findLastHttpUrl(hls.body);
-        if (Option.isNone(hlsUrlOpt)) {
+        const url = findLastHttpUrl(hls.body);
+        if (!url) {
           return yield* Effect.fail(new WatchError({ message: 'HLS URL not found' }));
         }
 
-        return hlsUrlOpt.value;
+        return url;
       }).pipe(Effect.mapError((e) => (e instanceof WatchError ? e : new WatchError({ message: 'Failed to get HLS URL', cause: e }))));
 
     const checkStream = (hlsUrl: string): Effect.Effect<boolean, WatchError> =>
       Effect.gen(function* () {
-        const hls = yield* http.request({ url: hlsUrl });
-        const chunkUrl = yield* findLastHttpUrl(hls.body);
+        const hls = yield* http.request({ url: hlsUrl, headers: { accept: 'application/x-mpegURL' } });
+        const chunkUrl = findLastHttpUrl(hls.body);
+        if (!chunkUrl) return false;
 
         const res = yield* http.request({ method: 'HEAD', url: chunkUrl });
         return res.statusCode === 200;

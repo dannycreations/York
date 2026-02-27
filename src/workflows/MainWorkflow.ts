@@ -61,30 +61,11 @@ const claimChannelPoints = (channel: Channel, api: TwitchApi, configStore: Store
     }
   });
 
-const checkHigherPriority = (state: MainState, campaign: Campaign, campaignStore: CampaignStore): Effect.Effect<boolean> =>
-  Effect.gen(function* () {
-    const activeCampaigns = yield* campaignStore.getSortedActive;
-    if (activeCampaigns.length === 0 || activeCampaigns[0].id === campaign.id) return false;
-
-    const higherPriority = activeCampaigns[0];
-    if (higherPriority.priority <= campaign.priority) {
-      const currentDropOpt = yield* Ref.get(state.currentDrop);
-      if (Option.isNone(currentDropOpt)) return false;
-
-      const currentDrop = currentDropOpt.value;
-      const isDifferentGame = higherPriority.game.id !== campaign.game.id;
-      const shouldPrioritize = isDifferentGame && currentDrop.endAt >= higherPriority.endAt;
-      if (!shouldPrioritize) return false;
-    }
-
-    yield* Effect.logInfo(chalk`{yellow Switching to higher priority campaign: ${higherPriority.name}}`);
-    yield* Ref.set(state.currentChannel, Option.none());
-    return true;
-  });
 
 const updateChannelInfo = (state: MainState, api: TwitchApi, chan: Channel): Effect.Effect<Option.Option<Channel>, MainWorkflowError> =>
   Effect.gen(function* () {
-    if (chan.currentSid && (yield* Ref.get(state.localMinutesWatched)) > 0) return Option.some(chan);
+    const localMin = yield* Ref.get(state.localMinutesWatched);
+    if (chan.currentSid && localMin > 0 && localMin < 15) return Option.some(chan);
 
     const streamRes = yield* api.helixStreams(chan.id).pipe(Effect.mapError((e) => new MainWorkflowError({ message: e.message, cause: e })));
 
@@ -150,9 +131,24 @@ const watchChannelTick = (
       return;
     }
 
-    if (yield* checkHigherPriority(state, campaign, campaignStore)) {
-      yield* resetChannel(state);
-      return;
+    const activeCampaigns = yield* campaignStore.getSortedActive;
+    if (activeCampaigns.length > 0 && activeCampaigns[0].id !== campaign.id) {
+      const higherPriority = activeCampaigns[0];
+      let switchNeeded = higherPriority.priority > campaign.priority;
+
+      if (!switchNeeded) {
+        const currentDropOpt = yield* Ref.get(state.currentDrop);
+        if (Option.isSome(currentDropOpt)) {
+          const currentDrop = currentDropOpt.value;
+          switchNeeded = higherPriority.game.id !== campaign.game.id && currentDrop.endAt >= higherPriority.endAt;
+        }
+      }
+
+      if (switchNeeded) {
+        yield* Effect.logInfo(chalk`{yellow Switching to higher priority campaign: ${higherPriority.name}}`);
+        yield* resetChannel(state);
+        return;
+      }
     }
 
     yield* waitForNextWatch(state);
@@ -163,29 +159,27 @@ const watchChannelTick = (
       return;
     }
 
-    const updatedChanOpt = yield* updateChannelInfo(state, api, chanOpt.value);
+    const chan = chanOpt.value;
+    const updatedChanOpt = yield* updateChannelInfo(state, api, chan);
     if (Option.isNone(updatedChanOpt)) return;
-    const chan = updatedChanOpt.value;
+    const updatedChan = updatedChanOpt.value;
 
-    if (chan.gameId && chan.currentGameId && chan.gameId !== chan.currentGameId) {
-      yield* Effect.logInfo(chalk`{red ${chan.login}} | {red Game changed to ${chan.currentGameName}}`);
+    if (updatedChan.gameId && updatedChan.currentGameId && updatedChan.gameId !== updatedChan.currentGameId) {
+      yield* Effect.logInfo(chalk`{red ${updatedChan.login}} | {red Game changed to ${updatedChan.currentGameName}}`);
       yield* resetChannel(state);
       return;
     }
 
-    const { success, hlsUrl } = yield* watchService.watch(chan);
-    if (hlsUrl !== chan.hlsUrl) {
-      yield* Ref.update(
-        state.currentChannel,
-        Option.map((ch) => ({ ...ch, hlsUrl })),
-      );
+    const { success, hlsUrl } = yield* watchService.watch(updatedChan);
+    if (hlsUrl !== updatedChan.hlsUrl) {
+      yield* Ref.update(state.currentChannel, Option.map((ch) => ({ ...ch, hlsUrl })));
     }
 
     const currentTimeMs = Date.now();
     const scheduledWatchMs = yield* Ref.get(state.nextWatch);
     if (currentTimeMs >= scheduledWatchMs) {
       if (success) {
-        yield* handleWatchSuccess(state, chan, campaignStore);
+        yield* handleWatchSuccess(state, updatedChan, campaignStore);
         const currentChannel = yield* Ref.get(state.currentChannel);
         if (Option.isNone(currentChannel)) return;
       } else {

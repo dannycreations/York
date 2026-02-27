@@ -148,10 +148,13 @@ export const TwitchApiLayer = (authToken: string, isDebug = false): Layer.Layer<
       > =>
         Effect.gen(function* () {
           const commonHeaders = yield* Ref.get(headersRef);
-          const payload = typeof options === 'string' ? { url: options } : options;
+          const isString = typeof options === 'string';
+          const payload = isString ? { url: options } : options;
+          const headers = payload.headers ? { ...commonHeaders, ...payload.headers } : commonHeaders;
+
           const response = yield* http.request<T>({
             ...payload,
-            headers: { ...commonHeaders, ...payload.headers },
+            headers,
             retry: -1,
           });
 
@@ -230,14 +233,21 @@ export const TwitchApiLayer = (authToken: string, isDebug = false): Layer.Layer<
       ): Effect.Effect<ReadonlyArray<A>, TwitchApiError, R> =>
         Effect.gen(function* () {
           const userId = waitForUserId ? yield* getUserId : '';
-          const requestsArray = Array.isArray(requests) ? requests : [requests];
-          const body = JSON.stringify(
-            requestsArray.map((r) => ({
+          const isArray = Array.isArray(requests);
+          const requestsArray = isArray ? requests : [requests];
+          const len = requestsArray.length;
+          const payload = new Array(len);
+
+          for (let i = 0; i < len; i++) {
+            const r = requestsArray[i];
+            let vars = r.variables;
+            if (r.operationName === 'DropCampaignDetails' && !vars.channelLogin && userId) {
+              vars = { ...vars, channelLogin: userId };
+            }
+
+            payload[i] = {
               operationName: r.operationName,
-              variables:
-                r.operationName === 'DropCampaignDetails' && !r.variables.channelLogin && userId
-                  ? { ...r.variables, channelLogin: userId }
-                  : r.variables,
+              variables: vars,
               query: r.query,
               extensions: r.hash
                 ? {
@@ -247,8 +257,10 @@ export const TwitchApiLayer = (authToken: string, isDebug = false): Layer.Layer<
                     },
                   }
                 : undefined,
-            })),
-          );
+            };
+          }
+
+          const body = JSON.stringify(payload);
 
           const response = yield* request<ReadonlyArray<GqlResponse<unknown>>>({
             method: 'POST',

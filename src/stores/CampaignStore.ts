@@ -1,5 +1,5 @@
 import { truncate } from '@vegapunk/utilities/common';
-import { Array, Context, Data, Effect, Layer, Option, Ref, Schema } from 'effect';
+import { Context, Data, Effect, Layer, Option, Ref, Schema } from 'effect';
 
 import { ConfigStoreTag } from '../core/Config';
 import { WsTopic } from '../core/Constants';
@@ -208,26 +208,26 @@ const processInventoryDrops = (
   config: ClientConfig,
   rewardsMap: ReadonlyMap<string, Date>,
   now: number,
-): ReadonlyArray<Drop> =>
-  Array.flatMap(campaigns, (campaign) => {
-    const filtered = Array.filterMap(
-      [...campaign.timeBasedDrops].sort((a, b) => a.requiredMinutesWatched - b.requiredMinutesWatched),
-      (data) => processDrop(data, campaign.id, config, rewardsMap, now, true),
-    );
+): ReadonlyArray<Drop> => {
+  const result: Drop[] = [];
+  for (const campaign of campaigns) {
+    const drops = [...campaign.timeBasedDrops].sort((a, b) => a.requiredMinutesWatched - b.requiredMinutesWatched);
+    const filtered: Drop[] = [];
+    for (const d of drops) {
+      const opt = processDrop(d, campaign.id, config, rewardsMap, now, true);
+      if (Option.isSome(opt)) filtered.push(opt.value);
+    }
 
-    return filtered.map((drop, i) => ({
-      ...drop,
-      name: truncate(`${i + 1}/${filtered.length}, ${drop.name}`),
-    }));
-  });
-
-const groupCampaigns = (campaigns: ReadonlyArray<Campaign>): ReadonlyArray<Campaign> => {
-  const seen = new Set<string>();
-  return campaigns.filter((c) => {
-    if (seen.has(c.game.id)) return false;
-    seen.add(c.game.id);
-    return true;
-  });
+    const len = filtered.length;
+    for (let i = 0; i < len; i++) {
+      const drop = filtered[i];
+      result.push({
+        ...drop,
+        name: truncate(`${i + 1}/${len}, ${drop.name}`),
+      });
+    }
+  }
+  return result;
 };
 
 export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiTag | ConfigStoreTag | TwitchSocketTag> = Layer.effect(
@@ -277,11 +277,17 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
 
       yield* Ref.set(rewardsRef, rewardsMap);
       yield* Ref.update(progressRef, (current) => {
+        if (current.length === 0) return newProgress;
         const dropMap = new Map(current.map((d) => [d.id, d]));
+        let changed = false;
         for (const drop of newProgress) {
-          dropMap.set(drop.id, drop);
+          const existing = dropMap.get(drop.id);
+          if (!existing || existing.currentMinutesWatched !== drop.currentMinutesWatched || existing.isClaimed !== drop.isClaimed) {
+            dropMap.set(drop.id, drop);
+            changed = true;
+          }
         }
-        return Array.fromIterable(dropMap.values());
+        return changed ? Array.from(dropMap.values()) : current;
       });
     });
 
@@ -318,17 +324,31 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
         const sortedDrops = [...dropDetail.timeBasedDrops].sort((a, b) => a.requiredMinutesWatched - b.requiredMinutesWatched);
 
         const config = yield* configStore.get;
-        const activeDrops = Array.filterMap(sortedDrops, (data) => processDrop(data, campaignId, config, rewardsMap, Date.now(), false));
+        const now = Date.now();
+        const activeDrops: Drop[] = [];
+        for (const d of sortedDrops) {
+          const opt = processDrop(d, campaignId, config, rewardsMap, now, false);
+          if (Option.isSome(opt)) activeDrops.push(opt.value);
+        }
 
+        const len = activeDrops.length;
         const result = activeDrops.map((drop, i) => ({
           ...drop,
-          name: truncate(`${i + 1}/${activeDrops.length}, ${drop.name}`),
+          name: truncate(`${i + 1}/${len}, ${drop.name}`),
         }));
 
         yield* Ref.update(progressRef, (current) => {
+          if (result.length === 0) return current;
           const dropMap = new Map(current.map((d) => [d.id, d]));
-          for (const drop of result) dropMap.set(drop.id, drop);
-          return Array.fromIterable(dropMap.values());
+          let changed = false;
+          for (const drop of result) {
+            const existing = dropMap.get(drop.id);
+            if (!existing || existing.currentMinutesWatched !== drop.currentMinutesWatched || existing.isClaimed !== drop.isClaimed) {
+              dropMap.set(drop.id, drop);
+              changed = true;
+            }
+          }
+          return changed ? Array.from(dropMap.values()) : current;
         });
 
         return result;
@@ -340,27 +360,43 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
       const now = Date.now();
 
       const campaigns = yield* Ref.get(campaignsRef);
-      const filtered = groupCampaigns(
-        Array.fromIterable(campaigns.values()).filter((c) => {
-          if (c.isOffline || getDropStatus(c.startAt, c.endAt, now).isExpired) return false;
-          return currentState._tag !== 'PriorityOnly' || config.priorityList.has(c.game.displayName);
-        }),
-      );
+      const result: Campaign[] = [];
+      const seenGames = new Set<string>();
 
-      return [...filtered].sort((a, b) => b.priority - a.priority || a.endAt.getTime() - b.endAt.getTime());
+      for (const c of campaigns.values()) {
+        if (c.isOffline) continue;
+        if (getDropStatus(c.startAt, c.endAt, now).isExpired) continue;
+        if (currentState._tag === 'PriorityOnly' && !config.priorityList.has(c.game.displayName)) continue;
+        if (seenGames.has(c.game.id)) continue;
+
+        seenGames.add(c.game.id);
+        result.push(c);
+      }
+
+      return result.sort((a, b) => b.priority - a.priority || a.endAt.getTime() - b.endAt.getTime());
     });
 
     const getSortedUpcoming: Effect.Effect<ReadonlyArray<Campaign>> = Effect.gen(function* () {
       const map = yield* Ref.get(campaignsRef);
       const now = Date.now();
-      return Array.fromIterable(map.values())
-        .filter((c) => getDropStatus(c.startAt, c.endAt, now).isUpcoming)
-        .sort((a, b) => a.startAt.getTime() - b.startAt.getTime());
+      const result: Campaign[] = [];
+
+      for (const c of map.values()) {
+        if (getDropStatus(c.startAt, c.endAt, now).isUpcoming) {
+          result.push(c);
+        }
+      }
+
+      return result.sort((a, b) => a.startAt.getTime() - b.startAt.getTime());
     });
 
     const getOffline: Effect.Effect<ReadonlyArray<Campaign>> = Effect.gen(function* () {
       const map = yield* Ref.get(campaignsRef);
-      return Array.fromIterable(map.values()).filter((c) => c.isOffline);
+      const result: Campaign[] = [];
+      for (const c of map.values()) {
+        if (c.isOffline) result.push(c);
+      }
+      return result;
     });
 
     const setOffline = (id: string, isOffline: boolean): Effect.Effect<void> =>
