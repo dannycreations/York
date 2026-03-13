@@ -15,27 +15,37 @@ const processOfflineCampaign = (campaign: Campaign, state: MainState, campaignSt
     const { isExpired } = getDropStatus(campaign.startAt, campaign.endAt, Date.now());
 
     if (isExpired) {
-      return yield* Ref.update(campaignStore.campaigns, (map) => {
+      yield* Ref.update(campaignStore.campaigns, (map) => {
         const next = new Map(map);
         next.delete(campaign.id);
         return next;
       });
+
+      return;
     }
 
     const drops = yield* campaignStore.getDropsForCampaign(campaign.id).pipe(Effect.orDie);
-    if (drops.length === 0) return;
+    const hasNoDrops = drops.length === 0;
+
+    if (hasNoDrops) {
+      return;
+    }
 
     const channels = yield* campaignStore.getChannelsForCampaign(campaign).pipe(Effect.orDie);
-    if (channels.length > 0) {
-      yield* Effect.logInfo(chalk`{bold.yellow ${campaign.name}} | {bold.yellow {strikethrough Offline}}`);
-      yield* campaignStore.setOffline(campaign.id, false);
+    const hasNoChannels = channels.length === 0;
 
-      const currentCampaign = yield* Ref.get(state.currentCampaign);
-      const currentDrop = yield* Ref.get(state.currentDrop);
-      const priority = calculatePriority(campaign, currentCampaign, currentDrop);
-
-      yield* campaignStore.setPriority(campaign.id, priority);
+    if (hasNoChannels) {
+      return;
     }
+
+    yield* Effect.logInfo(chalk`{bold.yellow ${campaign.name}} | {bold.yellow {strikethrough Offline}}`);
+    yield* campaignStore.setOffline(campaign.id, false);
+
+    const currentCampaign = yield* Ref.get(state.currentCampaign);
+    const currentDrop = yield* Ref.get(state.currentDrop);
+    const priority = calculatePriority(campaign, currentCampaign, currentDrop);
+
+    yield* campaignStore.setPriority(campaign.id, priority);
   });
 
 export const OfflineWorkflow = (state: MainState, configStore: StoreClient<ClientConfig>) =>

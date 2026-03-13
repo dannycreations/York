@@ -66,34 +66,50 @@ export const TwitchSocketLayer = (authToken: string): Layer.Layer<TwitchSocketTa
       const listen = (topic: string, id: string): Effect.Effect<void, TwitchSocketError> =>
         Ref.modify(subscribedTopics, (s) => {
           const topicKey = `${topic}.${id}`;
-          if (s.has(topicKey)) return [Effect.void, s];
-          return [
-            performListen(topicKey).pipe(
-              Effect.tap(() => Effect.logDebug(`TwitchSocket: Subscribed ${topicKey}`)),
-              Effect.catchAll((e) =>
-                Ref.update(subscribedTopics, (set) => {
-                  const next = new Set(set);
-                  next.delete(topicKey);
-                  return next;
-                }).pipe(Effect.zipRight(Effect.fail(e))),
-              ),
+          const alreadySubscribed = s.has(topicKey);
+
+          if (alreadySubscribed) {
+            return [Effect.void, s];
+          }
+
+          const listenEffect = performListen(topicKey).pipe(
+            Effect.tap(() => Effect.logDebug(`TwitchSocket: Subscribed ${topicKey}`)),
+            Effect.catchAll((e) =>
+              Ref.update(subscribedTopics, (set) => {
+                const next = new Set(set);
+                next.delete(topicKey);
+                return next;
+              }).pipe(Effect.zipRight(Effect.fail(e))),
             ),
-            new Set([...s, topicKey]),
-          ];
+          );
+
+          return [listenEffect, new Set([...s, topicKey])];
         }).pipe(Effect.flatten);
 
       const unlisten = (topic: string, id: string): Effect.Effect<void, TwitchSocketError> =>
         Ref.modify(subscribedTopics, (s) => {
           const topicKey = `${topic}.${id}`;
-          if (!s.has(topicKey)) return [Effect.void, s];
+          const isSubscribed = s.has(topicKey);
+
+          if (!isSubscribed) {
+            return [Effect.void, s];
+          }
+
           const next = new Set(s);
           next.delete(topicKey);
-          return [performUnlisten(topicKey).pipe(Effect.tap(() => Effect.logDebug(`TwitchSocket: Unsubscribed ${topicKey}`))), next];
+
+          const unlistenEffect = performUnlisten(topicKey).pipe(Effect.tap(() => Effect.logDebug(`TwitchSocket: Unsubscribed ${topicKey}`)));
+
+          return [unlistenEffect, next];
         }).pipe(Effect.flatten);
 
-      const messages: Stream.Stream<SocketMessage, never, never> = Stream.filterMap(client.events, (event) =>
-        event._tag === 'Message' ? Option.some(event.data) : Option.none(),
-      ).pipe(
+      const messages: Stream.Stream<SocketMessage, never, never> = Stream.filterMap(client.events, (event) => {
+        if (event._tag !== 'Message') {
+          return Option.none();
+        }
+
+        return Option.some(event.data);
+      }).pipe(
         Stream.mapEffect((data) =>
           Effect.gen(function* () {
             const raw = yield* Effect.try({
@@ -101,12 +117,24 @@ export const TwitchSocketLayer = (authToken: string): Layer.Layer<TwitchSocketTa
               catch: () => undefined,
             }).pipe(Effect.orDie);
 
-            if (
-              !isObjectLike<{ readonly type: string; readonly data: { readonly topic: string; readonly message: string } }>(raw) ||
-              raw.type !== 'MESSAGE' ||
-              typeof raw.data.topic !== 'string' ||
-              typeof raw.data.message !== 'string'
-            ) {
+            const isRawValid = isObjectLike<{
+              readonly type: string;
+              readonly data: { readonly topic: string; readonly message: string };
+            }>(raw);
+
+            if (!isRawValid) {
+              return Option.none();
+            }
+
+            if (raw.type !== 'MESSAGE') {
+              return Option.none();
+            }
+
+            if (typeof raw.data.topic !== 'string') {
+              return Option.none();
+            }
+
+            if (typeof raw.data.message !== 'string') {
               return Option.none();
             }
 
@@ -118,25 +146,38 @@ export const TwitchSocketLayer = (authToken: string): Layer.Layer<TwitchSocketTa
               catch: () => undefined,
             }).pipe(Effect.orDie);
 
-            if (!isObjectLike<{ readonly data: unknown; readonly topic_id: unknown }>(value)) return Option.none();
+            const isValueValid = isObjectLike<{ readonly data: unknown; readonly topic_id: unknown }>(value);
+
+            if (!isValueValid) {
+              return Option.none();
+            }
 
             const payloadData = isObjectLike(value.data) ? value.data : {};
+
+            let topic_id = topicId;
+
+            if (typeof value.topic_id === 'string') {
+              topic_id = value.topic_id;
+            }
+
             const payload = {
               topicType,
               topicId,
               payload: {
                 ...value,
                 ...payloadData,
-                topic_id: typeof value.topic_id === 'string' ? value.topic_id : topicId,
+                topic_id,
               },
             };
 
             yield* Effect.logDebug(chalk`TwitchSocket: Emitted ${topicType}.${topicId}`, payload);
 
-            return yield* Schema.decodeUnknown(SocketMessageSchema)(payload).pipe(
+            const decodeResult = yield* Schema.decodeUnknown(SocketMessageSchema)(payload).pipe(
               Effect.map(Option.some),
               Effect.catchAll(() => Effect.succeed(Option.none())),
             );
+
+            return decodeResult;
           }),
         ),
         Stream.filterMap(identity),
@@ -147,7 +188,12 @@ export const TwitchSocketLayer = (authToken: string): Layer.Layer<TwitchSocketTa
         Stream.runForEach(() =>
           Effect.gen(function* () {
             const topics = yield* Ref.get(subscribedTopics);
-            if (topics.size === 0) return;
+            const hasNoTopics = topics.size === 0;
+
+            if (hasNoTopics) {
+              return;
+            }
+
             yield* Effect.logInfo(`TwitchSocket: Reconnected, resubscribing to ${topics.size} topics`);
             yield* Effect.forEach(topics, (topicKey) => performListen(topicKey), { discard: true });
           }),

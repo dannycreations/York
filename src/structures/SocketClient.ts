@@ -61,17 +61,24 @@ export const makeSocketClient = (options: SocketClientOptions): Effect.Effect<So
         if (Option.isSome(scopeOpt)) {
           yield* Scope.close(scopeOpt.value, Exit.void);
         }
+
         yield* Ref.set(socketRef, Option.none());
+
         const nextDeferred = yield* Deferred.make<void, SocketClientError>();
         yield* Ref.set(openedDeferredRef, nextDeferred);
+
         yield* PubSub.publish(eventsPubSub, SocketEvent.Close());
       });
 
     const connect = Effect.gen(function* () {
       const isConnecting = yield* Ref.getAndUpdate(isConnectingRef, () => true);
-      if (isConnecting) return;
+
+      if (isConnecting) {
+        return;
+      }
 
       const currentSocket = yield* Ref.get(socketRef);
+
       if (Option.isSome(currentSocket)) {
         yield* Ref.set(isConnectingRef, false);
         return;
@@ -148,11 +155,13 @@ export const makeSocketClient = (options: SocketClientOptions): Effect.Effect<So
 
             if (exit._tag === 'Failure' && !Exit.isInterrupted(exit)) {
               yield* Effect.logError('SocketClient: Connection closed with error');
-              yield* Deferred.fail(opened, new SocketClientError({ message: 'Fatal connection failure' }));
-            } else {
-              yield* Effect.logDebug('SocketClient: Connection closed gracefully');
-              yield* Deferred.fail(opened, new SocketClientError({ message: 'Connection closed' }));
+              const failureError = new SocketClientError({ message: 'Fatal connection failure' });
+              return yield* Deferred.fail(opened, failureError);
             }
+
+            yield* Effect.logDebug('SocketClient: Connection closed gracefully');
+            const closeError = new SocketClientError({ message: 'Connection closed' });
+            return yield* Deferred.fail(opened, closeError);
           }),
         ),
         Effect.retry(
@@ -181,9 +190,15 @@ export const makeSocketClient = (options: SocketClientOptions): Effect.Effect<So
       Effect.onExit((exit) =>
         Effect.gen(function* () {
           yield* Ref.set(isConnectingRef, false);
-          if (exit._tag === 'Failure' && !Exit.isInterrupted(exit)) {
-            return yield* Effect.failCause(exit.cause);
+          if (exit._tag !== 'Failure') {
+            return;
           }
+
+          if (Exit.isInterrupted(exit)) {
+            return;
+          }
+
+          return yield* Effect.failCause(exit.cause);
         }).pipe(Effect.catchAllCause(() => Effect.void)),
       ),
     );
@@ -194,6 +209,7 @@ export const makeSocketClient = (options: SocketClientOptions): Effect.Effect<So
 
         const writeLoop: Effect.Effect<void, SocketClientError, Scope.Scope> = Effect.gen(function* () {
           const socketOpt = yield* Ref.get(socketRef);
+
           if (Option.isNone(socketOpt)) {
             const opened = yield* Ref.get(openedDeferredRef);
             yield* Deferred.await(opened);
@@ -218,15 +234,22 @@ export const makeSocketClient = (options: SocketClientOptions): Effect.Effect<So
 
     const timeoutLoop = Effect.gen(function* () {
       const socketOpt = yield* Ref.get(socketRef);
-      if (Option.isNone(socketOpt)) return;
+
+      if (Option.isNone(socketOpt)) {
+        return;
+      }
 
       const lastPong = yield* Ref.get(lastPongReceivedAt);
       const now = Date.now();
-      if (now - lastPong > pingIntervalMs + pingTimeoutMs) {
-        yield* Effect.logWarning('SocketClient: Ping timeout, reconnecting...');
-        yield* disconnect();
-        yield* connect;
+      const isTimeout = now - lastPong > pingIntervalMs + pingTimeoutMs;
+
+      if (!isTimeout) {
+        return;
       }
+
+      yield* Effect.logWarning('SocketClient: Ping timeout, reconnecting...');
+      yield* disconnect();
+      yield* connect;
     }).pipe(Effect.repeat(Schedule.spaced('5 seconds')));
 
     const parentScope = yield* Effect.scope;

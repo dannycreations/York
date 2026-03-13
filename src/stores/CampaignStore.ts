@@ -59,12 +59,17 @@ const processDrop = (
   const subsCount = requiredSubs ?? 0;
   const isClaimed = subsCount > 0 || (drop.self?.isClaimed ?? false);
 
-  if (isClaimed) return Option.none();
+  if (isClaimed) {
+    return Option.none();
+  }
 
   const benefits = drop.benefitEdges.map((e) => e.benefit.id);
+
   for (const benefitId of benefits) {
     const lastAwardedAt = rewardsMap.get(benefitId);
-    if (lastAwardedAt !== undefined && lastAwardedAt >= startAt) {
+    const hasBeenAwarded = lastAwardedAt !== undefined && lastAwardedAt >= startAt;
+
+    if (hasBeenAwarded) {
       return Option.none();
     }
   }
@@ -72,13 +77,20 @@ const processDrop = (
   const currentMinutes = drop.self?.currentMinutesWatched ?? 0;
   const isWatched = drop.self ? isMinutesWatchedMet({ ...drop.self, requiredMinutesWatched }) : false;
 
-  if (isWatched && !config.isClaimDrops) return Option.none();
+  if (isWatched && !config.isClaimDrops) {
+    return Option.none();
+  }
 
   const minutesLeft = requiredMinutesWatched - currentMinutes;
   const status = getDropStatus(startAt, endAt, now, minutesLeft);
+
+  if (status.isExpired) {
+    return Option.none();
+  }
+
   const hasAward = !!drop.self?.dropInstanceID;
 
-  if (status.isExpired || (status.isUpcoming && (!allowUpcomingIfHasAward || !hasAward))) {
+  if (status.isUpcoming && (!allowUpcomingIfHasAward || !hasAward)) {
     return Option.none();
   }
 
@@ -122,7 +134,9 @@ const filterChannelsByCampaign = (
   channels: readonly Channel[],
   campaignId: string,
 ): Effect.Effect<ReadonlyArray<Channel>, TwitchApiError> => {
-  if (channels.length === 0) return Effect.succeed([]);
+  if (channels.length === 0) {
+    return Effect.succeed([]);
+  }
 
   return api
     .graphql(
@@ -135,9 +149,17 @@ const filterChannelsByCampaign = (
 };
 
 const cleanupSocketListeners = (socket: TwitchSocket | undefined, channels: readonly Channel[]): Effect.Effect<void, TwitchSocketError> => {
-  if (!socket || channels.length === 0) return Effect.void;
+  if (!socket) {
+    return Effect.void;
+  }
 
-  return Effect.forEach(
+  const hasNoChannels = channels.length === 0;
+
+  if (hasNoChannels) {
+    return Effect.void;
+  }
+
+  const cleanupEffect = Effect.forEach(
     channels,
     (c) =>
       Effect.all(
@@ -146,6 +168,8 @@ const cleanupSocketListeners = (socket: TwitchSocket | undefined, channels: read
       ),
     { discard: true },
   );
+
+  return cleanupEffect;
 };
 
 const processOnlineChannels = (
@@ -179,7 +203,9 @@ const processInventoryDrops = (
     const filtered: Drop[] = [];
     for (const d of drops) {
       const opt = processDrop(d, campaign.id, config, rewardsMap, now, true);
-      if (Option.isSome(opt)) filtered.push(opt.value);
+      if (Option.isSome(opt)) {
+        filtered.push(opt.value);
+      }
     }
 
     const len = filtered.length;
@@ -213,18 +239,29 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
         (data) =>
           Effect.gen(function* () {
             const gameName = data.game.displayName;
-            if (config.exclusionList.has(gameName)) return Option.none();
+            const isExcluded = config.exclusionList.has(gameName);
 
-            if (config.usePriorityConnected && data.self.isAccountConnected && !config.priorityList.has(gameName)) {
+            if (isExcluded) {
+              return Option.none();
+            }
+
+            const shouldAutoPriority = config.usePriorityConnected && data.self.isAccountConnected && !config.priorityList.has(gameName);
+
+            if (shouldAutoPriority) {
               yield* configStore.update((c) => ({
                 ...c,
                 priorityList: new Set([...c.priorityList, gameName]),
               }));
             }
 
-            if (config.isPriorityOnly && !config.priorityList.has(gameName)) return Option.none();
+            const isPriorityOnlyMismatch = config.isPriorityOnly && !config.priorityList.has(gameName);
+
+            if (isPriorityOnlyMismatch) {
+              return Option.none();
+            }
 
             const existing = existingCampaigns.get(data.id);
+
             return Option.some({
               id: data.id,
               name: truncate((existing?.name || data.name).trim()),
@@ -242,20 +279,34 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
 
       const campaignMap = new Map<string, Campaign>();
       let changed = false;
+
       for (const opt of newCampaignsList) {
-        if (Option.isSome(opt)) {
-          const campaign = opt.value;
-          campaignMap.set(campaign.id, campaign);
-          if (!changed) {
-            const existing = existingCampaigns.get(campaign.id);
-            if (!existing || existing.isOffline !== campaign.isOffline || existing.priority !== campaign.priority) {
-              changed = true;
-            }
-          }
+        if (Option.isNone(opt)) {
+          continue;
+        }
+
+        const campaign = opt.value;
+        campaignMap.set(campaign.id, campaign);
+
+        if (changed) {
+          continue;
+        }
+
+        const existing = existingCampaigns.get(campaign.id);
+        if (!existing) {
+          changed = true;
+          continue;
+        }
+
+        const isStatusChanged = existing.isOffline !== campaign.isOffline || existing.priority !== campaign.priority;
+        if (isStatusChanged) {
+          changed = true;
         }
       }
 
-      if (changed || campaignMap.size !== existingCampaigns.size) {
+      const isSizeChanged = campaignMap.size !== existingCampaigns.size;
+
+      if (changed || isSizeChanged) {
         yield* Ref.set(campaignsRef, campaignMap);
       }
     });
@@ -276,19 +327,31 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
 
       yield* Ref.set(rewardsRef, rewardsMap);
       yield* Ref.update(progressRef, (current) => {
-        if (newProgress.length === 0) return current;
-        if (current.length === 0) return newProgress;
+        if (newProgress.length === 0) {
+          return current;
+        }
+
+        if (current.length === 0) {
+          return newProgress;
+        }
 
         const currentMap = new Map(current.map((d) => [d.id, d]));
         let changed = false;
+
         for (const drop of newProgress) {
           const existing = currentMap.get(drop.id);
-          if (!existing || existing.currentMinutesWatched !== drop.currentMinutesWatched || existing.isClaimed !== drop.isClaimed) {
+          const isStateChanged = existing && (existing.currentMinutesWatched !== drop.currentMinutesWatched || existing.isClaimed !== drop.isClaimed);
+
+          if (!existing || isStateChanged) {
             currentMap.set(drop.id, drop);
             changed = true;
           }
         }
-        if (!changed) return current;
+
+        if (!changed) {
+          return current;
+        }
+
         return Array.from(currentMap.values());
       });
     });
@@ -307,20 +370,26 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
         }
 
         yield* Ref.update(campaignsRef, (map) => {
-          const next = new Map(map);
-          const existing = next.get(campaignId);
-          if (existing) {
-            next.set(campaignId, {
-              ...existing,
-              name: truncate(dropDetail.name.trim()),
-              game: dropDetail.game,
-              allowChannels: dropDetail.allow?.channels?.map((c) => c.name) ?? [],
-            });
+          const existing = map.get(campaignId);
+          if (!existing) {
+            return map;
           }
+
+          const next = new Map(map);
+          next.set(campaignId, {
+            ...existing,
+            name: truncate(dropDetail.name.trim()),
+            game: dropDetail.game,
+            allowChannels: dropDetail.allow?.channels?.map((c) => c.name) ?? [],
+          });
           return next;
         });
 
-        if (!dropDetail.timeBasedDrops) return [];
+        const hasNoDrops = !dropDetail.timeBasedDrops || dropDetail.timeBasedDrops.length === 0;
+
+        if (hasNoDrops) {
+          return [];
+        }
 
         const rewardsMap = yield* Ref.get(rewardsRef);
         const sortedDrops = [...dropDetail.timeBasedDrops].sort((a, b) => a.requiredMinutesWatched - b.requiredMinutesWatched);
@@ -328,9 +397,13 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
         const config = yield* configStore.get;
         const now = Date.now();
         const activeDrops: Drop[] = [];
+
         for (const d of sortedDrops) {
           const opt = processDrop(d, campaignId, config, rewardsMap, now, false);
-          if (Option.isSome(opt)) activeDrops.push(opt.value);
+
+          if (Option.isSome(opt)) {
+            activeDrops.push(opt.value);
+          }
         }
 
         const len = activeDrops.length;
@@ -340,19 +413,32 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
         }));
 
         yield* Ref.update(progressRef, (current) => {
-          if (result.length === 0) return current;
-          if (current.length === 0) return result;
+          if (result.length === 0) {
+            return current;
+          }
+
+          if (current.length === 0) {
+            return result;
+          }
 
           const currentMap = new Map(current.map((d) => [d.id, d]));
           let changed = false;
+
           for (const drop of result) {
             const existing = currentMap.get(drop.id);
-            if (!existing || existing.currentMinutesWatched !== drop.currentMinutesWatched || existing.isClaimed !== drop.isClaimed) {
+            const isStateChanged =
+              existing && (existing.currentMinutesWatched !== drop.currentMinutesWatched || existing.isClaimed !== drop.isClaimed);
+
+            if (!existing || isStateChanged) {
               currentMap.set(drop.id, drop);
               changed = true;
             }
           }
-          if (!changed) return current;
+
+          if (!changed) {
+            return current;
+          }
+
           return Array.from(currentMap.values());
         });
 
@@ -369,10 +455,21 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
       const seenGames = new Set<string>();
 
       for (const c of campaigns.values()) {
-        if (c.isOffline) continue;
-        if (getDropStatus(c.startAt, c.endAt, now).isExpired) continue;
-        if (currentState._tag === 'PriorityOnly' && !config.priorityList.has(c.game.displayName)) continue;
-        if (seenGames.has(c.game.id)) continue;
+        if (c.isOffline) {
+          continue;
+        }
+
+        if (getDropStatus(c.startAt, c.endAt, now).isExpired) {
+          continue;
+        }
+
+        if (currentState._tag === 'PriorityOnly' && !config.priorityList.has(c.game.displayName)) {
+          continue;
+        }
+
+        if (seenGames.has(c.game.id)) {
+          continue;
+        }
 
         seenGames.add(c.game.id);
         result.push(c);
@@ -399,7 +496,9 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
       const map = yield* Ref.get(campaignsRef);
       const result: Campaign[] = [];
       for (const c of map.values()) {
-        if (c.isOffline) result.push(c);
+        if (c.isOffline) {
+          result.push(c);
+        }
       }
       return result;
     });
@@ -427,36 +526,52 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
     const getChannelsForCampaign = (campaign: Campaign): Effect.Effect<ReadonlyArray<Channel>, TwitchApiError | TwitchSocketError> =>
       Effect.gen(function* () {
         const onlineChannels: Channel[] = [];
+        const hasAllowChannels = campaign.allowChannels.length > 0;
 
-        if (campaign.allowChannels.length > 0) {
+        if (hasAllowChannels) {
           const response = yield* api.channelStreams(campaign.allowChannels.slice(0, 30));
           for (const u of response.users) {
-            if (u.stream !== null) {
-              onlineChannels.push({
-                id: u.id,
-                login: u.login,
-                gameId: campaign.game.id,
-                isOnline: true,
-              });
+            const isOffline = u.stream === null;
+
+            if (isOffline) {
+              continue;
             }
-          }
-        } else {
-          const response = yield* api.gameDirectory(campaign.game.slug || '');
-          if (response.game) {
-            for (const e of response.game.streams.edges) {
-              if (e.node.broadcaster !== null) {
-                onlineChannels.push({
-                  id: e.node.broadcaster.id,
-                  login: e.node.broadcaster.login,
-                  gameId: campaign.game.id,
-                  isOnline: true,
-                });
-              }
-            }
+
+            onlineChannels.push({
+              id: u.id,
+              login: u.login,
+              gameId: campaign.game.id,
+              isOnline: true,
+            });
           }
         }
 
-        if (onlineChannels.length === 0) return [];
+        if (!hasAllowChannels) {
+          const response = yield* api.gameDirectory(campaign.game.slug || '');
+          const edges = response.game?.streams.edges ?? [];
+
+          for (const e of edges) {
+            const isMissingBroadcaster = e.node.broadcaster === null;
+
+            if (isMissingBroadcaster) {
+              continue;
+            }
+
+            onlineChannels.push({
+              id: e.node.broadcaster.id,
+              login: e.node.broadcaster.login,
+              gameId: campaign.game.id,
+              isOnline: true,
+            });
+          }
+        }
+
+        const hasNoOnlineChannels = onlineChannels.length === 0;
+
+        if (hasNoOnlineChannels) {
+          return [];
+        }
+
         return yield* processOnlineChannels(api, socket, campaign.id, onlineChannels);
       });
 

@@ -12,7 +12,12 @@ export const getDropStatus = (startAt: Date, endAt: Date, nowMs: number, minutes
   const endAtMs = endAt.getTime();
 
   const isTimeExpired = endAtMs < nowMs;
-  const isMinutesExpired = typeof minutesLeft === 'number' ? endAtMs < nowMs + (minutesLeft + GRACE_PERIOD_MINUTES) * 60_000 : false;
+
+  let isMinutesExpired = false;
+  if (typeof minutesLeft === 'number') {
+    const expirationThresholdMs = nowMs + (minutesLeft + GRACE_PERIOD_MINUTES) * 60_000;
+    isMinutesExpired = endAtMs < expirationThresholdMs;
+  }
 
   const isExpired = isTimeExpired || isMinutesExpired;
   const isUpcoming = nowMs < startAtMs && nowMs < endAtMs;
@@ -33,13 +38,26 @@ export const calculatePriority = (
     readonly game: { readonly id: string };
   }>,
   currentDrop: Option.Option<{ readonly endAt: Date }>,
-): number =>
-  Option.match(currentCampaign, {
-    onNone: () => 0,
-    onSome: (current) => {
-      const isDifferentGame = current.game.id !== target.game.id;
-      const shouldPrioritize = Option.isSome(currentDrop) && isDifferentGame && currentDrop.value.endAt >= target.endAt;
+): number => {
+  if (Option.isNone(currentCampaign)) {
+    return 0;
+  }
 
-      return shouldPrioritize ? current.priority + 1 : 0;
-    },
-  });
+  const current = currentCampaign.value;
+
+  if (Option.isNone(currentDrop)) {
+    return 0;
+  }
+
+  const isDifferentGame = current.game.id !== target.game.id;
+  if (!isDifferentGame) {
+    return 0;
+  }
+
+  const currentDropValue = currentDrop.value;
+  if (currentDropValue.endAt < target.endAt) {
+    return 0;
+  }
+
+  return current.priority + 1;
+};

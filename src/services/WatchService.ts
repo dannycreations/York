@@ -28,19 +28,31 @@ export const WatchServiceLayer: Layer.Layer<WatchServiceTag, never, HttpClientTa
 
     const watch = (channel: Channel): Effect.Effect<{ readonly success: boolean; readonly hlsUrl?: string }, WatchError> =>
       Effect.gen(function* () {
-        if (!channel.currentSid) return { success: false };
+        const hasNoSid = !channel.currentSid;
+
+        if (hasNoSid) {
+          return { success: false };
+        }
 
         const sendStream = Effect.gen(function* () {
-          const hlsUrl = channel.hlsUrl ? channel.hlsUrl : yield* getHlsUrl(channel.login);
-          const success = yield* checkStream(hlsUrl);
-          if (success) return { success: true, hlsUrl };
+          const initialHlsUrl = channel.hlsUrl || (yield* getHlsUrl(channel.login));
+          const isInitialSuccess = yield* checkStream(initialHlsUrl);
+
+          if (isInitialSuccess) {
+            return { success: true, hlsUrl: initialHlsUrl };
+          }
 
           const live = yield* api.channelLive(channel.login);
-          if (!live.user?.stream?.id) return { success: false, hlsUrl };
+          const streamId = live.user?.stream?.id;
+
+          if (!streamId) {
+            return { success: false, hlsUrl: initialHlsUrl };
+          }
 
           const freshHlsUrl = yield* getHlsUrl(channel.login);
-          const freshSuccess = yield* checkStream(freshHlsUrl);
-          return { success: freshSuccess, hlsUrl: freshHlsUrl };
+          const isFreshSuccess = yield* checkStream(freshHlsUrl);
+
+          return { success: isFreshSuccess, hlsUrl: freshHlsUrl };
         }).pipe(Effect.catchAll(() => Effect.succeed({ success: false, hlsUrl: channel.hlsUrl })));
 
         const streamResult = yield* sendStream;
@@ -53,9 +65,24 @@ export const WatchServiceLayer: Layer.Layer<WatchServiceTag, never, HttpClientTa
 
     const findLastHttpUrl = (text: string): string | undefined => {
       const start = text.lastIndexOf('\nhttp') + 1;
-      if (start === 0) return text.startsWith('http') ? text.split('\n', 1)[0].trim() : undefined;
+      if (start === 0) {
+        const hasHttp = text.startsWith('http');
+
+        if (!hasHttp) {
+          return undefined;
+        }
+
+        const lines = text.split('\n', 1);
+        return lines[0].trim();
+      }
+
       const end = text.indexOf('\n', start);
-      return (end === -1 ? text.substring(start) : text.substring(start, end)).trim();
+
+      if (end === -1) {
+        return text.substring(start).trim();
+      }
+
+      return text.substring(start, end).trim();
     };
 
     const getHlsUrl = (login: string): Effect.Effect<string, WatchError> =>
@@ -81,7 +108,9 @@ export const WatchServiceLayer: Layer.Layer<WatchServiceTag, never, HttpClientTa
       Effect.gen(function* () {
         const hls = yield* http.request({ url: hlsUrl, headers: { accept: 'application/x-mpegURL' } });
         const chunkUrl = findLastHttpUrl(hls.body);
-        if (!chunkUrl) return false;
+        if (!chunkUrl) {
+          return false;
+        }
 
         const res = yield* http.request({ method: 'HEAD', url: chunkUrl });
         return res.statusCode === 200;

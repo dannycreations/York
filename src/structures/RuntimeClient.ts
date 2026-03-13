@@ -61,10 +61,16 @@ export const runMainCycle = <A, E, R>(program: Effect.Effect<A, E, R>, options: 
       Effect.catchAllCause((cause) =>
         Effect.gen(function* () {
           const failures = Cause.failures(cause);
+          const hasRestart = Chunk.some(failures, (error: unknown): error is RuntimeRestart => {
+            const isError = isErrorLike<{ readonly _tag: string }>(error);
+            if (!isError) {
+              return false;
+            }
 
-          const isRestart = (error: unknown): error is RuntimeRestart =>
-            isErrorLike<{ readonly _tag: string }>(error) && error._tag === 'RuntimeRestart';
-          if (Chunk.some(failures, isRestart)) {
+            return error._tag === 'RuntimeRestart';
+          });
+
+          if (hasRestart) {
             return;
           }
 
@@ -77,6 +83,7 @@ export const runMainCycle = <A, E, R>(program: Effect.Effect<A, E, R>, options: 
           if (nextRestarts.length >= maxRestarts) {
             yield* Effect.logFatal(chalk`{bold.red System crashed too many times. Shutting down...}`, cause);
             yield* Effect.sync(() => process.exit(1));
+            return;
           }
 
           yield* Effect.logError(chalk`{bold.red System encountered an error}`, cause);

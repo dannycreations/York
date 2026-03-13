@@ -80,11 +80,22 @@ const parseUniqueCookies = (setCookie: readonly string[]): Readonly<Record<strin
   const result: Record<string, string> = {};
   for (const cookie of setCookie) {
     const [name, rest] = cookie.split('=', 2);
-    if (!rest) continue;
+
+    if (!rest) {
+      continue;
+    }
+
     const value = rest.split(';', 1)[0];
 
-    if (name === 'server_session_id') result['client-session-id'] = value;
-    else if (name === 'unique_id') result['x-device-id'] = value;
+    if (name === 'server_session_id') {
+      result['client-session-id'] = value;
+      continue;
+    }
+
+    if (name === 'unique_id') {
+      result['x-device-id'] = value;
+      continue;
+    }
   }
   return result;
 };
@@ -125,15 +136,18 @@ export const TwitchApiLayer = (authToken: string, isDebug = false): Layer.Layer<
       const getUserId = Deferred.await(userIdDeferred);
 
       const writeDebugFile = (data: string | object, name?: string): Effect.Effect<void> => {
-        if (!isDebug) return Effect.void;
+        if (!isDebug) {
+          return Effect.void;
+        }
 
         const content = isObjectLike(data) ? JSON.stringify(data, null, 2) : data;
         const debugDir = join(process.cwd(), 'debug');
 
         return Effect.tryPromise({
           try: async () => {
+            const fileName = `${name ?? Date.now()}.json`;
             await mkdir(debugDir, { recursive: true });
-            await writeFile(join(debugDir, `${name ?? Date.now()}.json`), content);
+            await writeFile(join(debugDir, fileName), content);
           },
           catch: (e) => new TwitchApiError({ message: 'Failed to write debug file', cause: e }),
         }).pipe(Effect.ignore);
@@ -158,13 +172,18 @@ export const TwitchApiLayer = (authToken: string, isDebug = false): Layer.Layer<
             retry: -1,
           });
 
-          if (response.statusCode === 401) {
+          const isUnauthorized = response.statusCode === 401;
+
+          if (isUnauthorized) {
             yield* Effect.logFatal(chalk`{red Unauthorized: Invalid OAuth token detected during request}`);
             return yield* Effect.die(new TwitchApiError({ message: 'Unauthorized: Invalid OAuth token detected during request' }));
           }
 
-          if (isDebug || isDebugOverride) {
+          const isDebugLog = isDebug || isDebugOverride;
+
+          if (isDebugLog) {
             yield* Effect.logDebug(chalk`API: {bold ${response.statusCode}} ${payload.method ?? 'GET'} ${payload.url}`);
+
             if (isDebugOverride) {
               yield* writeDebugFile(
                 {
@@ -194,7 +213,7 @@ export const TwitchApiLayer = (authToken: string, isDebug = false): Layer.Layer<
         yield* Ref.update(headersRef, (h) => {
           const next = { ...h };
           const setCookie = response.headers['set-cookie'];
-          if (setCookie && Array.isArray(setCookie)) {
+          if (Array.isArray(setCookie)) {
             Object.assign(next, parseUniqueCookies(setCookie));
           }
 
@@ -235,25 +254,35 @@ export const TwitchApiLayer = (authToken: string, isDebug = false): Layer.Layer<
         const decode = Schema.decodeUnknown(schema);
 
         return Effect.gen(function* () {
-          const userId = waitForUserId ? yield* getUserId : '';
+          let userId = '';
+          if (waitForUserId) {
+            userId = yield* getUserId;
+          }
+
           const payload = requestsArray.map((r) => {
             let variables = r.variables;
-            if (r.operationName === 'DropCampaignDetails' && !variables.channelLogin && userId) {
+
+            const isDetails = r.operationName === 'DropCampaignDetails';
+            const hasNoLogin = !variables.channelLogin;
+
+            if (isDetails && hasNoLogin && userId) {
               variables = { ...variables, channelLogin: userId };
             }
+
+            const extensions = r.hash
+              ? {
+                  persistedQuery: {
+                    version: 1,
+                    sha256Hash: r.hash,
+                  },
+                }
+              : undefined;
 
             return {
               operationName: r.operationName,
               variables,
               query: r.query,
-              extensions: r.hash
-                ? {
-                    persistedQuery: {
-                      version: 1,
-                      sha256Hash: r.hash,
-                    },
-                  }
-                : undefined,
+              extensions,
             };
           });
 
@@ -266,10 +295,15 @@ export const TwitchApiLayer = (authToken: string, isDebug = false): Layer.Layer<
 
           return yield* Effect.forEach(
             response.body,
-            (res) =>
-              res.errors && res.errors.length > 0
-                ? handleGraphqlErrors(res.errors)
-                : decode(res.data).pipe(Effect.mapError((e) => new TwitchApiError({ message: 'GraphQL Validation Error', cause: e }))),
+            (res) => {
+              const hasErrors = !!res.errors && res.errors.length > 0;
+
+              if (hasErrors) {
+                return handleGraphqlErrors(res.errors);
+              }
+
+              return decode(res.data).pipe(Effect.mapError((e) => new TwitchApiError({ message: 'GraphQL Validation Error', cause: e })));
+            },
             { concurrency: 'unbounded' },
           );
         }).pipe(

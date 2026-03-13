@@ -48,26 +48,34 @@ const resetChannel = (state: MainState): Effect.Effect<void> =>
   });
 
 const claimChannelPoints = (channel: Channel, api: TwitchApi, config: ClientConfig): Effect.Effect<void, TwitchApiError> =>
-  !config.isClaimPoints
-    ? Effect.void
-    : Effect.gen(function* () {
-        const channelData = yield* api.channelPoints(channel.login);
-        const availableClaim = channelData.community.channel.self.communityPoints.availableClaim;
+  Effect.gen(function* () {
+    if (!config.isClaimPoints) {
+      return;
+    }
 
-        if (availableClaim) {
-          yield* api.claimPoints(channel.id, availableClaim.id);
-          yield* Effect.logInfo(chalk`{green ${channel.login}} | {yellow Points claimed}`);
-        }
-      });
+    const channelData = yield* api.channelPoints(channel.login);
+    const availableClaim = channelData.community.channel.self.communityPoints.availableClaim;
+
+    if (!availableClaim) {
+      return;
+    }
+
+    yield* api.claimPoints(channel.id, availableClaim.id);
+    yield* Effect.logInfo(chalk`{green ${channel.login}} | {yellow Points claimed}`);
+  });
 
 const updateChannelInfo = (state: MainState, api: TwitchApi, chan: Channel): Effect.Effect<Option.Option<Channel>, MainWorkflowError> =>
   Effect.gen(function* () {
     const localMin = yield* Ref.get(state.localMinutesWatched);
-    if (chan.currentSid && localMin > 0 && localMin < 15) return Option.some(chan);
+    const isRecentWatch = !!chan.currentSid && localMin > 0 && localMin < 15;
+
+    if (isRecentWatch) {
+      return Option.some(chan);
+    }
 
     const streamRes = yield* api.helixStreams(chan.id).pipe(Effect.mapError((e) => new MainWorkflowError({ message: e.message, cause: e })));
-
     const live = streamRes.data[0];
+
     if (!live) {
       yield* resetChannel(state);
       return Option.none();
@@ -79,12 +87,14 @@ const updateChannelInfo = (state: MainState, api: TwitchApi, chan: Channel): Eff
       currentGameId: live.game_id,
       currentGameName: live.game_name,
     };
+
     yield* Ref.update(state.currentChannel, (current) =>
       Option.match(current, {
         onNone: () => Option.some(updated),
         onSome: (c) => (c.id === updated.id ? Option.some(updated) : current),
       }),
     );
+
     return Option.some(updated);
   });
 
@@ -94,31 +104,53 @@ const handleWatchSuccess = (state: MainState, chan: Channel, campaignStore: Camp
     yield* Ref.set(state.nextWatch, Date.now() + 60_000);
 
     const dropOpt = yield* Ref.get(state.currentDrop);
-    if (Option.isSome(dropOpt)) {
-      const drop = dropOpt.value;
-      const currentMinutesWatched = drop.currentMinutesWatched + 1;
-      yield* Effect.logInfo(chalk`{green ${drop.name}} | {green ${chan.login}} | {green ${currentMinutesWatched}/${drop.requiredMinutesWatched}}`);
-      const updatedDropState = { ...drop, currentMinutesWatched };
-      yield* Ref.set(state.currentDrop, Option.some(updatedDropState));
 
-      if (isMinutesWatchedMet(updatedDropState)) {
-        yield* Ref.set(state.currentChannel, Option.none());
-        return;
-      }
-
-      if ((yield* Ref.get(state.localMinutesWatched)) >= 20) {
-        yield* Ref.set(state.localMinutesWatched, 0);
-        yield* campaignStore.updateProgress;
-        const drops = yield* campaignStore.getDropsForCampaign(drop.campaignId);
-        const updatedDrop = drops.find((d) => d.id === drop.id);
-        if (updatedDrop) {
-          if (currentMinutesWatched - updatedDrop.currentMinutesWatched >= 20) {
-            yield* Ref.update(state.currentChannel, (c) => Option.map(c, (ch) => ({ ...ch, isOnline: false })));
-          }
-          yield* Ref.set(state.currentDrop, Option.some(updatedDrop));
-        }
-      }
+    if (Option.isNone(dropOpt)) {
+      return;
     }
+
+    const drop = dropOpt.value;
+    const currentMinutesWatched = drop.currentMinutesWatched + 1;
+    yield* Effect.logInfo(chalk`{green ${drop.name}} | {green ${chan.login}} | {green ${currentMinutesWatched}/${drop.requiredMinutesWatched}}`);
+
+    const updatedDropState = { ...drop, currentMinutesWatched };
+    yield* Ref.set(state.currentDrop, Option.some(updatedDropState));
+
+    const isCompleted = isMinutesWatchedMet(updatedDropState);
+
+    if (isCompleted) {
+      yield* Ref.set(state.currentChannel, Option.none());
+      return;
+    }
+
+    const localMin = yield* Ref.get(state.localMinutesWatched);
+    const shouldSyncProgress = localMin >= 20;
+
+    if (!shouldSyncProgress) {
+      return;
+    }
+
+    yield* Ref.set(state.localMinutesWatched, 0);
+    yield* campaignStore.updateProgress;
+
+    const drops = yield* campaignStore.getDropsForCampaign(drop.campaignId);
+    const updatedDrop = drops.find((d) => d.id === drop.id);
+
+    if (!updatedDrop) {
+      return;
+    }
+
+    const progressDesync = currentMinutesWatched - updatedDrop.currentMinutesWatched;
+    const isDesynced = progressDesync >= 20;
+
+    if (isDesynced) {
+      yield* Ref.update(
+        state.currentChannel,
+        Option.map((ch) => ({ ...ch, isOnline: false })),
+      );
+    }
+
+    yield* Ref.set(state.currentDrop, Option.some(updatedDrop));
   });
 
 const watchChannelTick = (
@@ -129,25 +161,30 @@ const watchChannelTick = (
   campaign: Campaign,
 ): Effect.Effect<void, TwitchApiError | MainWorkflowError | WatchError> =>
   Effect.gen(function* () {
-    if (yield* Ref.get(state.isClaiming)) {
+    const isClaiming = yield* Ref.get(state.isClaiming);
+
+    if (isClaiming) {
       yield* Effect.sleep('5 seconds');
       return;
     }
 
     const activeCampaigns = yield* campaignStore.getSortedActive;
-    if (activeCampaigns.length > 0 && activeCampaigns[0].id !== campaign.id) {
-      const higherPriority = activeCampaigns[0];
-      let switchNeeded = higherPriority.priority > campaign.priority;
+    const higherPriority = activeCampaigns[0];
 
-      if (!switchNeeded) {
-        const currentDropOpt = yield* Ref.get(state.currentDrop);
-        if (Option.isSome(currentDropOpt)) {
-          const currentDrop = currentDropOpt.value;
-          switchNeeded = higherPriority.game.id !== campaign.game.id && currentDrop.endAt >= higherPriority.endAt;
-        }
-      }
+    const isMainCampaign = !higherPriority || higherPriority.id === campaign.id;
 
-      if (switchNeeded) {
+    if (!isMainCampaign) {
+      const isHigherPriority = higherPriority.priority > campaign.priority;
+      const currentDropOpt = yield* Ref.get(state.currentDrop);
+
+      const isSoonerEnding = Option.match(currentDropOpt, {
+        onNone: () => false,
+        onSome: (d) => higherPriority.game.id !== campaign.game.id && d.endAt >= higherPriority.endAt,
+      });
+
+      const shouldSwitch = isHigherPriority || isSoonerEnding;
+
+      if (shouldSwitch) {
         yield* Effect.logInfo(chalk`{yellow Switching to higher priority campaign: ${higherPriority.name}}`);
         yield* resetChannel(state);
         return;
@@ -157,24 +194,35 @@ const watchChannelTick = (
     yield* waitForNextWatch(state);
 
     const chanOpt = yield* Ref.get(state.currentChannel);
-    if (Option.isNone(chanOpt) || !chanOpt.value.isOnline) {
+    const isChannelMissingOrOffline = Option.isNone(chanOpt) || !chanOpt.value.isOnline;
+
+    if (isChannelMissingOrOffline) {
       yield* Ref.set(state.currentChannel, Option.none());
       return;
     }
 
     const chan = chanOpt.value;
     const updatedChanOpt = yield* updateChannelInfo(state, api, chan);
-    if (Option.isNone(updatedChanOpt)) return;
+
+    if (Option.isNone(updatedChanOpt)) {
+      return;
+    }
+
     const updatedChan = updatedChanOpt.value;
 
-    if (updatedChan.gameId && updatedChan.currentGameId && updatedChan.gameId !== updatedChan.currentGameId) {
+    const isGameMismatch = !!updatedChan.gameId && !!updatedChan.currentGameId && updatedChan.gameId !== updatedChan.currentGameId;
+
+    if (isGameMismatch) {
       yield* Effect.logInfo(chalk`{red ${updatedChan.login}} | {red Game changed to ${updatedChan.currentGameName}}`);
       yield* resetChannel(state);
       return;
     }
 
     const { success, hlsUrl } = yield* watchService.watch(updatedChan);
-    if (hlsUrl !== updatedChan.hlsUrl) {
+
+    const isHlsUrlChanged = hlsUrl !== updatedChan.hlsUrl;
+
+    if (isHlsUrlChanged) {
       yield* Ref.update(state.currentChannel, (current) =>
         Option.match(current, {
           onNone: () => current,
@@ -185,15 +233,24 @@ const watchChannelTick = (
 
     const currentTimeMs = Date.now();
     const scheduledWatchMs = yield* Ref.get(state.nextWatch);
-    if (currentTimeMs >= scheduledWatchMs) {
-      if (success) {
-        yield* handleWatchSuccess(state, updatedChan, campaignStore);
-        const currentChannel = yield* Ref.get(state.currentChannel);
-        if (Option.isNone(currentChannel)) return;
-      } else {
-        yield* resetChannel(state);
-        return;
-      }
+    const isTooEarly = currentTimeMs < scheduledWatchMs;
+
+    if (isTooEarly) {
+      return;
+    }
+
+    if (!success) {
+      yield* resetChannel(state);
+      return;
+    }
+
+    yield* handleWatchSuccess(state, updatedChan, campaignStore);
+
+    const currentChannel = yield* Ref.get(state.currentChannel);
+    const isWatchDone = Option.isNone(currentChannel);
+
+    if (isWatchDone) {
+      return;
     }
   });
 
@@ -242,24 +299,29 @@ const processChannelWatch = (
     yield* Ref.set(state.currentChannel, Option.some(channel));
 
     const chanOpt = yield* updateChannelInfo(state, api, channel);
-    if (Option.isNone(chanOpt)) return;
+    if (Option.isNone(chanOpt)) {
+      return;
+    }
     const chan = chanOpt.value;
 
     yield* claimChannelPoints(chan, api, config);
 
     const { acquire, release } = manageChannelSockets(socket, chan.id);
 
+    const isChannelNone = () => Ref.get(state.currentChannel).pipe(Effect.map(Option.isNone));
+
     const watchUntilNone = watchChannelTick(state, api, campaignStore, watchService, campaign).pipe(
       Effect.zipRight(Effect.sleep('1 minute')),
-      Effect.repeat({
-        until: () => Ref.get(state.currentChannel).pipe(Effect.map(Option.isNone)),
-      }),
+      Effect.repeat({ until: isChannelNone }),
     );
 
     yield* watchChannelTick(state, api, campaignStore, watchService, campaign);
 
     const chanCheck = yield* Ref.get(state.currentChannel);
-    if (Option.isNone(chanCheck)) return;
+
+    if (Option.isNone(chanCheck)) {
+      return;
+    }
 
     yield* Effect.acquireUseRelease(
       acquire,
@@ -280,11 +342,16 @@ const performWatchLoop = (
 ): Effect.Effect<void, TwitchApiError | TwitchSocketError | MainWorkflowError | WatchError> =>
   Effect.gen(function* () {
     const campaignOpt = yield* Ref.get(state.currentCampaign);
-    if (Option.isNone(campaignOpt)) return;
-    const campaign = campaignOpt.value;
 
+    if (Option.isNone(campaignOpt)) {
+      return;
+    }
+
+    const campaign = campaignOpt.value;
     const channels = yield* campaignStore.getChannelsForCampaign(campaign);
-    if (channels.length === 0) {
+    const hasNoChannels = channels.length === 0;
+
+    if (hasNoChannels) {
       yield* Effect.logInfo(chalk`${campaign.name} | {red Campaigns offline}`);
       yield* campaignStore.setOffline(campaign.id, true);
       yield* Ref.set(state.currentChannel, Option.none());
@@ -296,7 +363,11 @@ const performWatchLoop = (
 
     for (const channel of channels) {
       const dropOpt = yield* Ref.get(state.currentDrop);
-      if (Option.isSome(dropOpt) && isMinutesWatchedMet(dropOpt.value)) break;
+      const isDone = Option.isSome(dropOpt) && isMinutesWatchedMet(dropOpt.value);
+
+      if (isDone) {
+        break;
+      }
 
       yield* processChannelWatch(state, api, socket, campaignStore, watchService, config, campaign, channel);
     }
@@ -306,23 +377,35 @@ const performWatchLoop = (
 const tryClaim = (state: MainState, api: TwitchApi, campaignStore: CampaignStore, drop: Drop): Effect.Effect<boolean, TwitchApiError> =>
   Effect.gen(function* () {
     const currentDropOpt = yield* Ref.get(state.currentDrop);
-    if (Option.isNone(currentDropOpt)) return false;
+
+    if (Option.isNone(currentDropOpt)) {
+      return false;
+    }
 
     const currentDrop = currentDropOpt.value;
     const claimRes = yield* api.claimDrops(currentDrop.dropInstanceID ?? '').pipe(Effect.option);
 
-    if (Option.isSome(claimRes) && claimRes.value.claimDropRewards) {
-      yield* Effect.logInfo(chalk`{green ${drop.name}} | {yellow Drops claimed}`);
-
-      const rewards = [];
-      for (const id of drop.benefits) {
-        rewards.push({ id, lastAwardedAt: new Date() });
-      }
-      yield* campaignStore.addRewards(rewards);
-
-      return true;
+    if (Option.isNone(claimRes)) {
+      return false;
     }
-    return false;
+
+    const isClaimSuccessful = !!claimRes.value.claimDropRewards;
+
+    if (!isClaimSuccessful) {
+      return false;
+    }
+
+    yield* Effect.logInfo(chalk`{green ${drop.name}} | {yellow Drops claimed}`);
+
+    const rewards = [];
+
+    for (const id of drop.benefits) {
+      rewards.push({ id, lastAwardedAt: new Date() });
+    }
+
+    yield* campaignStore.addRewards(rewards);
+
+    return true;
   });
 
 const processClaimAttempts = (
@@ -335,48 +418,66 @@ const processClaimAttempts = (
   attempt: number,
 ): Effect.Effect<number, TwitchApiError> =>
   Effect.gen(function* () {
-    if (attempt > 0 || !drop.dropInstanceID) {
+    const needsProgressUpdate = attempt > 0 || !drop.dropInstanceID;
+
+    if (needsProgressUpdate) {
       yield* campaignStore.updateProgress;
+
       const drops = yield* campaignStore.getDropsForCampaign(campaign.id);
       const updatedDrop = drops.find((p) => p.id === drop.id);
+
       if (updatedDrop) {
         yield* Ref.set(state.currentDrop, Option.some(updatedDrop));
       }
     }
 
     const claimed = yield* tryClaim(state, api, campaignStore, drop);
-    if (claimed) return totalAttempts;
+
+    if (claimed) {
+      return totalAttempts;
+    }
 
     const currentDropOpt = yield* Ref.get(state.currentDrop);
-    if (Option.isNone(currentDropOpt)) return totalAttempts;
-    const currentDrop = currentDropOpt.value;
 
-    if (currentDrop.currentMinutesWatched < currentDrop.requiredMinutesWatched) {
+    if (Option.isNone(currentDropOpt)) {
+      return totalAttempts;
+    }
+
+    const currentDrop = currentDropOpt.value;
+    const isMinutesNotMet = currentDrop.currentMinutesWatched < currentDrop.requiredMinutesWatched;
+
+    if (isMinutesNotMet) {
       const isBroken = currentDrop.requiredMinutesWatched - currentDrop.currentMinutesWatched >= 20;
       yield* Effect.logInfo(chalk`{green ${drop.name}} | {red ${isBroken ? 'Possible broken drops' : 'Minutes not met'}}`);
 
       if (isBroken) {
         yield* resetChannel(state);
-      } else {
-        yield* Ref.set(state.currentChannel, Option.none());
+        return totalAttempts;
       }
 
+      yield* Ref.set(state.currentChannel, Option.none());
       return totalAttempts;
     }
 
-    if (attempt < totalAttempts - 1) {
-      if (attempt === 0) {
-        yield* Effect.logInfo(chalk`{green ${drop.name}} | {red Award not found}`);
-      }
-      yield* Effect.logInfo(chalk`{yellow Waiting for ${attempt + 1}/${totalAttempts} minutes}`);
-      yield* Effect.sleep('1 minute');
-    } else {
+    const isFinalAttempt = attempt >= totalAttempts - 1;
+
+    if (isFinalAttempt) {
       yield* Effect.logInfo(chalk`{green ${drop.name}} | {red Award not found after ${totalAttempts} minutes}`);
+
       yield* Ref.update(
         state.currentDrop,
         Option.map((dr) => ({ ...dr, hasPreconditionsMet: false })),
       );
+
+      return attempt + 1;
     }
+
+    if (attempt === 0) {
+      yield* Effect.logInfo(chalk`{green ${drop.name}} | {red Award not found}`);
+    }
+
+    yield* Effect.logInfo(chalk`{yellow Waiting for ${attempt + 1}/${totalAttempts} minutes}`);
+    yield* Effect.sleep('1 minute');
 
     return attempt + 1;
   });
@@ -403,7 +504,11 @@ const performClaimDrops = (
 const initializeCampaignState = (state: MainState, campaignStore: CampaignStore, configStore: StoreClient<ClientConfig>): Effect.Effect<void> =>
   Effect.gen(function* () {
     const currentState = yield* Ref.get(campaignStore.state);
-    if (currentState._tag !== 'Initial') return;
+    const isAlreadyInitialized = currentState._tag !== 'Initial';
+
+    if (isAlreadyInitialized) {
+      return;
+    }
 
     yield* campaignStore.updateCampaigns.pipe(Effect.orDie);
     yield* campaignStore.updateProgress.pipe(Effect.orDie);
@@ -423,11 +528,12 @@ const initializeCampaignState = (state: MainState, campaignStore: CampaignStore,
 const handleNoActiveCampaigns = (campaignStore: CampaignStore): Effect.Effect<void> =>
   Effect.gen(function* () {
     const currentState = yield* Ref.get(campaignStore.state);
+    yield* Ref.set(campaignStore.state, CampaignStoreState.Initial());
+
     if (currentState._tag === 'PriorityOnly') {
-      yield* Ref.set(campaignStore.state, CampaignStoreState.Initial());
       return;
     }
-    yield* Ref.set(campaignStore.state, CampaignStoreState.Initial());
+
     yield* Effect.logInfo(chalk`{yellow No active campaigns. Checking upcoming...}`);
     yield* Effect.logInfo('');
     yield* Effect.sleep('10 minutes');
@@ -466,13 +572,16 @@ const processCampaignLogic = (
   drops: ReadonlyArray<Drop>,
 ): Effect.Effect<void, TwitchApiError | TwitchSocketError | MainWorkflowError | WatchError> =>
   Effect.gen(function* () {
-    if (drops.length === 0) {
+    const hasNoDrops = drops.length === 0;
+
+    if (hasNoDrops) {
       yield* Effect.logInfo(chalk`${campaign.name} | {red No active drops}`);
       yield* campaignStore.setOffline(campaign.id, true);
       return;
     }
 
     const campaignStatus = getDropStatus(campaign.startAt, campaign.endAt, Date.now());
+
     if (campaignStatus.isExpired) {
       yield* Effect.logInfo(chalk`${campaign.name} | {red Campaigns expired}`);
       yield* campaignStore.updateCampaigns;
@@ -488,11 +597,16 @@ const processCampaignLogic = (
       return;
     }
 
-    if (isMinutesWatchedMet(drop)) {
-      if (config.isClaimDrops) {
-        return yield* performClaimDrops(state, api, campaignStore, campaign, drop);
-      }
-      return yield* Ref.set(state.currentCampaign, Option.none());
+    const isCompleted = isMinutesWatchedMet(drop);
+
+    if (isCompleted && config.isClaimDrops) {
+      yield* performClaimDrops(state, api, campaignStore, campaign, drop);
+      return;
+    }
+
+    if (isCompleted) {
+      yield* Ref.set(state.currentCampaign, Option.none());
+      return;
     }
 
     yield* performWatchLoop(state, api, socket, campaignStore, watchService, config);

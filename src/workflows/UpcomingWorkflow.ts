@@ -18,19 +18,30 @@ const processUpcomingCampaign = (
 ) =>
   Effect.gen(function* () {
     const waitMs = next.startAt.getTime() - Date.now();
+    const isFuture = waitMs > 0;
 
-    if (waitMs > 0) {
+    if (isFuture) {
       const alreadySleeping = yield* Ref.get(isMainCallSleep);
-      if (!alreadySleeping && isMainCall) {
-        yield* Ref.set(isMainCallSleep, true);
-        yield* Effect.logInfo(chalk`{bold.yellow No active campaigns} | {bold.yellow ${upcomingCount} upcoming}`);
-        yield* Effect.logInfo(chalk`{bold.yellow Sleeping until ${next.startAt.toLocaleString()}}`);
+
+      if (alreadySleeping) {
+        return;
       }
+
+      if (!isMainCall) {
+        return;
+      }
+
+      yield* Ref.set(isMainCallSleep, true);
+      yield* Effect.logInfo(chalk`{bold.yellow No active campaigns} | {bold.yellow ${upcomingCount} upcoming}`);
+      yield* Effect.logInfo(chalk`{bold.yellow Sleeping until ${next.startAt.toLocaleString()}}`);
       return;
     }
 
-    if (yield* Ref.get(isMainCallSleep)) {
-      return yield* Ref.set(isMainCallSleep, false);
+    const wasSleeping = yield* Ref.get(isMainCallSleep);
+
+    if (wasSleeping) {
+      yield* Ref.set(isMainCallSleep, false);
+      return;
     }
 
     if (isMainCall) {
