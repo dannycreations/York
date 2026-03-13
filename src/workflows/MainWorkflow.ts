@@ -195,8 +195,6 @@ const watchChannelTick = (
         return;
       }
     }
-
-    yield* Effect.sleep('1 minute');
   });
 
 const manageChannelSockets = (
@@ -251,12 +249,21 @@ const processChannelWatch = (
 
     const { acquire, release } = manageChannelSockets(socket, chan.id);
 
+    const watchUntilNone = watchChannelTick(state, api, campaignStore, watchService, campaign).pipe(
+      Effect.zipRight(Effect.sleep('1 minute')),
+      Effect.repeat({
+        until: () => Ref.get(state.currentChannel).pipe(Effect.map(Option.isNone)),
+      }),
+    );
+
+    yield* watchChannelTick(state, api, campaignStore, watchService, campaign);
+
+    const chanCheck = yield* Ref.get(state.currentChannel);
+    if (Option.isNone(chanCheck)) return;
+
     yield* Effect.acquireUseRelease(
       acquire,
-      () =>
-        Effect.repeat(watchChannelTick(state, api, campaignStore, watchService, campaign), {
-          until: () => Ref.get(state.currentChannel).pipe(Effect.map(Option.isNone)),
-        }),
+      () => watchUntilNone,
       () => release,
     );
 
