@@ -1,22 +1,17 @@
-import { Context, Data, Deferred, Effect, Layer, Option, PubSub, Queue, Ref, Schedule, Scope, Stream } from 'effect';
-import { WebSocket as WsClient } from 'ws';
+import { Socket } from '@effect/platform';
+import { NodeSocket } from '@effect/platform-node';
+import { Context, Data, Deferred, Duration, Effect, Exit, Layer, Option, PubSub, Queue, Ref, Schedule, Scope, Stream } from 'effect';
 
 import { HttpClientTag } from './HttpClient';
 
-import type { ClientRequestArgs } from 'node:http';
-import type { ClientOptions } from 'ws';
-
-type SocketState = Data.TaggedEnum<{
+export type SocketEvent = Data.TaggedEnum<{
   Open: {};
   Message: { readonly data: string };
   Error: { readonly cause: unknown };
   Close: {};
-  Pong: {};
 }>;
 
-const SocketState = Data.taggedEnum<SocketState>();
-
-export type SocketEvent = Exclude<SocketState, { readonly _tag: 'Pong' }>;
+export const SocketEvent = Data.taggedEnum<SocketEvent>();
 
 export class SocketClientError extends Data.TaggedError('SocketClientError')<{
   readonly message: string;
@@ -31,7 +26,6 @@ export interface SocketClientOptions {
   readonly reconnectBaseMs?: number;
   readonly reconnectMaxMs?: number;
   readonly reconnectMaxAttempts?: number;
-  readonly socketOptions?: ClientOptions | ClientRequestArgs;
 }
 
 export interface SocketClient {
@@ -41,7 +35,7 @@ export interface SocketClient {
   readonly disconnect: (graceful?: boolean) => Effect.Effect<void>;
 }
 
-export const makeSocketClient = (options: SocketClientOptions): Effect.Effect<SocketClient, SocketClientError, Scope.Scope | HttpClientTag> =>
+export const makeSocketClient = (options: SocketClientOptions): Effect.Effect<SocketClient, SocketClientError, HttpClientTag | Scope.Scope> =>
   Effect.gen(function* () {
     const {
       url,
@@ -51,225 +45,199 @@ export const makeSocketClient = (options: SocketClientOptions): Effect.Effect<So
       reconnectBaseMs = 1_000,
       reconnectMaxMs = 60_000,
       reconnectMaxAttempts = Infinity,
-      socketOptions = {},
     } = options;
 
+    const httpClient = yield* HttpClientTag;
     const eventsPubSub = yield* PubSub.unbounded<SocketEvent>();
-    const isConnectingRef = yield* Ref.make(false);
-    const wsRef = yield* Ref.make<Option.Option<WsClient>>(Option.none());
-    const openedDeferredRef = yield* Ref.make(yield* Deferred.make<void, SocketClientError>());
-    const sendQueue = yield* Queue.unbounded<{
-      readonly data: string;
-      readonly deferred: Deferred.Deferred<void, SocketClientError>;
-    }>();
-
-    const processSendQueue = Effect.gen(function* () {
-      const { data, deferred } = yield* Queue.take(sendQueue);
-      const sendTask = Effect.gen(function* () {
-        const ws = yield* Ref.get(wsRef).pipe(
-          Effect.filterOrFail(
-            (wsOpt) => Option.isSome(wsOpt) && wsOpt.value.readyState === WsClient.OPEN && wsOpt.value.bufferedAmount <= 1_048_576,
-            () => 'Not Ready',
-          ),
-          Effect.retry({
-            while: (e) => e === 'Not Ready',
-            schedule: Schedule.fixed('100 millis'),
-          }),
-          Effect.map((wsOpt) => (wsOpt as Option.Some<WsClient>).value),
-          Effect.mapError((e) => new SocketClientError({ message: String(e) })),
-        );
-
-        return yield* Effect.async<void, SocketClientError>((resume) => {
-          ws.send(data, (err) => {
-            if (err) {
-              resume(Effect.fail(new SocketClientError({ message: 'SocketClient: Failed to send message', cause: err })));
-            } else {
-              resume(Effect.void);
-            }
-          });
-        });
-      }).pipe(
-        Effect.retry({
-          schedule: Schedule.exponential('1 seconds').pipe(Schedule.compose(Schedule.recurs(2))),
-        }),
-      );
-
-      yield* Effect.matchEffect(sendTask, {
-        onFailure: (err) => Deferred.fail(deferred, err),
-        onSuccess: () => Deferred.succeed(deferred, undefined),
-      });
-    }).pipe(Effect.forever);
-
-    yield* Effect.forkScoped(processSendQueue);
-
     const lastPongReceivedAt = yield* Ref.make(Date.now());
-    const reconnectAttempts = yield* Ref.make(0);
+    const isConnectingRef = yield* Ref.make(false);
+    const runFiberRef = yield* Ref.make<Option.Option<Scope.CloseableScope>>(Option.none());
+    const socketRef = yield* Ref.make<Option.Option<Socket.Socket>>(Option.none());
+    const openedDeferredRef = yield* Ref.make(yield* Deferred.make<void, SocketClientError>());
 
-    const disconnect = (graceful = false): Effect.Effect<void> =>
-      Ref.getAndSet(wsRef, Option.none()).pipe(
-        Effect.flatMap(
-          Option.match({
-            onNone: () => Effect.void,
-            onSome: (ws) =>
-              Effect.gen(function* () {
-                yield* Effect.sync(() => {
-                  ws.removeAllListeners();
-                  ws.on('error', () => {});
-                  if (graceful) {
-                    ws.close(1000);
-                  } else {
-                    ws.terminate();
-                  }
-                });
-
-                const nextDeferred = yield* Deferred.make<void, SocketClientError>();
-                yield* Ref.set(openedDeferredRef, nextDeferred);
-                yield* PubSub.publish(eventsPubSub, SocketState.Close());
-              }),
-          }),
-        ),
-      );
-
-    const makeRawStream = (ws: WsClient): Stream.Stream<SocketState, never, never> =>
-      Stream.async<SocketState>((emit) => {
-        ws.once('open', () => emit.single(SocketState.Open()));
-        ws.on('message', (data) => emit.single(SocketState.Message({ data: data.toString() })));
-        ws.on('error', (cause) => emit.single(SocketState.Error({ cause })));
-        ws.on('close', () => {
-          emit.single(SocketState.Close());
-          emit.end();
-        });
-        ws.on('pong', () => emit.single(SocketState.Pong()));
+    const disconnect = (): Effect.Effect<void> =>
+      Effect.gen(function* () {
+        const scopeOpt = yield* Ref.getAndSet(runFiberRef, Option.none());
+        if (Option.isSome(scopeOpt)) {
+          yield* Scope.close(scopeOpt.value, Exit.void);
+        }
+        yield* Ref.set(socketRef, Option.none());
+        const nextDeferred = yield* Deferred.make<void, SocketClientError>();
+        yield* Ref.set(openedDeferredRef, nextDeferred);
+        yield* PubSub.publish(eventsPubSub, SocketEvent.Close());
       });
 
-    const connect: Effect.Effect<void, SocketClientError, HttpClientTag | Scope.Scope> = Effect.gen(function* () {
-      const lock = yield* Ref.getAndUpdate(isConnectingRef, () => true);
-      if (lock) return;
+    const connect = Effect.gen(function* () {
+      const isConnecting = yield* Ref.getAndUpdate(isConnectingRef, () => true);
+      if (isConnecting) return;
 
-      const wsOpt = yield* Ref.get(wsRef);
-      if (Option.isSome(wsOpt)) {
+      const currentSocket = yield* Ref.get(socketRef);
+      if (Option.isSome(currentSocket)) {
         yield* Ref.set(isConnectingRef, false);
         return;
       }
 
-      const httpClient = yield* HttpClientTag;
       yield* httpClient.waitForConnection();
 
-      yield* Effect.logDebug(`SocketClient: Connecting to ${url}`);
-      const ws = yield* Effect.sync(() => new WsClient(url, socketOptions));
-      yield* Ref.set(wsRef, Option.some(ws));
+      const scope = yield* Scope.make();
+      yield* Ref.set(runFiberRef, Option.some(scope));
 
       const opened = yield* Deferred.make<void, SocketClientError>();
 
-      yield* makeRawStream(ws).pipe(
-        Stream.tap((event) =>
+      const writeQueue = yield* Queue.unbounded<{
+        readonly data: string;
+        readonly deferred: Deferred.Deferred<void, SocketClientError>;
+      }>();
+
+      const runLoop = Effect.gen(function* () {
+        yield* Effect.logDebug(`SocketClient: Connecting to ${url}`);
+        const socket = yield* Socket.makeWebSocket(url).pipe(Effect.provide(NodeSocket.layerWebSocketConstructor));
+        yield* Ref.set(socketRef, Option.some(socket));
+
+        yield* Effect.gen(function* () {
+          const write = yield* socket.writer;
+          return yield* Queue.take(writeQueue).pipe(
+            Effect.flatMap(({ data, deferred }) =>
+              write(new TextEncoder().encode(data)).pipe(
+                Effect.mapError((cause) => new SocketClientError({ message: 'Failed to send message', cause })),
+                Effect.matchEffect({
+                  onFailure: (err) => Deferred.fail(deferred, err),
+                  onSuccess: () => Deferred.succeed(deferred, undefined),
+                }),
+              ),
+            ),
+            Effect.forever,
+          );
+        }).pipe(Effect.forkScoped);
+
+        yield* socket.run(
+          (chunk: Uint8Array) =>
+            Effect.gen(function* () {
+              const data = new TextDecoder().decode(chunk);
+              yield* Ref.set(lastPongReceivedAt, Date.now());
+              yield* PubSub.publish(eventsPubSub, SocketEvent.Message({ data }));
+            }),
+          {
+            onOpen: Effect.gen(function* () {
+              yield* Effect.logDebug('SocketClient: Connection established');
+              yield* Ref.set(lastPongReceivedAt, Date.now());
+              yield* PubSub.publish(eventsPubSub, SocketEvent.Open());
+              yield* Deferred.succeed(opened, undefined);
+              const currentOpened = yield* Ref.get(openedDeferredRef);
+              yield* Deferred.succeed(currentOpened, undefined);
+            }),
+          },
+        );
+      }).pipe(
+        Effect.catchAllCause((cause) =>
           Effect.gen(function* () {
-            switch (event._tag) {
-              case 'Message':
-              case 'Pong': {
-                yield* Ref.set(lastPongReceivedAt, Date.now());
-                break;
-              }
-              case 'Open': {
-                yield* Ref.set(lastPongReceivedAt, Date.now());
-                yield* Ref.set(reconnectAttempts, 0);
-                yield* Effect.logDebug('SocketClient: Connection established');
-                yield* Deferred.succeed(opened, undefined);
-                const currentOpened = yield* Ref.get(openedDeferredRef);
-                yield* Deferred.succeed(currentOpened, undefined);
-                break;
-              }
-              case 'Error': {
-                yield* Effect.logError('SocketClient: WebSocket error', event.cause);
-                yield* Deferred.fail(opened, new SocketClientError({ message: 'WebSocket error', cause: event.cause }));
-                const currentOpened = yield* Ref.get(openedDeferredRef);
-                yield* Deferred.fail(currentOpened, new SocketClientError({ message: 'WebSocket error', cause: event.cause }));
-                break;
-              }
-              case 'Close': {
-                yield* Deferred.fail(opened, new SocketClientError({ message: 'WebSocket closed' }));
-                const currentOpened = yield* Ref.get(openedDeferredRef);
-                yield* Deferred.fail(currentOpened, new SocketClientError({ message: 'WebSocket closed' }));
+            yield* Effect.logError('SocketClient: WebSocket error', cause);
+            const error = new SocketClientError({ message: 'WebSocket error', cause });
+            const currentOpened = yield* Ref.get(openedDeferredRef);
+            yield* Deferred.fail(currentOpened, error);
+            yield* PubSub.publish(eventsPubSub, SocketEvent.Error({ cause }));
+            return yield* Effect.failCause(cause);
+          }),
+        ),
+        Effect.onExit((exit) =>
+          Effect.gen(function* () {
+            yield* Ref.set(socketRef, Option.none());
+            const nextDeferred = yield* Deferred.make<void, SocketClientError>();
+            yield* Ref.set(openedDeferredRef, nextDeferred);
+            yield* PubSub.publish(eventsPubSub, SocketEvent.Close());
 
-                yield* Ref.set(wsRef, Option.none());
-                const nextDeferred = yield* Deferred.make<void, SocketClientError>();
-                yield* Ref.set(openedDeferredRef, nextDeferred);
-
-                const attempts = yield* Ref.get(reconnectAttempts);
-                if (attempts < reconnectMaxAttempts) {
-                  yield* Ref.update(reconnectAttempts, (n) => n + 1);
-                  const baseDelay = reconnectBaseMs * Math.pow(1.5, attempts);
-                  const jitter = baseDelay * 0.4 * (Math.random() - 0.5);
-                  const delay = Math.min(reconnectMaxMs, Math.floor(baseDelay + jitter));
-                  yield* Effect.logDebug(
-                    `SocketClient: Reconnect attempt ${attempts + 1}/${reconnectMaxAttempts === Infinity ? '∞' : reconnectMaxAttempts} in ${delay}ms`,
-                  );
-                  yield* Effect.sleep(`${delay} millis`).pipe(
-                    Effect.flatMap(() => connect),
-                    Effect.forkScoped,
-                  );
-                } else {
-                  yield* Effect.logError('SocketClient: Max reconnect attempts reached');
-                }
-                break;
-              }
+            if (exit._tag === 'Failure' && !Exit.isInterrupted(exit)) {
+              yield* Effect.logError('SocketClient: Connection closed with error');
+              yield* Deferred.fail(opened, new SocketClientError({ message: 'Fatal connection failure' }));
+            } else {
+              yield* Effect.logDebug('SocketClient: Connection closed gracefully');
+              yield* Deferred.fail(opened, new SocketClientError({ message: 'Connection closed' }));
             }
           }),
         ),
-        Stream.runForEach((event) => (event._tag === 'Pong' ? Effect.void : eventsPubSub.publish(event))),
-        Effect.forkScoped,
+        Effect.retry(
+          Schedule.exponential(`${reconnectBaseMs} millis`, 1.5).pipe(
+            Schedule.union(Schedule.recurs(reconnectMaxAttempts)),
+            Schedule.map((duration: unknown) => {
+              const d = duration as Duration.Duration;
+              return Duration.millis(Math.min(Duration.toMillis(d), reconnectMaxMs));
+            }),
+            Schedule.tapOutput((delay) => Effect.logDebug(`SocketClient: Reconnecting in ${Duration.toMillis(delay)}ms`)),
+          ),
+        ),
+        Effect.catchAll(() => Effect.void),
+        Effect.repeat(Schedule.spaced('1 seconds')),
+        Scope.extend(scope),
       );
 
-      const result = yield* Deferred.await(opened);
-      yield* Ref.set(isConnectingRef, false);
-      return result;
-    }).pipe(Effect.onExit((exit) => (exit._tag === 'Failure' ? Ref.set(isConnectingRef, false) : Effect.void)));
+      yield* Effect.forkScoped(runLoop);
+
+      try {
+        yield* Deferred.await(opened);
+      } finally {
+        yield* Ref.set(isConnectingRef, false);
+      }
+    }).pipe(
+      Effect.onExit((exit) =>
+        Effect.gen(function* () {
+          yield* Ref.set(isConnectingRef, false);
+          if (exit._tag === 'Failure' && !Exit.isInterrupted(exit)) {
+            return yield* Effect.failCause(exit.cause);
+          }
+        }).pipe(Effect.catchAllCause(() => Effect.void)),
+      ),
+    );
+
+    const send = (payload: string | object): Effect.Effect<void, SocketClientError, Scope.Scope> =>
+      Effect.gen(function* () {
+        const data = typeof payload === 'string' ? payload : JSON.stringify(payload);
+
+        const writeLoop: Effect.Effect<void, SocketClientError, Scope.Scope> = Effect.gen(function* () {
+          const socketOpt = yield* Ref.get(socketRef);
+          if (Option.isNone(socketOpt)) {
+            const opened = yield* Ref.get(openedDeferredRef);
+            yield* Deferred.await(opened);
+            return yield* writeLoop;
+          }
+
+          const write = yield* socketOpt.value.writer;
+          yield* write(new TextEncoder().encode(data));
+        }).pipe(Effect.mapError((cause) => new SocketClientError({ message: 'Failed to send message', cause })));
+
+        return yield* writeLoop;
+      });
+
+    const pingLoop = Effect.gen(function* () {
+      const socketOpt = yield* Ref.get(socketRef);
+      if (Option.isSome(socketOpt)) {
+        if (pingPayload) {
+          yield* send(pingPayload);
+        }
+      }
+    }).pipe(Effect.repeat(Schedule.spaced(`${pingIntervalMs} millis`)));
 
     const timeoutLoop = Effect.gen(function* () {
-      const connecting = yield* Ref.get(isConnectingRef);
-      if (connecting) return;
-
-      const wsOpt = yield* Ref.get(wsRef);
-      const ws = Option.getOrUndefined(wsOpt);
-      if (!ws) return;
+      const socketOpt = yield* Ref.get(socketRef);
+      if (Option.isNone(socketOpt)) return;
 
       const lastPong = yield* Ref.get(lastPongReceivedAt);
       const now = Date.now();
       if (now - lastPong > pingIntervalMs + pingTimeoutMs) {
         yield* Effect.logWarning('SocketClient: Ping timeout, reconnecting...');
-        yield* disconnect(false);
+        yield* disconnect();
         yield* connect;
       }
     }).pipe(Effect.repeat(Schedule.spaced('5 seconds')));
 
-    const pingLoop = Effect.gen(function* () {
-      const wsOpt = yield* Ref.get(wsRef);
-      const ws = Option.getOrUndefined(wsOpt);
-      if (ws && ws.readyState === WsClient.OPEN) {
-        if (pingPayload) {
-          yield* send(pingPayload);
-        } else {
-          yield* Effect.sync(() => ws.ping());
-        }
-      }
-    }).pipe(Effect.repeat(Schedule.spaced(`${pingIntervalMs} millis`)));
-
-    yield* connect;
-    yield* Effect.forkScoped(timeoutLoop);
+    const parentScope = yield* Effect.scope;
+    yield* connect.pipe(Effect.provideService(Scope.Scope, parentScope));
     yield* Effect.forkScoped(pingLoop);
-    yield* Effect.addFinalizer(() => disconnect(true));
-
-    const send = (payload: string | object): Effect.Effect<void, SocketClientError> =>
-      Effect.gen(function* () {
-        const data = typeof payload === 'string' ? payload : JSON.stringify(payload);
-        const deferred = yield* Deferred.make<void, SocketClientError>();
-        yield* Queue.offer(sendQueue, { data, deferred });
-        yield* Deferred.await(deferred);
-      });
+    yield* Effect.forkScoped(timeoutLoop);
+    yield* Effect.addFinalizer(() => disconnect());
 
     return {
-      send,
-      connect: connect as Effect.Effect<void, SocketClientError>,
+      send: (payload) => send(payload).pipe(Effect.provideService(Scope.Scope, parentScope)) as Effect.Effect<void, SocketClientError>,
+      connect: connect.pipe(Effect.provideService(Scope.Scope, parentScope)) as Effect.Effect<void, SocketClientError>,
       disconnect,
       events: Stream.fromPubSub(eventsPubSub),
     } satisfies SocketClient;
