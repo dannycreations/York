@@ -136,6 +136,7 @@ export const makeSocketClient = (options: SocketClientOptions): Effect.Effect<So
           },
         );
       }).pipe(
+        Effect.scoped,
         Effect.catchAllCause((cause) =>
           Effect.gen(function* () {
             yield* Effect.logError('SocketClient: WebSocket error', cause);
@@ -154,32 +155,27 @@ export const makeSocketClient = (options: SocketClientOptions): Effect.Effect<So
             yield* PubSub.publish(eventsPubSub, SocketEvent.Close());
 
             if (exit._tag === 'Failure' && !Exit.isInterrupted(exit)) {
-              yield* Effect.logError('SocketClient: Connection closed with error');
               const failureError = new SocketClientError({ message: 'Fatal connection failure' });
-              return yield* Deferred.fail(opened, failureError);
+              yield* Deferred.fail(opened, failureError);
+              return;
             }
 
-            yield* Effect.logDebug('SocketClient: Connection closed gracefully');
             const closeError = new SocketClientError({ message: 'Connection closed' });
-            return yield* Deferred.fail(opened, closeError);
+            yield* Deferred.fail(opened, closeError);
           }),
         ),
         Effect.retry(
           Schedule.exponential(`${reconnectBaseMs} millis`, 1.5).pipe(
-            Schedule.union(Schedule.recurs(reconnectMaxAttempts)),
-            Schedule.map((duration: unknown) => {
-              const d = duration as Duration.Duration;
-              return Duration.millis(Math.min(Duration.toMillis(d), reconnectMaxMs));
-            }),
+            Schedule.intersect(Schedule.recurs(reconnectMaxAttempts)),
+            Schedule.map((out) => Duration.min(out[0], Duration.millis(reconnectMaxMs))),
             Schedule.tapOutput((delay) => Effect.logDebug(`SocketClient: Reconnecting in ${Duration.toMillis(delay)}ms`)),
           ),
         ),
         Effect.catchAll(() => Effect.void),
         Effect.repeat(Schedule.spaced('1 seconds')),
-        Scope.extend(scope),
       );
 
-      yield* Effect.forkScoped(runLoop);
+      yield* Effect.forkIn(runLoop, scope);
 
       try {
         yield* Deferred.await(opened);
