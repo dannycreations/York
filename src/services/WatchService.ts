@@ -26,6 +26,39 @@ export const WatchServiceLayer: Layer.Layer<WatchServiceTag, never, HttpClientTa
     const http = yield* HttpClientTag;
     const api = yield* TwitchApiTag;
 
+    const sendMinuteWatched = (channel: Channel): Effect.Effect<boolean, WatchError> =>
+      Effect.gen(function* () {
+        const userId = yield* api.userId;
+
+        const payload = JSON.stringify([
+          {
+            event: 'minute-watched',
+            properties: {
+              hidden: false,
+              live: true,
+              location: 'channel',
+              logged_in: true,
+              muted: false,
+              player: 'site',
+              channel: channel.login,
+              channel_id: channel.id,
+              broadcast_id: channel.currentSid,
+              user_id: userId,
+              game: channel.currentGameName,
+              game_id: channel.currentGameId,
+            },
+          },
+        ]);
+
+        const response = yield* http.request({
+          method: 'POST',
+          url: 'https://spade.twitch.tv/track',
+          body: Buffer.from(payload).toString('base64'),
+        });
+
+        return response.statusCode === 204;
+      }).pipe(Effect.catchAll(() => Effect.succeed(false)));
+
     const watch = (channel: Channel): Effect.Effect<{ readonly success: boolean; readonly hlsUrl?: string }, WatchError> =>
       Effect.gen(function* () {
         const hasNoSid = !channel.currentSid;
@@ -39,7 +72,8 @@ export const WatchServiceLayer: Layer.Layer<WatchServiceTag, never, HttpClientTa
           const isInitialSuccess = yield* checkStream(initialHlsUrl);
 
           if (isInitialSuccess) {
-            return { success: true, hlsUrl: initialHlsUrl };
+            const isMinuteSent = yield* sendMinuteWatched(channel);
+            return { success: isMinuteSent, hlsUrl: initialHlsUrl };
           }
 
           const live = yield* api.channelLive(channel.login);
@@ -52,7 +86,12 @@ export const WatchServiceLayer: Layer.Layer<WatchServiceTag, never, HttpClientTa
           const freshHlsUrl = yield* getHlsUrl(channel.login);
           const isFreshSuccess = yield* checkStream(freshHlsUrl);
 
-          return { success: isFreshSuccess, hlsUrl: freshHlsUrl };
+          if (isFreshSuccess) {
+            const isMinuteSent = yield* sendMinuteWatched(channel);
+            return { success: isMinuteSent, hlsUrl: freshHlsUrl };
+          }
+
+          return { success: false, hlsUrl: freshHlsUrl };
         }).pipe(Effect.catchAll(() => Effect.succeed({ success: false, hlsUrl: channel.hlsUrl })));
 
         const streamResult = yield* sendStream;
