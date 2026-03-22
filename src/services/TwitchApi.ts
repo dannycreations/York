@@ -23,12 +23,12 @@ import {
   ViewerDropsDashboardSchema,
 } from '../core/Schemas';
 import { HttpClientError, HttpClientTag } from '../structures/HttpClient';
-import { GqlQueries } from './TwitchQueries';
+import { GqlQueries } from './TwitchGql';
 
 import type { ReadonlyRecord } from 'effect/Record';
-import type { GqlResponse } from '../core/Schemas';
+import type { Channel, GqlResponse } from '../core/Schemas';
 import type { DefaultOptions } from '../structures/HttpClient';
-import type { GraphqlRequest } from './TwitchQueries';
+import type { GraphqlRequest } from './TwitchGql';
 
 export class TwitchApiError extends Data.TaggedError('TwitchApiError')<{
   readonly message: string;
@@ -36,6 +36,7 @@ export class TwitchApiError extends Data.TaggedError('TwitchApiError')<{
 }> {}
 
 export interface TwitchApi {
+  readonly init: Effect.Effect<void, TwitchApiError>;
   readonly userId: Effect.Effect<string, TwitchApiError>;
   readonly writeDebugFile: (data: string | object, name?: string) => Effect.Effect<void>;
   readonly graphql: <A, I, R>(
@@ -54,7 +55,6 @@ export interface TwitchApi {
     },
     TwitchApiError
   >;
-  readonly init: Effect.Effect<void, TwitchApiError>;
   readonly dropsDashboard: Effect.Effect<Schema.Schema.Type<typeof ViewerDropsDashboardSchema>, TwitchApiError>;
   readonly inventory: Effect.Effect<Schema.Schema.Type<typeof InventorySchema>, TwitchApiError>;
   readonly currentDrops: Effect.Effect<Schema.Schema.Type<typeof CurrentDropsSchema>, TwitchApiError>;
@@ -72,6 +72,7 @@ export interface TwitchApi {
     channelLogin?: string,
   ) => Effect.Effect<Schema.Schema.Type<typeof CampaignDetailsSchema>, TwitchApiError>;
   readonly playbackToken: (login: string) => Effect.Effect<Schema.Schema.Type<typeof PlaybackTokenSchema>, TwitchApiError>;
+  readonly watch: (channel: Channel) => Effect.Effect<{ readonly success: boolean; readonly hlsUrl?: string }, TwitchApiError>;
 }
 
 export class TwitchApiTag extends Context.Tag('@services/TwitchApi')<TwitchApiTag, TwitchApi>() {}
@@ -314,6 +315,139 @@ export const TwitchApiLayer = (authToken: string, isDebug = false): Layer.Layer<
         );
       };
 
+      const findLastHttpUrl = (text: string): string | undefined => {
+        const start = text.lastIndexOf('\nhttp') + 1;
+        if (start === 0) {
+          const hasHttp = text.startsWith('http');
+
+          if (!hasHttp) {
+            return undefined;
+          }
+
+          const lines = text.split('\n', 1);
+          return lines[0].trim();
+        }
+
+        const end = text.indexOf('\n', start);
+
+        if (end === -1) {
+          return text.substring(start).trim();
+        }
+
+        return text.substring(start, end).trim();
+      };
+
+      const getHlsUrl = (login: string): Effect.Effect<string, TwitchApiError> =>
+        Effect.gen(function* () {
+          const playback = yield* playbackToken(login);
+          const token = playback.streamPlaybackAccessToken;
+
+          const hls = yield* request({
+            url: `https://usher.ttvnw.net/api/channel/hls/${login}.m3u8`,
+            searchParams: { sig: token.signature, token: token.value },
+            headers: { accept: 'application/x-mpegURL' },
+          });
+
+          const url = findLastHttpUrl(hls.body as string);
+          if (!url) {
+            return yield* new TwitchApiError({ message: 'HLS URL not found' });
+          }
+
+          return url;
+        }).pipe(
+          Effect.catchAll((e) =>
+            e instanceof TwitchApiError ? Effect.fail(e) : Effect.fail(new TwitchApiError({ message: 'Failed to get HLS URL', cause: e })),
+          ),
+        );
+
+      const checkStream = (hlsUrl: string): Effect.Effect<boolean, TwitchApiError> =>
+        Effect.gen(function* () {
+          const hls = yield* request({ url: hlsUrl, headers: { accept: 'application/x-mpegURL' } });
+          const chunkUrl = findLastHttpUrl(hls.body as string);
+          if (!chunkUrl) {
+            return false;
+          }
+
+          const res = yield* request({ method: 'HEAD', url: chunkUrl });
+          return res.statusCode === 200;
+        }).pipe(Effect.catchAll(() => Effect.succeed(false)));
+
+      const sendMinuteWatched = (channel: Channel): Effect.Effect<boolean, TwitchApiError> =>
+        Effect.gen(function* () {
+          const userId = yield* getUserId;
+
+          const payload = JSON.stringify([
+            {
+              event: 'minute-watched',
+              properties: {
+                hidden: false,
+                live: true,
+                location: 'channel',
+                logged_in: true,
+                muted: false,
+                player: 'site',
+                channel: channel.login,
+                channel_id: channel.id,
+                broadcast_id: channel.currentSid,
+                user_id: userId,
+                game: channel.currentGameName,
+                game_id: channel.currentGameId,
+              },
+            },
+          ]);
+
+          const response = yield* request({
+            method: 'POST',
+            url: 'https://spade.twitch.tv/track',
+            body: Buffer.from(payload).toString('base64'),
+          });
+
+          return response.statusCode === 204;
+        }).pipe(Effect.catchAll(() => Effect.succeed(false)));
+
+      const watch = (channel: Channel): Effect.Effect<{ readonly success: boolean; readonly hlsUrl?: string }, TwitchApiError> =>
+        Effect.gen(function* () {
+          const hasNoSid = !channel.currentSid;
+
+          if (hasNoSid) {
+            return { success: false };
+          }
+
+          const sendStream = Effect.gen(function* () {
+            const initialHlsUrl = channel.hlsUrl || (yield* getHlsUrl(channel.login));
+            const isInitialSuccess = yield* checkStream(initialHlsUrl);
+
+            if (isInitialSuccess) {
+              const isMinuteSent = yield* sendMinuteWatched(channel);
+              return { success: isMinuteSent, hlsUrl: initialHlsUrl };
+            }
+
+            const live = yield* channelLive(channel.login);
+            const streamId = live.user?.stream?.id;
+
+            if (!streamId) {
+              return { success: false, hlsUrl: initialHlsUrl };
+            }
+
+            const freshHlsUrl = yield* getHlsUrl(channel.login);
+            const isFreshSuccess = yield* checkStream(freshHlsUrl);
+
+            if (isFreshSuccess) {
+              const isMinuteSent = yield* sendMinuteWatched(channel);
+              return { success: isMinuteSent, hlsUrl: freshHlsUrl };
+            }
+
+            return { success: false, hlsUrl: freshHlsUrl };
+          }).pipe(Effect.catchAll(() => Effect.succeed({ success: false, hlsUrl: channel.hlsUrl })));
+
+          const streamResult = yield* sendStream;
+
+          return {
+            success: streamResult.success,
+            hlsUrl: streamResult.hlsUrl,
+          };
+        });
+
       const mapFirst = <A, E, R>(effect: Effect.Effect<ReadonlyArray<A>, E, R>) => effect.pipe(Effect.map((res) => res[0]));
 
       const dropsDashboard = mapFirst(graphql(GqlQueries.dropsDashboard, ViewerDropsDashboardSchema));
@@ -372,11 +506,12 @@ export const TwitchApiLayer = (authToken: string, isDebug = false): Layer.Layer<
         mapFirst(graphql(GqlQueries.playbackToken(login), PlaybackTokenSchema));
 
       return {
+        init,
         userId: getUserId,
         writeDebugFile,
         graphql,
         request,
-        init,
+        watch,
         dropsDashboard,
         inventory,
         currentDrops,

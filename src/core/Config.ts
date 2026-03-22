@@ -14,7 +14,7 @@ export const ClientConfigSchema = Schema.Struct({
   exclusionList: Schema.Set(Schema.String),
 });
 
-export interface ClientConfig extends Schema.Schema.Type<typeof ClientConfigSchema> {}
+export type ClientConfig = Schema.Schema.Type<typeof ClientConfigSchema>;
 
 export const INITIAL_CONFIG: ClientConfig = Data.struct({
   isClaimDrops: false,

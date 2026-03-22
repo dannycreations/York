@@ -1,17 +1,16 @@
 import { chalk } from '@vegapunk/utilities';
 import { Array, Effect, Order, pipe, Ref, Schedule } from 'effect';
 
+import { ConfigStoreTag } from '../core/Config';
 import { calculatePriority, getDropStatus } from '../helpers/TwitchHelper';
 import { CampaignStoreTag } from '../stores/CampaignStore';
 
-import type { ClientConfig } from '../core/Config';
 import type { Campaign } from '../core/Schemas';
-import type { CampaignStore } from '../stores/CampaignStore';
-import type { StoreClient } from '../structures/StoreClient';
 import type { MainState } from './MainWorkflow';
 
-const processOfflineCampaign = (campaign: Campaign, state: MainState, campaignStore: CampaignStore) =>
+const processOfflineCampaign = (campaign: Campaign, state: MainState) =>
   Effect.gen(function* () {
+    const campaignStore = yield* CampaignStoreTag;
     const { isExpired } = getDropStatus(campaign.startAt, campaign.endAt, Date.now());
 
     if (isExpired) {
@@ -48,9 +47,10 @@ const processOfflineCampaign = (campaign: Campaign, state: MainState, campaignSt
     yield* campaignStore.setPriority(campaign.id, priority);
   });
 
-export const OfflineWorkflow = (state: MainState, configStore: StoreClient<ClientConfig>) =>
+export const OfflineWorkflow = (state: MainState) =>
   Effect.gen(function* () {
     const campaignStore = yield* CampaignStoreTag;
+    const configStore = yield* ConfigStoreTag;
 
     yield* Effect.sleep('120 seconds');
 
@@ -70,7 +70,7 @@ export const OfflineWorkflow = (state: MainState, configStore: StoreClient<Clien
         ),
       );
 
-      yield* Effect.forEach(sortedOffline, (campaign) => processOfflineCampaign(campaign, state, campaignStore), {
+      yield* Effect.forEach(sortedOffline, (campaign) => processOfflineCampaign(campaign, state), {
         discard: true,
       });
 

@@ -14,7 +14,7 @@
     "clean": "rimraf -g \"*.tsbuildinfo\" \"dist\"",
     "clean:node": "rimraf -g \"*-lock*\" \"node_modules\"",
     "update": "npm-check-updates -u -x got,@types/node",
-    "prepare": "husky"
+    "prepare": "husky && effect-language-service patch"
   },
   "dependencies": {
     "@effect/platform": "^0.96.0",
@@ -28,6 +28,7 @@
     "user-agents": "^2.1.7"
   },
   "devDependencies": {
+    "@effect/language-service": "^0.81.0",
     "@ianvs/prettier-plugin-sort-imports": "^4.7.1",
     "@sapphire/ts-config": "^5.0.3",
     "@types/node": "24.x",

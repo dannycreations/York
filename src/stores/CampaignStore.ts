@@ -6,7 +6,7 @@ import { WsTopic } from '../core/Constants';
 import { ChannelDropsSchema } from '../core/Schemas';
 import { getDropStatus, isMinutesWatchedMet } from '../helpers/TwitchHelper';
 import { TwitchApiTag } from '../services/TwitchApi';
-import { GqlQueries } from '../services/TwitchQueries';
+import { GqlQueries } from '../services/TwitchGql';
 import { TwitchSocketTag } from '../services/TwitchSocket';
 
 import type { ClientConfig } from '../core/Config';

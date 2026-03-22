@@ -2,52 +2,50 @@ import { chalk } from '@vegapunk/utilities';
 import { uniqueId } from '@vegapunk/utilities/common';
 import { Effect, Option, Ref, Scope, Stream } from 'effect';
 
+import { ConfigStoreTag } from '../core/Config';
 import { WsTopic } from '../core/Constants';
 import { TwitchApiTag } from '../services/TwitchApi';
 import { TwitchSocketTag } from '../services/TwitchSocket';
 
-import type { ClientConfig } from '../core/Config';
 import type { Channel, Drop, SocketMessage } from '../core/Schemas';
-import type { TwitchApi } from '../services/TwitchApi';
-import type { StoreClient } from '../structures/StoreClient';
 import type { MainState } from './MainWorkflow';
 
 const handleClaimAvailable = (
   payload: Extract<SocketMessage['payload'], { type: 'claim-available' }>,
   channel: Channel,
   state: MainState,
-  api: TwitchApi,
-): Effect.Effect<void, never, TwitchApiTag> => {
-  const isTargetChannel = payload.data.claim.channel_id === channel.id;
+): Effect.Effect<void, never, TwitchApiTag> =>
+  Effect.gen(function* () {
+    const isTargetChannel = payload.data.claim.channel_id === channel.id;
 
-  if (!isTargetChannel) {
-    return Effect.void;
-  }
+    if (!isTargetChannel) {
+      return;
+    }
 
-  const claimEffect = api
-    .claimPoints(channel.id, payload.data.claim.id)
-    .pipe(
-      Effect.zipRight(Effect.logInfo(chalk`{green ${channel.login}} | {yellow Points claimed}`)),
-      Effect.zipRight(Ref.set(state.nextPointClaim, Date.now() + 900_000)),
-      Effect.ignore,
-    );
+    const api = yield* TwitchApiTag;
 
-  return claimEffect;
-};
+    yield* api
+      .claimPoints(channel.id, payload.data.claim.id)
+      .pipe(
+        Effect.zipRight(Effect.logInfo(chalk`{green ${channel.login}} | {yellow Points claimed}`)),
+        Effect.zipRight(Ref.set(state.nextPointClaim, Date.now() + 900_000)),
+        Effect.ignore,
+      );
+  });
 
 const handlePointsEarned = (
   payload: Extract<SocketMessage['payload'], { type: 'points-earned' }>,
   channel: Channel,
   state: MainState,
-  api: TwitchApi,
-): Effect.Effect<void, never, TwitchApiTag> => {
-  const isTargetChannel = payload.data.channel_id === channel.id;
+): Effect.Effect<void, never, TwitchApiTag> =>
+  Effect.gen(function* () {
+    const isTargetChannel = payload.data.channel_id === channel.id;
 
-  if (!isTargetChannel) {
-    return Effect.void;
-  }
+    if (!isTargetChannel) {
+      return;
+    }
 
-  return Effect.gen(function* () {
+    const api = yield* TwitchApiTag;
     const now = Date.now();
     const nextClaim = yield* Ref.get(state.nextPointClaim);
     const isTooEarly = now < nextClaim;
@@ -74,28 +72,27 @@ const handlePointsEarned = (
 
     yield* Ref.set(state.nextPointClaim, Date.now() + 900_000);
   });
-};
 
 const handleUserPoint = (
   payload: SocketMessage['payload'],
   channel: Channel,
   state: MainState,
-  api: TwitchApi,
-  configStore: StoreClient<ClientConfig>,
-): Effect.Effect<void, never, TwitchApiTag> =>
+): Effect.Effect<void, never, TwitchApiTag | ConfigStoreTag> =>
   Effect.gen(function* () {
+    const configStore = yield* ConfigStoreTag;
     const config = yield* configStore.get;
+
     if (!config.isClaimPoints) {
       return;
     }
 
     switch (payload.type) {
       case 'claim-available': {
-        yield* handleClaimAvailable(payload, channel, state, api);
+        yield* handleClaimAvailable(payload, channel, state);
         break;
       }
       case 'points-earned': {
-        yield* handlePointsEarned(payload, channel, state, api);
+        yield* handlePointsEarned(payload, channel, state);
         break;
       }
     }
@@ -105,14 +102,14 @@ const handleDropProgress = (
   payload: Extract<SocketMessage['payload'], { type: 'drop-progress' }>,
   drop: Drop,
   state: MainState,
-): Effect.Effect<void> => {
-  const isTargetDrop = payload.data.drop_id === drop.id;
+): Effect.Effect<void> =>
+  Effect.gen(function* () {
+    const isTargetDrop = payload.data.drop_id === drop.id;
 
-  if (!isTargetDrop) {
-    return Effect.void;
-  }
+    if (!isTargetDrop) {
+      return;
+    }
 
-  return Effect.gen(function* () {
     const progress = payload.data.current_progress_min;
     const desync = progress - drop.currentMinutesWatched;
 
@@ -130,7 +127,6 @@ const handleDropProgress = (
       yield* Ref.set(state.currentChannel, Option.none());
     }
   });
-};
 
 const handleDropClaim = (payload: Extract<SocketMessage['payload'], { type: 'drop-claim' }>, drop: Drop, state: MainState): Effect.Effect<void> => {
   const isTargetDrop = payload.data.drop_id === drop.id;
@@ -154,6 +150,7 @@ const handleUserDrop = (payload: SocketMessage['payload'], currentDrop: Option.O
     if (Option.isNone(currentDrop)) {
       return;
     }
+
     const drop = currentDrop.value;
 
     switch (payload.type) {
@@ -181,13 +178,10 @@ const handleChannelStream = (msg: SocketMessage, channel: Channel, state: MainSt
   ).pipe(Effect.zipRight(Effect.logInfo(chalk`{red ${channel.login}} | {red Stream down}`)));
 };
 
-const handleChannelMoment = (
-  msg: SocketMessage,
-  channel: Channel,
-  api: TwitchApi,
-  configStore: StoreClient<ClientConfig>,
-): Effect.Effect<void, never, TwitchSocketTag | TwitchApiTag> =>
+const handleChannelMoment = (msg: SocketMessage, channel: Channel): Effect.Effect<void, never, TwitchSocketTag | TwitchApiTag | ConfigStoreTag> =>
   Effect.gen(function* () {
+    const api = yield* TwitchApiTag;
+    const configStore = yield* ConfigStoreTag;
     const isOtherTopic = msg.topicId !== channel.id;
 
     if (isOtherTopic) {
@@ -264,10 +258,8 @@ const handleChannelUpdate = (msg: SocketMessage, channel: Channel, state: MainSt
 const processMessage = (
   msg: SocketMessage,
   state: MainState,
-  api: TwitchApi,
-  configStore: StoreClient<ClientConfig>,
   userId: string,
-): Effect.Effect<void, never, TwitchApiTag | TwitchSocketTag> =>
+): Effect.Effect<void, never, TwitchApiTag | TwitchSocketTag | ConfigStoreTag> =>
   Effect.gen(function* () {
     const channelOpt = yield* Ref.get(state.currentChannel);
 
@@ -292,6 +284,8 @@ const processMessage = (
       return;
     }
 
+    const api = yield* TwitchApiTag;
+
     const debugFileName = `${msg.topicType}-${msg.payload.type ?? uniqueId()}`;
     yield* api.writeDebugFile(msg, debugFileName);
 
@@ -305,7 +299,7 @@ const processMessage = (
     }
 
     if (type === WsTopic.UserPoint) {
-      yield* handleUserPoint(payload, channel, state, api, configStore);
+      yield* handleUserPoint(payload, channel, state);
       return;
     }
 
@@ -315,7 +309,7 @@ const processMessage = (
     }
 
     if (type === WsTopic.ChannelMoment) {
-      yield* handleChannelMoment(msg, channel, api, configStore);
+      yield* handleChannelMoment(msg, channel);
       return;
     }
 
@@ -325,10 +319,7 @@ const processMessage = (
     }
   });
 
-export const SocketWorkflow = (
-  state: MainState,
-  configStore: StoreClient<ClientConfig>,
-): Effect.Effect<void, never, TwitchApiTag | TwitchSocketTag | Scope.Scope> =>
+export const SocketWorkflow = (state: MainState): Effect.Effect<void, never, TwitchApiTag | TwitchSocketTag | Scope.Scope | ConfigStoreTag> =>
   Effect.gen(function* () {
     const api = yield* TwitchApiTag;
     const socket = yield* TwitchSocketTag;
@@ -342,7 +333,7 @@ export const SocketWorkflow = (
           return Option.isSome(currentCampaign) && Option.isSome(currentChannel);
         }),
       ),
-      Stream.runForEach((msg) => processMessage(msg, state, api, configStore, userId)),
+      Stream.runForEach((msg) => processMessage(msg, state, userId)),
     );
 
     yield* Effect.forkScoped(messageStream);
