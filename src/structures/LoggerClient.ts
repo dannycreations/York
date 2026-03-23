@@ -91,16 +91,20 @@ export const makeLoggerClient = (options: LoggerOptions = {}): pino.Logger => {
       nestedKey: 'payload',
       hooks: {
         logMethod(args, method) {
-          if (args.length >= 2) {
-            const [arg0, arg1, ...rest] = args;
-            if (typeof arg0 === 'string' && typeof arg1 === 'object') {
-              return method.apply(this, [arg1, arg0, ...rest]);
-            }
-
-            if (args.every((r) => typeof r === 'string')) {
-              return method.apply(this, [args.join(' ')]);
-            }
+          if (args.length < 2) {
+            return method.apply(this, args);
           }
+
+          const [arg0, arg1, ...rest] = args;
+
+          if (typeof arg0 === 'string' && typeof arg1 === 'object') {
+            return method.apply(this, [arg1, arg0, ...rest]);
+          }
+
+          if (args.every((r) => typeof r === 'string')) {
+            return method.apply(this, [args.join(' ')]);
+          }
+
           return method.apply(this, args);
         },
       },

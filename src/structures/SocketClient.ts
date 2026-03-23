@@ -58,6 +58,7 @@ export const makeSocketClient = (options: SocketClientOptions): Effect.Effect<So
     const disconnect = (): Effect.Effect<void> =>
       Effect.gen(function* () {
         const scopeOpt = yield* Ref.getAndSet(runFiberRef, Option.none());
+
         if (Option.isSome(scopeOpt)) {
           yield* Scope.close(scopeOpt.value, Exit.void);
         }
@@ -221,11 +222,15 @@ export const makeSocketClient = (options: SocketClientOptions): Effect.Effect<So
 
     const pingLoop = Effect.gen(function* () {
       const socketOpt = yield* Ref.get(socketRef);
-      if (Option.isSome(socketOpt)) {
-        if (pingPayload) {
-          yield* send(pingPayload);
-        }
+      if (Option.isNone(socketOpt)) {
+        return;
       }
+
+      if (!pingPayload) {
+        return;
+      }
+
+      yield* send(pingPayload);
     }).pipe(Effect.repeat(Schedule.spaced(`${pingIntervalMs} millis`)));
 
     const timeoutLoop = Effect.gen(function* () {

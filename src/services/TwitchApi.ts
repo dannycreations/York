@@ -99,12 +99,10 @@ const parseUniqueCookies = (setCookie: readonly string[]): Readonly<Record<strin
 
     if (name === 'server_session_id') {
       result['client-session-id'] = value;
-      continue;
     }
 
     if (name === 'unique_id') {
       result['x-device-id'] = value;
-      continue;
     }
   }
   return result;
@@ -191,23 +189,27 @@ export const TwitchApiLayer = (authToken: string, isDebug = false): Layer.Layer<
 
           const isDebugLog = isDebug || isDebugOverride;
 
-          if (isDebugLog) {
-            yield* Effect.logDebug(chalk`API: {bold ${response.statusCode}} ${payload.method ?? 'GET'} ${payload.url}`);
-
-            if (isDebugOverride) {
-              yield* writeDebugFile(
-                {
-                  request: {
-                    url: `${response.statusCode} ${payload.method ?? 'GET'} ${payload.url}`,
-                    headers: { ...commonHeaders, ...payload.headers },
-                    body: payload.body,
-                  },
-                  response: { headers: response.headers, body: response.body },
-                },
-                `api-debug-${Date.now()}`,
-              );
-            }
+          if (!isDebugLog) {
+            return response;
           }
+
+          yield* Effect.logDebug(chalk`API: {bold ${response.statusCode}} ${payload.method ?? 'GET'} ${payload.url}`);
+
+          if (!isDebugOverride) {
+            return response;
+          }
+
+          yield* writeDebugFile(
+            {
+              request: {
+                url: `${response.statusCode} ${payload.method ?? 'GET'} ${payload.url}`,
+                headers: { ...commonHeaders, ...payload.headers },
+                body: payload.body,
+              },
+              response: { headers: response.headers, body: response.body },
+            },
+            `api-debug-${Date.now()}`,
+          );
 
           return response;
         }).pipe(
@@ -279,14 +281,21 @@ export const TwitchApiLayer = (authToken: string, isDebug = false): Layer.Layer<
               variables = { ...variables, channelLogin: userId };
             }
 
-            const extensions = r.hash
-              ? {
-                  persistedQuery: {
-                    version: 1,
-                    sha256Hash: r.hash,
-                  },
-                }
-              : undefined;
+            if (!r.hash) {
+              return {
+                operationName: r.operationName,
+                variables,
+                query: r.query,
+                extensions: undefined,
+              };
+            }
+
+            const extensions = {
+              persistedQuery: {
+                version: 1,
+                sha256Hash: r.hash,
+              },
+            };
 
             return {
               operationName: r.operationName,
@@ -309,7 +318,7 @@ export const TwitchApiLayer = (authToken: string, isDebug = false): Layer.Layer<
               const hasErrors = !!res.errors && res.errors.length > 0;
 
               if (hasErrors) {
-                return handleGraphqlErrors(res.errors);
+                return handleGraphqlErrors(res.errors!);
               }
 
               return decode(res.data).pipe(Effect.mapError((e) => new TwitchApiError({ message: 'GraphQL Validation Error', cause: e })));
@@ -441,12 +450,12 @@ export const TwitchApiLayer = (authToken: string, isDebug = false): Layer.Layer<
             const freshHlsUrl = yield* getHlsUrl(channel.login);
             const isFreshSuccess = yield* checkStream(freshHlsUrl);
 
-            if (isFreshSuccess) {
-              const isMinuteSent = yield* sendMinuteWatched(channel);
-              return { success: isMinuteSent, hlsUrl: freshHlsUrl };
+            if (!isFreshSuccess) {
+              return { success: false, hlsUrl: freshHlsUrl };
             }
 
-            return { success: false, hlsUrl: freshHlsUrl };
+            const isMinuteSent = yield* sendMinuteWatched(channel);
+            return { success: isMinuteSent, hlsUrl: freshHlsUrl };
           }).pipe(Effect.catchAll(() => Effect.succeed({ success: false, hlsUrl: channel.hlsUrl })));
 
           const streamResult = yield* sendStream;
@@ -509,17 +518,20 @@ export const TwitchApiLayer = (authToken: string, isDebug = false): Layer.Layer<
         Effect.flatMap((inv) =>
           Effect.gen(function* () {
             const campaigns = inv.currentUser.inventory.dropCampaignsInProgress;
+
             for (const campaign of campaigns) {
               for (const drop of campaign.timeBasedDrops) {
                 const dropInstanceID = drop.self?.dropInstanceID;
-                const isClaimable = drop.self && !drop.self.isClaimed && !!dropInstanceID;
+                const isClaimable = !!drop.self && !drop.self.isClaimed && !!dropInstanceID;
 
-                if (isClaimable) {
-                  yield* claimDrops(dropInstanceID).pipe(
-                    Effect.zipRight(Effect.logInfo(chalk`{green ${drop.name}} | {yellow Drops claimed}`)),
-                    Effect.ignore,
-                  );
+                if (!isClaimable) {
+                  continue;
                 }
+
+                yield* claimDrops(dropInstanceID!).pipe(
+                  Effect.zipRight(Effect.logInfo(chalk`{green ${drop.name}} | {yellow Drops claimed}`)),
+                  Effect.ignore,
+                );
               }
             }
           }),

@@ -57,10 +57,12 @@ const claimChannelPoints = (channel: Channel): Effect.Effect<void, TwitchApiErro
     const community = channelData.community.channel;
     const availableClaim = community.self.communityPoints.availableClaim;
 
-    if (availableClaim) {
-      yield* api.claimPoints(channel.id, availableClaim.id);
-      yield* Effect.logInfo(chalk`{green ${channel.login}} | {yellow Points claimed}`);
+    if (!availableClaim) {
+      return;
     }
+
+    yield* api.claimPoints(channel.id, availableClaim.id);
+    yield* Effect.logInfo(chalk`{green ${channel.login}} | {yellow Points claimed}`);
   });
 
 const contributeToCommunityGoals = (state: MainState, channel: Channel): Effect.Effect<void, TwitchApiError, TwitchApiTag | ConfigStoreTag> =>
@@ -107,10 +109,12 @@ const contributeToCommunityGoals = (state: MainState, channel: Channel): Effect.
 
       const amount = Math.min(goalLeft, userLeftToContribute, balance);
 
-      if (amount > 0) {
-        yield* api.contributeCommunityGoal(channel.id, goal.id, amount);
-        yield* Effect.logInfo(chalk`{green ${channel.login}} | {yellow Contributed ${amount} points to goal: ${goal.title}}`);
+      if (amount <= 0) {
+        continue;
       }
+
+      yield* api.contributeCommunityGoal(channel.id, goal.id, amount);
+      yield* Effect.logInfo(chalk`{green ${channel.login}} | {yellow Contributed ${amount} points to goal: ${goal.title}}`);
     }
 
     yield* Ref.set(state.nextCommunityGoalContribution, now + 300_000);
@@ -213,7 +217,6 @@ const watchChannelTick = (
 ): Effect.Effect<void, TwitchApiError | MainWorkflowError, CampaignStoreTag | TwitchApiTag> =>
   Effect.gen(function* () {
     const campaignStore = yield* CampaignStoreTag;
-    const api = yield* TwitchApiTag;
 
     const isClaiming = yield* Ref.get(state.isClaiming);
 
@@ -227,25 +230,34 @@ const watchChannelTick = (
 
     const isMainCampaign = !higherPriority || higherPriority.id === campaign.id;
 
-    if (!isMainCampaign) {
-      const isHigherPriority = higherPriority.priority > campaign.priority;
-      const currentDropOpt = yield* Ref.get(state.currentDrop);
+    if (isMainCampaign) {
+      yield* waitForNextWatch(state);
+      return yield* watchCurrentChannel(state);
+    }
 
-      const isSoonerEnding = Option.match(currentDropOpt, {
-        onNone: () => false,
-        onSome: (d) => higherPriority.game.id !== campaign.game.id && d.endAt >= higherPriority.endAt,
-      });
+    const isHigherPriority = higherPriority.priority > campaign.priority;
+    const currentDropOpt = yield* Ref.get(state.currentDrop);
 
-      const shouldSwitch = isHigherPriority || isSoonerEnding;
+    const isSoonerEnding = Option.match(currentDropOpt, {
+      onNone: () => false,
+      onSome: (d) => higherPriority.game.id !== campaign.game.id && d.endAt >= higherPriority.endAt,
+    });
 
-      if (shouldSwitch) {
-        yield* Effect.logInfo(chalk`{yellow Switching to higher priority campaign: ${higherPriority.name}}`);
-        yield* resetChannel(state);
-        return;
-      }
+    const shouldSwitch = isHigherPriority || isSoonerEnding;
+
+    if (shouldSwitch) {
+      yield* Effect.logInfo(chalk`{yellow Switching to higher priority campaign: ${higherPriority.name}}`);
+      yield* resetChannel(state);
+      return;
     }
 
     yield* waitForNextWatch(state);
+    yield* watchCurrentChannel(state);
+  });
+
+const watchCurrentChannel = (state: MainState): Effect.Effect<void, TwitchApiError | MainWorkflowError, CampaignStoreTag | TwitchApiTag> =>
+  Effect.gen(function* () {
+    const api = yield* TwitchApiTag;
 
     const chanOpt = yield* Ref.get(state.currentChannel);
     const isChannelMissingOrOffline = Option.isNone(chanOpt) || !chanOpt.value.isOnline;
@@ -299,13 +311,6 @@ const watchChannelTick = (
     }
 
     yield* handleWatchSuccess(state, updatedChan);
-
-    const currentChannel = yield* Ref.get(state.currentChannel);
-    const isWatchDone = Option.isNone(currentChannel);
-
-    if (isWatchDone) {
-      return;
-    }
   });
 
 const manageChannelSockets = (

@@ -65,13 +65,13 @@ const processDrop = (
 
   const benefits = drop.benefitEdges.map((e) => e.benefit.id);
 
-  for (const benefitId of benefits) {
+  const hasBeenAwarded = benefits.some((benefitId) => {
     const lastAwardedAt = rewardsMap.get(benefitId);
-    const hasBeenAwarded = lastAwardedAt !== undefined && lastAwardedAt >= startAt;
+    return lastAwardedAt !== undefined && lastAwardedAt >= startAt;
+  });
 
-    if (hasBeenAwarded) {
-      return Option.none();
-    }
+  if (hasBeenAwarded) {
+    return Option.none();
   }
 
   const currentMinutes = drop.self?.currentMinutesWatched ?? 0;
@@ -293,13 +293,13 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
         }
 
         const existing = existingCampaigns.get(campaign.id);
+
         if (!existing) {
           changed = true;
           continue;
         }
 
-        const isStatusChanged = existing.isOffline !== campaign.isOffline || existing.priority !== campaign.priority;
-        if (isStatusChanged) {
+        if (existing.isOffline !== campaign.isOffline || existing.priority !== campaign.priority) {
           changed = true;
         }
       }
@@ -529,9 +529,7 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
         if (hasAllowChannels) {
           const response = yield* api.channelStreams(campaign.allowChannels.slice(0, 30));
           for (const u of response.users) {
-            const isOffline = u.stream === null;
-
-            if (isOffline) {
+            if (u.stream === null) {
               continue;
             }
 
@@ -549,9 +547,7 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
           const edges = response.game?.streams.edges ?? [];
 
           for (const e of edges) {
-            const isMissingBroadcaster = e.node.broadcaster === null;
-
-            if (isMissingBroadcaster) {
+            if (e.node.broadcaster === null) {
               continue;
             }
 

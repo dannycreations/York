@@ -66,9 +66,8 @@ export const TwitchSocketLayer = (authToken: string): Layer.Layer<TwitchSocketTa
       const listen = (topic: string, id: string): Effect.Effect<void, TwitchSocketError> =>
         Ref.modify(subscribedTopics, (s) => {
           const topicKey = `${topic}.${id}`;
-          const alreadySubscribed = s.has(topicKey);
 
-          if (alreadySubscribed) {
+          if (s.has(topicKey)) {
             return [Effect.void, s];
           }
 
@@ -153,12 +152,7 @@ export const TwitchSocketLayer = (authToken: string): Layer.Layer<TwitchSocketTa
             }
 
             const payloadData = isObjectLike(value.data) ? value.data : {};
-
-            let topic_id = topicId;
-
-            if (typeof value.topic_id === 'string') {
-              topic_id = value.topic_id;
-            }
+            const topic_id = typeof value.topic_id === 'string' ? value.topic_id : topicId;
 
             const payload = {
               topicType,

@@ -107,6 +107,7 @@ export const makeStoreClient = <A extends object, I, R>(
       }
 
       const data = yield* Ref.get(dataRef);
+
       const saveResult = yield* saveStore(filePath, schema, data).pipe(
         Effect.catchAll((error) =>
           Effect.gen(function* () {
