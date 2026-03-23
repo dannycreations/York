@@ -205,11 +205,14 @@ const processInventoryDrops = (
     }
 
     const len = filtered.length;
+    const totalDrops = drops.length;
+    const startIndex = totalDrops - len;
+
     for (let i = 0; i < len; i++) {
       const drop = filtered[i];
       result.push({
         ...drop,
-        name: truncate(`${i + 1}/${len}, ${drop.name}`),
+        name: truncate(`${startIndex + i + 1}/${totalDrops}, ${drop.name}`),
       });
     }
   }
@@ -388,6 +391,9 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
         }
 
         const rewardsMap = yield* Ref.get(rewardsRef);
+        const progress = yield* Ref.get(progressRef);
+        const progressMap = new Map(progress.map((d) => [d.id, d]));
+
         const sortedDrops = [...dropDetail.timeBasedDrops].sort((a, b) => a.requiredMinutesWatched - b.requiredMinutesWatched);
 
         const config = yield* configStore.get;
@@ -398,14 +404,23 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
           const opt = processDrop(d, campaignId, config, rewardsMap, now, false);
 
           if (Option.isSome(opt)) {
-            activeDrops.push(opt.value);
+            const drop = opt.value;
+            const currentProgress = progressMap.get(drop.id);
+
+            activeDrops.push({
+              ...drop,
+              currentMinutesWatched: currentProgress?.currentMinutesWatched ?? drop.currentMinutesWatched,
+            });
           }
         }
 
         const len = activeDrops.length;
+        const totalDrops = sortedDrops.length;
+        const startIndex = totalDrops - len;
+
         const result = activeDrops.map((drop, i) => ({
           ...drop,
-          name: truncate(`${i + 1}/${len}, ${drop.name}`),
+          name: truncate(`${startIndex + i + 1}/${totalDrops}, ${drop.name}`),
         }));
 
         yield* Ref.update(progressRef, (current) => {
