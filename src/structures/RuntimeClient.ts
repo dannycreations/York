@@ -62,8 +62,7 @@ export const runMainCycle = <A, E, R>(program: Effect.Effect<A, E, R>, options: 
         Effect.gen(function* () {
           const failures = Cause.failures(cause);
           const hasRestart = Chunk.some(failures, (error: unknown): error is RuntimeRestart => {
-            const isError = isErrorLike<{ readonly _tag: string }>(error);
-            if (!isError) {
+            if (!isErrorLike<{ readonly _tag: string }>(error)) {
               return false;
             }
 

@@ -124,9 +124,8 @@ const updateChannelInfo = (state: MainState, chan: Channel): Effect.Effect<Optio
   Effect.gen(function* () {
     const api = yield* TwitchApiTag;
     const localMin = yield* Ref.get(state.localMinutesWatched);
-    const isRecentWatch = !!chan.currentSid && localMin > 0 && localMin < 15;
 
-    if (isRecentWatch) {
+    if (!!chan.currentSid && localMin > 0 && localMin < 15) {
       return Option.some(chan);
     }
 
@@ -182,9 +181,8 @@ const handleWatchSuccess = (state: MainState, chan: Channel): Effect.Effect<void
     }
 
     const localMin = yield* Ref.get(state.localMinutesWatched);
-    const shouldSyncProgress = localMin >= 20;
 
-    if (!shouldSyncProgress) {
+    if (localMin < 20) {
       return;
     }
 
@@ -198,10 +196,7 @@ const handleWatchSuccess = (state: MainState, chan: Channel): Effect.Effect<void
       return;
     }
 
-    const progressDesync = currentMinutesWatched - updatedDrop.currentMinutesWatched;
-    const isDesynced = progressDesync >= 20;
-
-    if (isDesynced) {
+    if (currentMinutesWatched - updatedDrop.currentMinutesWatched >= 20) {
       yield* Ref.update(
         state.currentChannel,
         Option.map((ch) => ({ ...ch, isOnline: false })),
@@ -232,7 +227,8 @@ const watchChannelTick = (
 
     if (isMainCampaign) {
       yield* waitForNextWatch(state);
-      return yield* watchCurrentChannel(state);
+      yield* watchCurrentChannel(state);
+      return;
     }
 
     const isHigherPriority = higherPriority.priority > campaign.priority;
@@ -260,9 +256,7 @@ const watchCurrentChannel = (state: MainState): Effect.Effect<void, TwitchApiErr
     const api = yield* TwitchApiTag;
 
     const chanOpt = yield* Ref.get(state.currentChannel);
-    const isChannelMissingOrOffline = Option.isNone(chanOpt) || !chanOpt.value.isOnline;
-
-    if (isChannelMissingOrOffline) {
+    if (Option.isNone(chanOpt) || !chanOpt.value.isOnline) {
       yield* Ref.set(state.currentChannel, Option.none());
       return;
     }
@@ -299,9 +293,7 @@ const watchCurrentChannel = (state: MainState): Effect.Effect<void, TwitchApiErr
 
     const currentTimeMs = Date.now();
     const scheduledWatchMs = yield* Ref.get(state.nextWatch);
-    const isTooEarly = currentTimeMs < scheduledWatchMs;
-
-    if (isTooEarly) {
+    if (currentTimeMs < scheduledWatchMs) {
       return;
     }
 
@@ -444,9 +436,7 @@ const tryClaim = (state: MainState, drop: Drop): Effect.Effect<boolean, TwitchAp
       return false;
     }
 
-    const isClaimSuccessful = !!claimRes.value.claimDropRewards;
-
-    if (!isClaimSuccessful) {
+    if (!claimRes.value.claimDropRewards) {
       return false;
     }
 
@@ -472,9 +462,7 @@ const processClaimAttempts = (
 ): Effect.Effect<number, TwitchApiError, CampaignStoreTag | TwitchApiTag> =>
   Effect.gen(function* () {
     const campaignStore = yield* CampaignStoreTag;
-    const needsProgressUpdate = attempt > 0 || !drop.dropInstanceID;
-
-    if (needsProgressUpdate) {
+    if (attempt > 0 || !drop.dropInstanceID) {
       yield* campaignStore.updateProgress;
 
       const drops = yield* campaignStore.getDropsForCampaign(campaign.id);
@@ -498,9 +486,7 @@ const processClaimAttempts = (
     }
 
     const currentDrop = currentDropOpt.value;
-    const isMinutesNotMet = currentDrop.currentMinutesWatched < currentDrop.requiredMinutesWatched;
-
-    if (isMinutesNotMet) {
+    if (currentDrop.currentMinutesWatched < currentDrop.requiredMinutesWatched) {
       const isBroken = currentDrop.requiredMinutesWatched - currentDrop.currentMinutesWatched >= 20;
       yield* Effect.logInfo(chalk`{green ${drop.name}} | {red ${isBroken ? 'Possible broken drops' : 'Minutes not met'}}`);
 
@@ -513,9 +499,7 @@ const processClaimAttempts = (
       return totalAttempts;
     }
 
-    const isFinalAttempt = attempt >= totalAttempts - 1;
-
-    if (isFinalAttempt) {
+    if (attempt >= totalAttempts - 1) {
       yield* Effect.logInfo(chalk`{green ${drop.name}} | {red Award not found after ${totalAttempts} minutes}`);
 
       yield* Ref.update(

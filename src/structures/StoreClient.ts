@@ -35,9 +35,7 @@ const loadStore = (filePath: string): Effect.Effect<unknown, StoreClientError> =
       }),
     ),
     Effect.catchAll((cause) => {
-      const isNotFound = cause instanceof StoreClientError && isErrorLike<{ readonly code: string }>(cause.cause) && cause.cause.code === 'ENOENT';
-
-      if (isNotFound) {
+      if (cause instanceof StoreClientError && isErrorLike<{ readonly code: string }>(cause.cause) && cause.cause.code === 'ENOENT') {
         return Effect.succeed({});
       }
 
@@ -100,9 +98,9 @@ export const makeStoreClient = <A extends object, I, R>(
     yield* Ref.set(dataRef, validatedData);
 
     const save = Effect.gen(function* () {
-      const isDirty = yield* Ref.getAndSet(dirtyRef, false);
+      const isDirtyValue = yield* Ref.getAndSet(dirtyRef, false);
 
-      if (!isDirty) {
+      if (!isDirtyValue) {
         return;
       }
 

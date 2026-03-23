@@ -24,16 +24,14 @@ const processOfflineCampaign = (campaign: Campaign, state: MainState) =>
     }
 
     const drops = yield* campaignStore.getDropsForCampaign(campaign.id).pipe(Effect.orDie);
-    const hasNoDrops = drops.length === 0;
 
-    if (hasNoDrops) {
+    if (drops.length === 0) {
       return;
     }
 
     const channels = yield* campaignStore.getChannelsForCampaign(campaign).pipe(Effect.orDie);
-    const hasNoChannels = channels.length === 0;
 
-    if (hasNoChannels) {
+    if (channels.length === 0) {
       return;
     }
 

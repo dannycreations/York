@@ -102,7 +102,8 @@ export const makeLoggerClient = (options: LoggerOptions = {}): pino.Logger => {
           }
 
           if (args.every((r) => typeof r === 'string')) {
-            return method.apply(this, [args.join(' ')]);
+            const joinedMessage = args.join(' ');
+            return method.apply(this, [joinedMessage]);
           }
 
           return method.apply(this, args);

@@ -16,9 +16,7 @@ const handleClaimAvailable = (
   state: MainState,
 ): Effect.Effect<void, never, TwitchApiTag> =>
   Effect.gen(function* () {
-    const isTargetChannel = payload.data.claim.channel_id === channel.id;
-
-    if (!isTargetChannel) {
+    if (payload.data.claim.channel_id !== channel.id) {
       return;
     }
 
@@ -39,18 +37,15 @@ const handlePointsEarned = (
   state: MainState,
 ): Effect.Effect<void, never, TwitchApiTag> =>
   Effect.gen(function* () {
-    const isTargetChannel = payload.data.channel_id === channel.id;
-
-    if (!isTargetChannel) {
+    if (payload.data.channel_id !== channel.id) {
       return;
     }
 
     const api = yield* TwitchApiTag;
     const now = Date.now();
     const nextClaim = yield* Ref.get(state.nextPointClaim);
-    const isTooEarly = now < nextClaim;
 
-    if (isTooEarly) {
+    if (now < nextClaim) {
       return;
     }
 
@@ -89,15 +84,14 @@ const handleUserPoint = (
       return;
     }
 
-    switch (payload.type) {
-      case 'claim-available': {
-        yield* handleClaimAvailable(payload, channel, state);
-        break;
-      }
-      case 'points-earned': {
-        yield* handlePointsEarned(payload, channel, state);
-        break;
-      }
+    if (payload.type === 'claim-available') {
+      yield* handleClaimAvailable(payload, channel, state);
+      return;
+    }
+
+    if (payload.type === 'points-earned') {
+      yield* handlePointsEarned(payload, channel, state);
+      return;
     }
   });
 
@@ -107,9 +101,7 @@ const handleDropProgress = (
   state: MainState,
 ): Effect.Effect<void> =>
   Effect.gen(function* () {
-    const isTargetDrop = payload.data.drop_id === drop.id;
-
-    if (!isTargetDrop) {
+    if (payload.data.drop_id !== drop.id) {
       return;
     }
 
@@ -132,9 +124,7 @@ const handleDropProgress = (
   });
 
 const handleDropClaim = (payload: Extract<SocketMessage['payload'], { type: 'drop-claim' }>, drop: Drop, state: MainState): Effect.Effect<void> => {
-  const isTargetDrop = payload.data.drop_id === drop.id;
-
-  if (!isTargetDrop) {
+  if (payload.data.drop_id !== drop.id) {
     return Effect.void;
   }
 
@@ -156,15 +146,14 @@ const handleUserDrop = (payload: SocketMessage['payload'], currentDrop: Option.O
 
     const drop = currentDrop.value;
 
-    switch (payload.type) {
-      case 'drop-progress': {
-        yield* handleDropProgress(payload, drop, state);
-        break;
-      }
-      case 'drop-claim': {
-        yield* handleDropClaim(payload, drop, state);
-        break;
-      }
+    if (payload.type === 'drop-progress') {
+      yield* handleDropProgress(payload, drop, state);
+      return;
+    }
+
+    if (payload.type === 'drop-claim') {
+      yield* handleDropClaim(payload, drop, state);
+      return;
     }
   });
 
@@ -193,9 +182,7 @@ const handleChannelMoment = (msg: SocketMessage, channel: Channel): Effect.Effec
       return yield* unlistenEffect;
     }
 
-    const isActive = msg.payload.type === 'active';
-
-    if (!isActive) {
+    if (msg.payload.type !== 'active') {
       return;
     }
 
@@ -219,9 +206,7 @@ const handleChannelPoint = (msg: SocketMessage, channel: Channel): Effect.Effect
       return;
     }
 
-    const isClaimAvailable = msg.payload.type === 'claim-available';
-
-    if (!isClaimAvailable) {
+    if (msg.payload.type !== 'claim-available') {
       return;
     }
 
@@ -237,23 +222,18 @@ const handleChannelPoint = (msg: SocketMessage, channel: Channel): Effect.Effect
 
 const handleChannelUpdate = (msg: SocketMessage, channel: Channel, state: MainState): Effect.Effect<void> =>
   Effect.gen(function* () {
-    const isSettingsUpdate = msg.payload.type === 'broadcast_settings_update';
-
-    if (!isSettingsUpdate) {
+    if (msg.payload.type !== 'broadcast_settings_update') {
       return;
     }
 
     const payload = msg.payload;
-    const isTargetChannel = !payload.channel_id || payload.channel_id === channel.id;
 
-    if (!isTargetChannel) {
+    if (!!payload.channel_id && payload.channel_id !== channel.id) {
       return;
     }
 
     const currentGameId = String(payload.data.game_id);
-    const isGameChanged = !!channel.gameId && currentGameId !== channel.gameId;
-
-    if (isGameChanged) {
+    if (!!channel.gameId && currentGameId !== channel.gameId) {
       yield* Ref.update(state.currentChannel, (current) =>
         Option.match(current, {
           onNone: () => current,
@@ -268,9 +248,7 @@ const handleChannelUpdate = (msg: SocketMessage, channel: Channel, state: MainSt
       Option.match(current, {
         onNone: () => current,
         onSome: (c) => {
-          const isTarget = c.id === channel.id;
-
-          if (!isTarget) {
+          if (c.id !== channel.id) {
             return current;
           }
 
@@ -297,16 +275,10 @@ const processMessage = (
     }
 
     const channel = channelOpt.value;
-    const isUserTopic = msg.topicId === userId;
-    const isChannelTopic = msg.topicId === channel.id;
-    const isTopicRelevant = isUserTopic || isChannelTopic;
-
-    if (!isTopicRelevant) {
+    if (msg.topicId !== userId && msg.topicId !== channel.id) {
       const type = msg.topicType;
-      const isChannelTopicType =
-        type === WsTopic.ChannelStream || type === WsTopic.ChannelMoment || type === WsTopic.ChannelUpdate || type === WsTopic.ChannelPoint;
 
-      if (isChannelTopicType) {
+      if (type === WsTopic.ChannelStream || type === WsTopic.ChannelMoment || type === WsTopic.ChannelUpdate || type === WsTopic.ChannelPoint) {
         const socket = yield* TwitchSocketTag;
         yield* socket.unlisten(type, msg.topicId).pipe(Effect.ignore);
       }
@@ -347,9 +319,7 @@ const processMessage = (
       return yield* handleChannelUpdate(msg, channel, state);
     }
 
-    const isCommunityGoal = payload.type === 'community-goal-created' || payload.type === 'community-goal-updated';
-
-    if (!isCommunityGoal) {
+    if (payload.type !== 'community-goal-created' && payload.type !== 'community-goal-updated') {
       return;
     }
 

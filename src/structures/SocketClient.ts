@@ -242,9 +242,8 @@ export const makeSocketClient = (options: SocketClientOptions): Effect.Effect<So
 
       const lastPong = yield* Ref.get(lastPongReceivedAt);
       const now = Date.now();
-      const isTimeout = now - lastPong > pingIntervalMs + pingTimeoutMs;
 
-      if (!isTimeout) {
+      if (now - lastPong <= pingIntervalMs + pingTimeoutMs) {
         return;
       }
 

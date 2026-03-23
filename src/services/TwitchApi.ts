@@ -180,16 +180,12 @@ export const TwitchApiLayer = (authToken: string, isDebug = false): Layer.Layer<
             retry: -1,
           });
 
-          const isUnauthorized = response.statusCode === 401;
-
-          if (isUnauthorized) {
+          if (response.statusCode === 401) {
             yield* Effect.logFatal(chalk`{red Unauthorized: Invalid OAuth token detected during request}`);
             return yield* Effect.die(new TwitchApiError({ message: 'Unauthorized: Invalid OAuth token detected during request' }));
           }
 
-          const isDebugLog = isDebug || isDebugOverride;
-
-          if (!isDebugLog) {
+          if (!isDebug && !isDebugOverride) {
             return response;
           }
 
@@ -266,20 +262,13 @@ export const TwitchApiLayer = (authToken: string, isDebug = false): Layer.Layer<
         const decode = Schema.decodeUnknown(schema);
 
         return Effect.gen(function* () {
-          let userId = '';
-          if (waitForUserId) {
-            userId = yield* getUserId;
-          }
+          const userId = waitForUserId ? yield* getUserId : '';
 
           const payload = requestsArray.map((r) => {
-            let variables = r.variables;
-
             const isDetails = r.operationName === 'DropCampaignDetails';
-            const hasNoLogin = !variables.channelLogin;
+            const hasNoLogin = !r.variables.channelLogin;
 
-            if (isDetails && hasNoLogin && userId) {
-              variables = { ...variables, channelLogin: userId };
-            }
+            const variables = isDetails && hasNoLogin && userId ? { ...r.variables, channelLogin: userId } : r.variables;
 
             if (!r.hash) {
               return {
@@ -290,18 +279,16 @@ export const TwitchApiLayer = (authToken: string, isDebug = false): Layer.Layer<
               };
             }
 
-            const extensions = {
-              persistedQuery: {
-                version: 1,
-                sha256Hash: r.hash,
-              },
-            };
-
             return {
               operationName: r.operationName,
               variables,
               query: r.query,
-              extensions,
+              extensions: {
+                persistedQuery: {
+                  version: 1,
+                  sha256Hash: r.hash,
+                },
+              },
             };
           });
 
@@ -315,10 +302,8 @@ export const TwitchApiLayer = (authToken: string, isDebug = false): Layer.Layer<
           return yield* Effect.forEach(
             response.body,
             (res) => {
-              const hasErrors = !!res.errors && res.errors.length > 0;
-
-              if (hasErrors) {
-                return handleGraphqlErrors(res.errors!);
+              if (res.errors && res.errors.length > 0) {
+                return handleGraphqlErrors(res.errors);
               }
 
               return decode(res.data).pipe(Effect.mapError((e) => new TwitchApiError({ message: 'GraphQL Validation Error', cause: e })));
@@ -334,18 +319,18 @@ export const TwitchApiLayer = (authToken: string, isDebug = false): Layer.Layer<
       };
 
       const findLastHttpUrl = (text: string): string | undefined => {
-        const start = text.lastIndexOf('\nhttp') + 1;
-        if (start === 0) {
-          const hasHttp = text.startsWith('http');
+        const lastIndex = text.lastIndexOf('\nhttp');
 
-          if (!hasHttp) {
+        if (lastIndex === -1) {
+          if (!text.startsWith('http')) {
             return undefined;
           }
 
-          const lines = text.split('\n', 1);
-          return lines[0].trim();
+          const [firstLine] = text.split('\n', 1);
+          return firstLine.trim();
         }
 
+        const start = lastIndex + 1;
         const end = text.indexOf('\n', start);
 
         if (end === -1) {

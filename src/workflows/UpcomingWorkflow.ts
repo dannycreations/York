@@ -18,12 +18,8 @@ const processUpcomingCampaign = (
 ) =>
   Effect.gen(function* () {
     const waitMs = next.startAt.getTime() - Date.now();
-    const isFuture = waitMs > 0;
-
-    if (isFuture) {
-      const alreadySleeping = yield* Ref.get(isMainCallSleep);
-
-      if (alreadySleeping) {
+    if (waitMs > 0) {
+      if (yield* Ref.get(isMainCallSleep)) {
         return;
       }
 

@@ -62,9 +62,7 @@ const processDrop = (
   if (isClaimed) {
     return Option.none();
   }
-
   const benefits = drop.benefitEdges.map((e) => e.benefit.id);
-
   const hasBeenAwarded = benefits.some((benefitId) => {
     const lastAwardedAt = rewardsMap.get(benefitId);
     return lastAwardedAt !== undefined && lastAwardedAt >= startAt;
@@ -74,23 +72,21 @@ const processDrop = (
     return Option.none();
   }
 
-  const currentMinutes = drop.self?.currentMinutesWatched ?? 0;
+  const currentMinutesWatched = drop.self?.currentMinutesWatched ?? 0;
   const isWatched = drop.self ? isMinutesWatchedMet({ ...drop.self, requiredMinutesWatched }) : false;
 
   if (isWatched && !config.isClaimDrops) {
     return Option.none();
   }
 
-  const minutesLeft = requiredMinutesWatched - currentMinutes;
+  const minutesLeft = requiredMinutesWatched - currentMinutesWatched;
   const status = getDropStatus(startAt, endAt, now, minutesLeft);
 
   if (status.isExpired) {
     return Option.none();
   }
 
-  const hasAward = !!drop.self?.dropInstanceID;
-
-  if (status.isUpcoming && (!allowUpcomingIfHasAward || !hasAward)) {
+  if (status.isUpcoming && (!allowUpcomingIfHasAward || !drop.self?.dropInstanceID)) {
     return Option.none();
   }
 
@@ -105,7 +101,7 @@ const processDrop = (
     requiredSubs: subsCount > 0 ? subsCount : undefined,
     isClaimed,
     hasPreconditionsMet: drop.self?.hasPreconditionsMet ?? true,
-    currentMinutesWatched: currentMinutes,
+    currentMinutesWatched,
     dropInstanceID: drop.self?.dropInstanceID || undefined,
   } satisfies Drop);
 };
@@ -239,30 +235,25 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
         (data) =>
           Effect.gen(function* () {
             const gameName = data.game.displayName;
-            const isExcluded = config.exclusionList.has(gameName);
 
-            if (isExcluded) {
+            if (config.exclusionList.has(gameName)) {
               return Option.none();
             }
 
-            const shouldAutoPriority = config.usePriorityConnected && data.self.isAccountConnected && !config.priorityList.has(gameName);
-
-            if (shouldAutoPriority) {
+            if (config.usePriorityConnected && data.self.isAccountConnected && !config.priorityList.has(gameName)) {
               yield* configStore.update((c) => ({
                 ...c,
                 priorityList: new Set([...c.priorityList, gameName]),
               }));
             }
 
-            const isPriorityOnlyMismatch = config.isPriorityOnly && !config.priorityList.has(gameName);
-
-            if (isPriorityOnlyMismatch) {
+            if (config.isPriorityOnly && !config.priorityList.has(gameName)) {
               return Option.none();
             }
 
             const existing = existingCampaigns.get(data.id);
 
-            return Option.some({
+            const campaign: Campaign = {
               id: data.id,
               name: truncate((existing?.name || data.name).trim()),
               game: existing?.game || data.game,
@@ -272,7 +263,9 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
               priority: existing?.priority ?? 0,
               isOffline: existing?.isOffline ?? false,
               allowChannels: existing?.allowChannels ?? [],
-            } satisfies Campaign);
+            };
+
+            return Option.some(campaign);
           }),
         { concurrency: 10 },
       );
@@ -370,17 +363,20 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
 
         yield* Ref.update(campaignsRef, (map) => {
           const existing = map.get(campaignId);
+
           if (!existing) {
             return map;
           }
 
           const next = new Map(map);
+
           next.set(campaignId, {
             ...existing,
             name: truncate(dropDetail.name.trim()),
             game: dropDetail.game,
             allowChannels: dropDetail.allow?.channels?.map((c) => c.name) ?? [],
           });
+
           return next;
         });
 

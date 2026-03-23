@@ -116,12 +116,12 @@ export const TwitchSocketLayer = (authToken: string): Layer.Layer<TwitchSocketTa
               catch: () => undefined,
             }).pipe(Effect.orDie);
 
-            const isRawValid = isObjectLike<{
-              readonly type: string;
-              readonly data: { readonly topic: string; readonly message: string };
-            }>(raw);
-
-            if (!isRawValid) {
+            if (
+              !isObjectLike<{
+                readonly type: string;
+                readonly data: { readonly topic: string; readonly message: string };
+              }>(raw)
+            ) {
               return Option.none();
             }
 
@@ -138,6 +138,7 @@ export const TwitchSocketLayer = (authToken: string): Layer.Layer<TwitchSocketTa
             }
 
             const { topic, message } = raw.data;
+
             const [topicType, topicId] = topic.split('.');
 
             const value = yield* Effect.try({
@@ -145,13 +146,12 @@ export const TwitchSocketLayer = (authToken: string): Layer.Layer<TwitchSocketTa
               catch: () => undefined,
             }).pipe(Effect.orDie);
 
-            const isValueValid = isObjectLike<{ readonly data: unknown; readonly topic_id: unknown }>(value);
-
-            if (!isValueValid) {
+            if (!isObjectLike<{ readonly data: unknown; readonly topic_id: unknown }>(value)) {
               return Option.none();
             }
 
             const payloadData = isObjectLike(value.data) ? value.data : {};
+
             const topic_id = typeof value.topic_id === 'string' ? value.topic_id : topicId;
 
             const payload = {
