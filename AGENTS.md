@@ -3,6 +3,6 @@
 ## Commands
 
 ```cmd
-# Checks for compilation errors and linting warnings (Fast)
+# Checks for static errors
 npm run check
 ```

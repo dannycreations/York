@@ -491,7 +491,7 @@ const processClaimAttempts = (
       yield* Effect.logInfo(chalk`{green ${drop.name}} | {red ${isBroken ? 'Possible broken drops' : 'Minutes not met'}}`);
 
       if (isBroken) {
-        yield* Ref.update(state.currentCampaign, (c) => Option.map(c, (cp) => ({ ...cp, isOffline: true })));
+        yield* campaignStore.setBroken(currentDrop.campaignId, true);
         yield* resetChannel(state);
         return totalAttempts;
       }

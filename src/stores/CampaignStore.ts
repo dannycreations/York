@@ -115,6 +115,7 @@ export interface CampaignStore {
   readonly getSortedActive: Effect.Effect<ReadonlyArray<Campaign>>;
   readonly getSortedUpcoming: Effect.Effect<ReadonlyArray<Campaign>>;
   readonly getOffline: Effect.Effect<ReadonlyArray<Campaign>>;
+  readonly setBroken: (id: string, isBroken: boolean) => Effect.Effect<void>;
   readonly setOffline: (id: string, isOffline: boolean) => Effect.Effect<void>;
   readonly setPriority: (id: string, priority: number) => Effect.Effect<void>;
   readonly getDropsForCampaign: (campaignId: string) => Effect.Effect<ReadonlyArray<Drop>, TwitchApiError>;
@@ -260,6 +261,7 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
               endAt: data.endAt,
               isAccountConnected: data.self.isAccountConnected,
               priority: existing?.priority ?? 0,
+              isBroken: existing?.isBroken ?? false,
               isOffline: existing?.isOffline ?? false,
               allowChannels: existing?.allowChannels ?? [],
             };
@@ -291,7 +293,7 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
           continue;
         }
 
-        if (existing.isOffline !== campaign.isOffline || existing.priority !== campaign.priority) {
+        if (existing.isBroken !== campaign.isBroken || existing.isOffline !== campaign.isOffline || existing.priority !== campaign.priority) {
           changed = true;
         }
       }
@@ -448,7 +450,7 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
       const seenGames = new Set<string>();
 
       for (const c of campaigns.values()) {
-        if (c.isOffline) {
+        if (c.isBroken || c.isOffline) {
           continue;
         }
 
@@ -495,6 +497,16 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
       }
       return result;
     });
+
+    const setBroken = (id: string, isBroken: boolean): Effect.Effect<void> =>
+      Ref.update(campaignsRef, (map) => {
+        const next = new Map(map);
+        const campaign = next.get(id);
+        if (campaign) {
+          next.set(id, { ...campaign, isBroken });
+        }
+        return next;
+      });
 
     const setOffline = (id: string, isOffline: boolean): Effect.Effect<void> =>
       Ref.update(campaignsRef, (map) => {
@@ -582,6 +594,7 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
       getSortedActive,
       getSortedUpcoming,
       getOffline,
+      setBroken,
       setOffline,
       setPriority,
       state: stateRef,

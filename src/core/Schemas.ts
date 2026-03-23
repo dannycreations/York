@@ -62,6 +62,7 @@ export const CampaignSchema = Schema.Struct({
   endAt: DateFromAny,
   isAccountConnected: Schema.Boolean,
   priority: Schema.Number,
+  isBroken: Schema.Boolean,
   isOffline: Schema.Boolean,
   allowChannels: Schema.Array(Schema.String),
 }).pipe(Schema.annotations({ identifier: 'Campaign' }));

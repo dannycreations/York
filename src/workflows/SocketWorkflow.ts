@@ -6,6 +6,7 @@ import { ConfigStoreTag } from '../core/Config';
 import { WsTopic } from '../core/Constants';
 import { TwitchApiTag } from '../services/TwitchApi';
 import { TwitchSocketTag } from '../services/TwitchSocket';
+import { CampaignStoreTag } from '../stores/CampaignStore';
 
 import type { Channel, Drop, SocketMessage } from '../core/Schemas';
 import type { MainState } from './MainWorkflow';
@@ -99,7 +100,7 @@ const handleDropProgress = (
   payload: Extract<SocketMessage['payload'], { type: 'drop-progress' }>,
   drop: Drop,
   state: MainState,
-): Effect.Effect<void> =>
+): Effect.Effect<void, never, CampaignStoreTag> =>
   Effect.gen(function* () {
     if (payload.data.drop_id !== drop.id) {
       return;
@@ -123,7 +124,8 @@ const handleDropProgress = (
 
       if (isBroken) {
         yield* Effect.logInfo(chalk`{green ${drop.name}} | {red Possible broken drops}`);
-        yield* Ref.update(state.currentCampaign, (c) => Option.map(c, (cp) => ({ ...cp, isOffline: true })));
+        const campaignStore = yield* CampaignStoreTag;
+        yield* campaignStore.setBroken(drop.campaignId, true);
       }
 
       yield* Ref.set(state.currentChannel, Option.none());
@@ -145,7 +147,11 @@ const handleDropClaim = (payload: Extract<SocketMessage['payload'], { type: 'dro
   return updateEffect;
 };
 
-const handleUserDrop = (payload: SocketMessage['payload'], currentDrop: Option.Option<Drop>, state: MainState): Effect.Effect<void> =>
+const handleUserDrop = (
+  payload: SocketMessage['payload'],
+  currentDrop: Option.Option<Drop>,
+  state: MainState,
+): Effect.Effect<void, never, CampaignStoreTag> =>
   Effect.gen(function* () {
     if (Option.isNone(currentDrop)) {
       return;
@@ -273,7 +279,7 @@ const processMessage = (
   msg: SocketMessage,
   state: MainState,
   userId: string,
-): Effect.Effect<void, never, TwitchApiTag | TwitchSocketTag | ConfigStoreTag> =>
+): Effect.Effect<void, never, TwitchApiTag | TwitchSocketTag | ConfigStoreTag | CampaignStoreTag> =>
   Effect.gen(function* () {
     const channelOpt = yield* Ref.get(state.currentChannel);
 
@@ -376,7 +382,9 @@ const processMessage = (
     );
   });
 
-export const SocketWorkflow = (state: MainState): Effect.Effect<void, never, TwitchApiTag | TwitchSocketTag | Scope.Scope | ConfigStoreTag> =>
+export const SocketWorkflow = (
+  state: MainState,
+): Effect.Effect<void, never, TwitchApiTag | TwitchSocketTag | Scope.Scope | ConfigStoreTag | CampaignStoreTag> =>
   Effect.gen(function* () {
     const api = yield* TwitchApiTag;
     const socket = yield* TwitchSocketTag;
