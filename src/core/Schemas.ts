@@ -9,6 +9,18 @@ export const DropStatus = Schema.Literal('ACTIVE', 'EXPIRED', 'UPCOMING');
 
 export type DropStatus = Schema.Schema.Type<typeof DropStatus>;
 
+export const CommunityGoalSchema = Schema.Struct({
+  id: Schema.String,
+  title: Schema.String,
+  isInStock: Schema.Boolean,
+  pointsContributed: Schema.Number,
+  amountNeeded: Schema.Number,
+  perStreamUserMaximumContribution: Schema.Number,
+  status: Schema.String,
+});
+
+export type CommunityGoal = Schema.Schema.Type<typeof CommunityGoalSchema>;
+
 export const GameSchema = Schema.Struct({
   id: Schema.String,
   name: Schema.optional(Schema.String),
@@ -65,6 +77,8 @@ export const ChannelSchema = Schema.Struct({
   currentGameId: Schema.optional(Schema.String),
   currentGameName: Schema.optional(Schema.String),
   hlsUrl: Schema.optional(Schema.String),
+  points: Schema.optional(Schema.Number),
+  communityGoals: Schema.optional(Schema.Map({ key: Schema.String, value: CommunityGoalSchema })),
 }).pipe(Schema.annotations({ identifier: 'Channel' }));
 
 export type Channel = Schema.Schema.Type<typeof ChannelSchema>;
@@ -207,8 +221,12 @@ export const ChannelPointsSchema = Schema.Struct({
   community: Schema.Struct({
     channel: Schema.Struct({
       id: Schema.String,
+      communityPointsSettings: Schema.Struct({
+        goals: Schema.Array(CommunityGoalSchema),
+      }),
       self: Schema.Struct({
         communityPoints: Schema.Struct({
+          balance: Schema.Number,
           availableClaim: Schema.NullOr(Schema.Struct({ id: Schema.String })),
         }),
       }),
@@ -354,6 +372,31 @@ export const ClaimMomentsSchema = Schema.Struct({
   }),
 });
 
+export const UserPointsContributionSchema = Schema.Struct({
+  user: Schema.Struct({
+    channel: Schema.Struct({
+      self: Schema.Struct({
+        communityPoints: Schema.Struct({
+          goalContributions: Schema.Array(
+            Schema.Struct({
+              userPointsContributedThisStream: Schema.Number,
+              goal: Schema.Struct({
+                id: Schema.String,
+              }),
+            }),
+          ),
+        }),
+      }),
+    }),
+  }),
+});
+
+export const ContributeCommunityGoalSchema = Schema.Struct({
+  contributeCommunityPointsCommunityGoal: Schema.Struct({
+    error: Schema.NullOr(Schema.String),
+  }),
+});
+
 export const SocketMessageDropProgressSchema = Schema.Struct({
   type: Schema.Literal('drop-progress'),
   data: Schema.Struct({
@@ -411,6 +454,21 @@ export const SocketMessageBroadcastUpdateSchema = Schema.Struct({
   }),
 });
 
+export const SocketMessageCommunityGoalSchema = Schema.Struct({
+  type: Schema.Literal('community-goal-created', 'community-goal-updated', 'community-goal-deleted'),
+  data: Schema.Struct({
+    community_goal: Schema.Struct({
+      id: Schema.String,
+      title: Schema.optional(Schema.String),
+      status: Schema.optional(Schema.String),
+      points_contributed: Schema.optional(Schema.Number),
+      goal_amount: Schema.optional(Schema.Number),
+      is_in_stock: Schema.optional(Schema.Boolean),
+      per_stream_maximum_user_contribution: Schema.optional(Schema.Number),
+    }),
+  }),
+});
+
 export const SocketMessagePayloadSchema = Schema.Union(
   SocketMessageDropProgressSchema,
   SocketMessageDropClaimSchema,
@@ -419,6 +477,7 @@ export const SocketMessagePayloadSchema = Schema.Union(
   SocketMessageStreamDownSchema,
   SocketMessageMomentActiveSchema,
   SocketMessageBroadcastUpdateSchema,
+  SocketMessageCommunityGoalSchema,
 );
 
 export const SocketMessageSchema = Schema.Struct({

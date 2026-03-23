@@ -86,6 +86,23 @@ export const GqlQueries = {
     hash: 'e2d67415aead910f7f9ceb45a77b750a1e1d9622c936d832328a0689e054db62',
     variables: { input: { momentID } },
   }),
+  userPointsContribution: (channelLogin: string): GraphqlRequest => ({
+    operationName: 'UserPointsContribution',
+    hash: '23ff2c2d60708379131178742327ead913b93b1bd6f665517a6d9085b73f661f',
+    variables: { channelLogin },
+  }),
+  contributeCommunityGoal: (channelID: string, goalID: string, amount: number): GraphqlRequest => ({
+    operationName: 'ContributeCommunityPointsCommunityGoal',
+    hash: '5774f0ea5d89587d73021a2e03c3c44777d903840c608754a1be519f51e37bb6',
+    variables: {
+      input: {
+        amount,
+        channelID,
+        goalID,
+        transactionID: Math.random().toString(36).substring(2, 15),
+      },
+    },
+  }),
   playbackToken: (login: string): GraphqlRequest => ({
     operationName: 'PlaybackAccessToken',
     hash: 'ed230aa1e33e07eebb8928504583da78a5173989fadfb1ac94be06a04f3cdbe9',

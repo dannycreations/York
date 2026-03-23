@@ -206,6 +206,32 @@ const handleChannelMoment = (msg: SocketMessage, channel: Channel): Effect.Effec
     yield* Effect.logInfo(chalk`{green ${channel.login}} | {yellow Moments claimed}`);
   });
 
+const handleChannelPoint = (msg: SocketMessage, channel: Channel): Effect.Effect<void, never, TwitchApiTag | ConfigStoreTag> =>
+  Effect.gen(function* () {
+    const api = yield* TwitchApiTag;
+    const configStore = yield* ConfigStoreTag;
+    const isOtherTopic = msg.topicId !== channel.id;
+
+    if (isOtherTopic) {
+      return;
+    }
+
+    const isClaimAvailable = msg.payload.type === 'claim-available';
+
+    if (!isClaimAvailable) {
+      return;
+    }
+
+    const config = yield* configStore.get;
+
+    if (!config.isClaimPoints) {
+      return;
+    }
+
+    yield* api.claimPoints(channel.id, msg.payload.data.claim.id).pipe(Effect.ignore);
+    yield* Effect.logInfo(chalk`{green ${channel.login}} | {yellow Points claimed}`);
+  });
+
 const handleChannelUpdate = (msg: SocketMessage, channel: Channel, state: MainState): Effect.Effect<void> =>
   Effect.gen(function* () {
     const isSettingsUpdate = msg.payload.type === 'broadcast_settings_update';
@@ -313,9 +339,63 @@ const processMessage = (
       return;
     }
 
+    if (type === WsTopic.ChannelPoint) {
+      yield* handleChannelPoint(msg, channel);
+      return;
+    }
+
     if (type === WsTopic.ChannelUpdate) {
       yield* handleChannelUpdate(msg, channel, state);
       return;
+    }
+
+    const isCommunityGoal = payload.type === 'community-goal-created' || payload.type === 'community-goal-updated';
+
+    if (isCommunityGoal) {
+      const configStore = yield* ConfigStoreTag;
+      const config = yield* configStore.get;
+
+      if (config.isClaimPoints) {
+        yield* api.channelPoints(channel.login).pipe(
+          Effect.flatMap((data) => {
+            const goals = data.community.channel.communityPointsSettings.goals;
+            const startedGoals = goals.filter((g) => g.status === 'STARTED' && g.isInStock);
+
+            if (startedGoals.length === 0) {
+              return Effect.void;
+            }
+
+            return api.userPointsContribution(channel.login).pipe(
+              Effect.flatMap((contributionData) => {
+                const userContributions = contributionData.user.channel.self.communityPoints.goalContributions;
+                const balance = data.community.channel.self.communityPoints.balance;
+
+                return Effect.forEach(startedGoals, (goal) => {
+                  const userContrib = userContributions.find((uc) => uc.goal.id === goal.id);
+                  const userPointsContributedThisStream = userContrib?.userPointsContributedThisStream ?? 0;
+                  const userLeftToContribute = goal.perStreamUserMaximumContribution - userPointsContributedThisStream;
+                  const goalLeft = goal.amountNeeded - goal.pointsContributed;
+                  const amount = Math.min(goalLeft, userLeftToContribute, balance);
+
+                  if (amount > 0) {
+                    return api
+                      .contributeCommunityGoal(channel.id, goal.id, amount)
+                      .pipe(
+                        Effect.zipRight(
+                          Effect.logInfo(chalk`{green ${channel.login}} | {yellow Contributed ${amount} points to goal: ${goal.title}}`),
+                        ),
+                        Effect.ignore,
+                      );
+                  }
+
+                  return Effect.void;
+                });
+              }),
+            );
+          }),
+          Effect.ignore,
+        );
+      }
     }
   });
 

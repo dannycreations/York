@@ -31,6 +31,7 @@ export interface MainState {
   readonly nextPointClaim: Ref.Ref<number>;
   readonly nextWatch: Ref.Ref<number>;
   readonly isClaiming: Ref.Ref<boolean>;
+  readonly nextCommunityGoalContribution: Ref.Ref<number>;
 }
 
 const resetChannel = (state: MainState): Effect.Effect<void> =>
@@ -53,14 +54,66 @@ const claimChannelPoints = (channel: Channel): Effect.Effect<void, TwitchApiErro
     }
 
     const channelData = yield* api.channelPoints(channel.login);
-    const availableClaim = channelData.community.channel.self.communityPoints.availableClaim;
+    const community = channelData.community.channel;
+    const availableClaim = community.self.communityPoints.availableClaim;
 
-    if (!availableClaim) {
+    if (availableClaim) {
+      yield* api.claimPoints(channel.id, availableClaim.id);
+      yield* Effect.logInfo(chalk`{green ${channel.login}} | {yellow Points claimed}`);
+    }
+  });
+
+const contributeToCommunityGoals = (state: MainState, channel: Channel): Effect.Effect<void, TwitchApiError, TwitchApiTag | ConfigStoreTag> =>
+  Effect.gen(function* () {
+    const api = yield* TwitchApiTag;
+    const configStore = yield* ConfigStoreTag;
+    const config = yield* configStore.get;
+
+    if (!config.isClaimPoints) {
       return;
     }
 
-    yield* api.claimPoints(channel.id, availableClaim.id);
-    yield* Effect.logInfo(chalk`{green ${channel.login}} | {yellow Points claimed}`);
+    const now = Date.now();
+    const nextContribution = yield* Ref.get(state.nextCommunityGoalContribution);
+
+    if (now < nextContribution) {
+      return;
+    }
+
+    const channelData = yield* api.channelPoints(channel.login);
+    const community = channelData.community.channel;
+    const balance = community.self.communityPoints.balance;
+
+    if (balance <= 0) {
+      return;
+    }
+
+    const goals = community.communityPointsSettings.goals;
+    const startedGoals = goals.filter((g) => g.status === 'STARTED' && g.isInStock);
+
+    if (startedGoals.length === 0) {
+      return;
+    }
+
+    const contributionData = yield* api.userPointsContribution(channel.login);
+    const userContributions = contributionData.user.channel.self.communityPoints.goalContributions;
+
+    for (const goal of startedGoals) {
+      const userContrib = userContributions.find((uc) => uc.goal.id === goal.id);
+      const userPointsContributedThisStream = userContrib?.userPointsContributedThisStream ?? 0;
+
+      const userLeftToContribute = goal.perStreamUserMaximumContribution - userPointsContributedThisStream;
+      const goalLeft = goal.amountNeeded - goal.pointsContributed;
+
+      const amount = Math.min(goalLeft, userLeftToContribute, balance);
+
+      if (amount > 0) {
+        yield* api.contributeCommunityGoal(channel.id, goal.id, amount);
+        yield* Effect.logInfo(chalk`{green ${channel.login}} | {yellow Contributed ${amount} points to goal: ${goal.title}}`);
+      }
+    }
+
+    yield* Ref.set(state.nextCommunityGoalContribution, now + 300_000);
   });
 
 const updateChannelInfo = (state: MainState, chan: Channel): Effect.Effect<Option.Option<Channel>, MainWorkflowError, TwitchApiTag> =>
@@ -267,7 +320,7 @@ const manageChannelSockets = (
 > =>
   Effect.gen(function* () {
     const socket = yield* TwitchSocketTag;
-    const topics = [WsTopic.ChannelStream, WsTopic.ChannelMoment, WsTopic.ChannelUpdate] as const;
+    const topics = [WsTopic.ChannelStream, WsTopic.ChannelMoment, WsTopic.ChannelUpdate, WsTopic.ChannelPoint] as const;
 
     const acquire = Effect.forEach(topics, (topic) => socket.listen(topic, channelId), {
       concurrency: 'unbounded',
@@ -306,6 +359,7 @@ const processChannelWatch = (
     const chan = chanOpt.value;
 
     yield* claimChannelPoints(chan);
+    yield* contributeToCommunityGoals(state, chan);
 
     const { acquire, release } = yield* manageChannelSockets(chan.id);
 
@@ -616,6 +670,8 @@ const mainLoop = (
 ): Effect.Effect<void, TwitchApiError | TwitchSocketError | MainWorkflowError, CampaignStoreTag | TwitchApiTag | ConfigStoreTag | TwitchSocketTag> =>
   Effect.gen(function* () {
     const campaignStore = yield* CampaignStoreTag;
+    const api = yield* TwitchApiTag;
+
     yield* initializeCampaignState(state);
 
     const activeList = yield* campaignStore.getSortedActive;
@@ -624,7 +680,26 @@ const mainLoop = (
       return;
     }
 
-    yield* processActiveCampaigns(state, activeList[0]);
+    const first = activeList[0];
+
+    const channelOpt = yield* Ref.get(state.currentChannel);
+
+    if (Option.isSome(channelOpt)) {
+      const channel = channelOpt.value;
+      yield* claimChannelPoints(channel);
+    } else {
+      for (const campaign of activeList) {
+        const channels = yield* campaignStore.getChannelsForCampaign(campaign);
+
+        if (channels.length > 0) {
+          const firstChannel = channels[0];
+          yield* api.channelPoints(firstChannel.login).pipe(Effect.ignore);
+          break;
+        }
+      }
+    }
+
+    yield* processActiveCampaigns(state, first);
   });
 
 const ensureSettingsDir = Effect.gen(function* () {
@@ -650,10 +725,13 @@ export const MainWorkflow: Effect.Effect<void, RuntimeRestart, CampaignStoreTag 
       nextPointClaim: yield* Ref.make(0),
       nextWatch: yield* Ref.make(0),
       isClaiming: yield* Ref.make(false),
+      nextCommunityGoalContribution: yield* Ref.make(0),
     };
 
     yield* api.init.pipe(Effect.orDie);
     const userId = yield* api.userId.pipe(Effect.orDie);
+
+    yield* api.claimAllDropsFromInventory.pipe(Effect.ignore, Effect.forkScoped);
 
     yield* socket.listen(WsTopic.UserDrop, userId).pipe(Effect.orDie);
     yield* socket.listen(WsTopic.UserPoint, userId).pipe(Effect.orDie);
@@ -666,7 +744,10 @@ export const MainWorkflow: Effect.Effect<void, RuntimeRestart, CampaignStoreTag 
         yield* Effect.sleep('10 seconds');
       }).pipe(Effect.repeat(Schedule.forever));
 
-    yield* Effect.all([mainTaskLoop(), UpcomingWorkflow(state), OfflineWorkflow(state), cycleUntilMidnight], {
+    const claimInventoryLoop = () =>
+      api.claimAllDropsFromInventory.pipe(Effect.ignore, Effect.zipRight(Effect.sleep('30 minutes')), Effect.repeat(Schedule.forever));
+
+    yield* Effect.all([mainTaskLoop(), claimInventoryLoop(), UpcomingWorkflow(state), OfflineWorkflow(state), cycleUntilMidnight], {
       concurrency: 'unbounded',
     });
   });

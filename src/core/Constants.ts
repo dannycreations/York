@@ -8,6 +8,7 @@ export const WsTopic = Data.struct({
   ChannelMoment: 'community-moments-channel-v1',
   ChannelStream: 'video-playback-by-id',
   ChannelUpdate: 'broadcast-settings-update',
+  ChannelPoint: 'community-points-channel-v1',
 } as const);
 
 export type WsTopic = ValueOf<typeof WsTopic>;

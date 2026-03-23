@@ -15,11 +15,13 @@ import {
   ClaimDropsSchema,
   ClaimMomentsSchema,
   ClaimPointsSchema,
+  ContributeCommunityGoalSchema,
   CurrentDropsSchema,
   GameDirectorySchema,
   HelixStreamsSchema,
   InventorySchema,
   PlaybackTokenSchema,
+  UserPointsContributionSchema,
   ViewerDropsDashboardSchema,
 } from '../core/Schemas';
 import { HttpClientError, HttpClientTag } from '../structures/HttpClient';
@@ -67,6 +69,13 @@ export interface TwitchApi {
   readonly claimPoints: (channelID: string, claimID: string) => Effect.Effect<Schema.Schema.Type<typeof ClaimPointsSchema>, TwitchApiError>;
   readonly claimMoments: (momentID: string) => Effect.Effect<Schema.Schema.Type<typeof ClaimMomentsSchema>, TwitchApiError>;
   readonly claimDrops: (dropInstanceID: string) => Effect.Effect<Schema.Schema.Type<typeof ClaimDropsSchema>, TwitchApiError>;
+  readonly claimAllDropsFromInventory: Effect.Effect<void, TwitchApiError>;
+  readonly userPointsContribution: (channelLogin: string) => Effect.Effect<Schema.Schema.Type<typeof UserPointsContributionSchema>, TwitchApiError>;
+  readonly contributeCommunityGoal: (
+    channelID: string,
+    goalID: string,
+    amount: number,
+  ) => Effect.Effect<Schema.Schema.Type<typeof ContributeCommunityGoalSchema>, TwitchApiError>;
   readonly campaignDetails: (
     dropID: string,
     channelLogin?: string,
@@ -496,6 +505,37 @@ export const TwitchApiLayer = (authToken: string, isDebug = false): Layer.Layer<
       const claimDrops = (dropInstanceID: string): Effect.Effect<Schema.Schema.Type<typeof ClaimDropsSchema>, TwitchApiError> =>
         mapFirst(graphql(GqlQueries.claimDrops(dropInstanceID), ClaimDropsSchema));
 
+      const claimAllDropsFromInventory: Effect.Effect<void, TwitchApiError> = inventory.pipe(
+        Effect.flatMap((inv) =>
+          Effect.gen(function* () {
+            const campaigns = inv.currentUser.inventory.dropCampaignsInProgress;
+            for (const campaign of campaigns) {
+              for (const drop of campaign.timeBasedDrops) {
+                const dropInstanceID = drop.self?.dropInstanceID;
+                const isClaimable = drop.self && !drop.self.isClaimed && !!dropInstanceID;
+
+                if (isClaimable) {
+                  yield* claimDrops(dropInstanceID).pipe(
+                    Effect.zipRight(Effect.logInfo(chalk`{green ${drop.name}} | {yellow Drops claimed}`)),
+                    Effect.ignore,
+                  );
+                }
+              }
+            }
+          }),
+        ),
+      );
+
+      const userPointsContribution = (channelLogin: string): Effect.Effect<Schema.Schema.Type<typeof UserPointsContributionSchema>, TwitchApiError> =>
+        mapFirst(graphql(GqlQueries.userPointsContribution(channelLogin), UserPointsContributionSchema));
+
+      const contributeCommunityGoal = (
+        channelID: string,
+        goalID: string,
+        amount: number,
+      ): Effect.Effect<Schema.Schema.Type<typeof ContributeCommunityGoalSchema>, TwitchApiError> =>
+        mapFirst(graphql(GqlQueries.contributeCommunityGoal(channelID, goalID, amount), ContributeCommunityGoalSchema));
+
       const campaignDetails = (
         dropID: string,
         channelLogin?: string,
@@ -524,6 +564,9 @@ export const TwitchApiLayer = (authToken: string, isDebug = false): Layer.Layer<
         claimPoints,
         claimMoments,
         claimDrops,
+        claimAllDropsFromInventory,
+        userPointsContribution,
+        contributeCommunityGoal,
         campaignDetails,
         playbackToken,
       };
