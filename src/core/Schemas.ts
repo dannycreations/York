@@ -45,7 +45,7 @@ export const DropSchema = Schema.Struct({
   startAt: DateFromAny,
   endAt: DateFromAny,
   requiredMinutesWatched: Schema.Number,
-  requiredSubs: Schema.optional(Schema.Number),
+  requiredSubs: Schema.Number,
   isClaimed: Schema.Boolean,
   hasPreconditionsMet: Schema.Boolean,
   currentMinutesWatched: Schema.Number,
@@ -145,7 +145,7 @@ export const CampaignDetailsSchema = Schema.Struct({
             startAt: DateFromAny,
             endAt: DateFromAny,
             requiredMinutesWatched: Schema.Number,
-            requiredSubs: Schema.optional(Schema.Number),
+            requiredSubs: Schema.Number,
             benefitEdges: Schema.Array(
               Schema.Struct({
                 benefit: Schema.Struct({
@@ -190,7 +190,7 @@ export const InventorySchema = Schema.Struct({
               startAt: DateFromAny,
               endAt: DateFromAny,
               requiredMinutesWatched: Schema.Number,
-              requiredSubs: Schema.optional(Schema.Number),
+              requiredSubs: Schema.Number,
               benefitEdges: Schema.Array(
                 Schema.Struct({
                   benefit: Schema.Struct({

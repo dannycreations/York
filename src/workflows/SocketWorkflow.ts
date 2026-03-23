@@ -119,6 +119,13 @@ const handleDropProgress = (
     yield* Effect.logInfo(chalk`{green ${drop.name}} | {yellow Desync ${desync > 0 ? '+' : ''}${desync} minutes}`);
 
     if (progress >= drop.requiredMinutesWatched) {
+      const isBroken = !updatedDrop.dropInstanceID;
+
+      if (isBroken) {
+        yield* Effect.logInfo(chalk`{green ${drop.name}} | {red Possible broken drops}`);
+        yield* Ref.update(state.currentCampaign, (c) => Option.map(c, (cp) => ({ ...cp, isOffline: true })));
+      }
+
       yield* Ref.set(state.currentChannel, Option.none());
     }
   });

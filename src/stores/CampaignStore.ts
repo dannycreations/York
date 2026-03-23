@@ -30,7 +30,7 @@ interface RawDrop {
   readonly startAt: Date;
   readonly endAt: Date;
   readonly requiredMinutesWatched: number;
-  readonly requiredSubs?: number | undefined;
+  readonly requiredSubs: number;
   readonly benefitEdges: ReadonlyArray<{
     readonly benefit: {
       readonly id: string;
@@ -56,8 +56,7 @@ const processDrop = (
   allowUpcomingIfHasAward: boolean,
 ): Option.Option<Drop> => {
   const { startAt, endAt, requiredMinutesWatched, requiredSubs } = drop;
-  const subsCount = requiredSubs ?? 0;
-  const isClaimed = subsCount > 0 || (drop.self?.isClaimed ?? false);
+  const isClaimed = requiredSubs > 0 || (drop.self?.isClaimed ?? false);
 
   if (isClaimed) {
     return Option.none();
@@ -98,7 +97,7 @@ const processDrop = (
     startAt,
     endAt,
     requiredMinutesWatched,
-    requiredSubs: subsCount > 0 ? subsCount : undefined,
+    requiredSubs,
     isClaimed,
     hasPreconditionsMet: drop.self?.hasPreconditionsMet ?? true,
     currentMinutesWatched,
