@@ -300,7 +300,8 @@ const processMessage = (
 
     if (!isTopicRelevant) {
       const type = msg.topicType;
-      const isChannelTopicType = type === WsTopic.ChannelStream || type === WsTopic.ChannelMoment || type === WsTopic.ChannelUpdate;
+      const isChannelTopicType =
+        type === WsTopic.ChannelStream || type === WsTopic.ChannelMoment || type === WsTopic.ChannelUpdate || type === WsTopic.ChannelPoint;
 
       if (isChannelTopicType) {
         const socket = yield* TwitchSocketTag;

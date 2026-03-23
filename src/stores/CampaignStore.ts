@@ -327,16 +327,15 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
 
       yield* Ref.set(rewardsRef, rewardsMap);
       yield* Ref.update(progressRef, (current) => {
-        if (newProgress.length === 0) {
-          return current;
-        }
-
-        if (current.length === 0) {
-          return newProgress;
-        }
-
         const currentMap = new Map(current.map((d) => [d.id, d]));
         let changed = false;
+
+        for (const [id, drop] of currentMap) {
+          if (drop.endAt.getTime() < now) {
+            currentMap.delete(id);
+            changed = true;
+          }
+        }
 
         for (const drop of newProgress) {
           const existing = currentMap.get(drop.id);
@@ -348,7 +347,7 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
           }
         }
 
-        if (!changed) {
+        if (!changed && currentMap.size === current.length) {
           return current;
         }
 
@@ -413,16 +412,15 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
         }));
 
         yield* Ref.update(progressRef, (current) => {
-          if (result.length === 0) {
-            return current;
-          }
-
-          if (current.length === 0) {
-            return result;
-          }
-
           const currentMap = new Map(current.map((d) => [d.id, d]));
           let changed = false;
+
+          for (const [id, drop] of currentMap) {
+            if (drop.endAt.getTime() < now) {
+              currentMap.delete(id);
+              changed = true;
+            }
+          }
 
           for (const drop of result) {
             const existing = currentMap.get(drop.id);
@@ -435,7 +433,7 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
             }
           }
 
-          if (!changed) {
+          if (!changed && currentMap.size === current.length) {
             return current;
           }
 
