@@ -22,7 +22,7 @@ export const GqlQueries = {
   }),
   gameDirectory: (slug: string): GraphqlRequest => ({
     operationName: 'DirectoryPage_Game',
-    hash: '98a996c3c3ebb1ba4fd65d6671c6028d7ee8d615cb540b0731b3db2a911d3649',
+    hash: '76cb069d835b8a02914c08dc42c421d0dafda8af5b113a3f19141824b901402f',
     variables: {
       imageWidth: 50,
       slug,

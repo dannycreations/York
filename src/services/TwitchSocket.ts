@@ -146,11 +146,9 @@ export const TwitchSocketLayer = (authToken: string): Layer.Layer<TwitchSocketTa
               catch: () => undefined,
             }).pipe(Effect.orDie);
 
-            if (!isObjectLike<{ readonly data: unknown; readonly topic_id: unknown }>(value)) {
+            if (!isObjectLike<{ readonly topic_id: unknown }>(value)) {
               return Option.none();
             }
-
-            const payloadData = isObjectLike(value.data) ? value.data : {};
 
             const topic_id = typeof value.topic_id === 'string' ? value.topic_id : topicId;
 
@@ -159,7 +157,6 @@ export const TwitchSocketLayer = (authToken: string): Layer.Layer<TwitchSocketTa
               topicId,
               payload: {
                 ...value,
-                ...payloadData,
                 topic_id,
               },
             };

@@ -126,6 +126,8 @@ const handleDropProgress = (
         yield* Effect.logInfo(chalk`{green ${drop.name}} | {red Possible broken drops}`);
         const campaignStore = yield* CampaignStoreTag;
         yield* campaignStore.setBroken(drop.campaignId, true);
+      } else {
+        yield* Effect.logInfo(chalk`{green ${drop.name}} | {green Completed!} | {green ${progress}/${drop.requiredMinutesWatched}}`);
       }
 
       yield* Ref.set(state.currentChannel, Option.none());
