@@ -127,6 +127,11 @@ const attemptClaimDrop = (
     const campaignStore = yield* CampaignStoreTag;
     const api = yield* TwitchApiTag;
 
+    const currentDropInitial = yield* Ref.get(state.currentDrop);
+    if (Option.isSome(currentDropInitial) && currentDropInitial.value.isClaimed) {
+      return 5;
+    }
+
     if (attempt > 0 || !drop.dropInstanceID) {
       yield* campaignStore.updateProgress.pipe(Effect.orDie);
       const drops = yield* campaignStore.getDropsForCampaign(campaign.id).pipe(Effect.orDie);
@@ -142,12 +147,22 @@ const attemptClaimDrop = (
     }
 
     const curDropOpt = yield* Ref.get(state.currentDrop);
-    if (Option.isSome(curDropOpt) && !!curDropOpt.value.dropInstanceID) {
-      const claimRes = yield* api.claimDrops(curDropOpt.value.dropInstanceID).pipe(Effect.option, Effect.orDie);
-      if (Option.isSome(claimRes) && claimRes.value.claimDropRewards) {
-        yield* Effect.logInfo(chalk`{green ${drop.name}} | {yellow Drops claimed}`);
-        yield* campaignStore.addRewards(drop.benefits.map((id) => ({ id, lastAwardedAt: new Date() }))).pipe(Effect.orDie);
+    if (Option.isSome(curDropOpt)) {
+      if (curDropOpt.value.isClaimed) {
         return 5;
+      }
+
+      if (!!curDropOpt.value.dropInstanceID) {
+        const claimRes = yield* api.claimDrops(curDropOpt.value.dropInstanceID).pipe(Effect.option, Effect.orDie);
+        if (Option.isSome(claimRes) && claimRes.value.claimDropRewards) {
+          yield* Effect.logInfo(chalk`{green ${drop.name}} | {yellow Drops claimed}`);
+          yield* campaignStore.addRewards(drop.benefits.map((id) => ({ id, lastAwardedAt: new Date() }))).pipe(Effect.orDie);
+          yield* Ref.update(
+            state.currentDrop,
+            Option.map((d) => ({ ...d, isClaimed: true })),
+          );
+          return 5;
+        }
       }
     }
 
@@ -521,6 +536,16 @@ const mainLoop = (
           yield* Effect.logInfo(
             chalk`{green ${dropCheck.name}} | {green Completed!} | {green ${currentMinutesWatched}/${dropCheck.requiredMinutesWatched}}`,
           );
+          yield* Effect.acquireUseRelease(
+            Ref.set(state.isClaiming, true),
+            () =>
+              Effect.iterate(0, {
+                while: (attempt) => attempt < 5,
+                body: (attempt) => attemptClaimDrop(state, campaign, updatedDropState, attempt),
+              }),
+            () => Ref.set(state.isClaiming, false),
+          );
+
           yield* resetChannel(state);
           return;
         }

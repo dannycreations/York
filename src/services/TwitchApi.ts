@@ -2,7 +2,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { chalk } from '@vegapunk/utilities';
 import { isObjectLike } from '@vegapunk/utilities/common';
-import { Context, Data, Deferred, Effect, Layer, Ref, Schedule, Schema } from 'effect';
+import { Context, Data, Deferred, Effect, Layer, Option, Ref, Schedule, Schema } from 'effect';
 import UserAgent from 'user-agents';
 
 import { Twitch } from '../core/Constants';
@@ -513,10 +513,10 @@ export const TwitchApiLayer = (authToken: string, isDebug = false): Layer.Layer<
                   continue;
                 }
 
-                yield* claimDrops(dropInstanceID!).pipe(
-                  Effect.zipRight(Effect.logInfo(chalk`{green ${drop.name}} | {yellow Drops claimed}`)),
-                  Effect.ignore,
-                );
+                const claimRes = yield* claimDrops(dropInstanceID!).pipe(Effect.option, Effect.orDie);
+                if (Option.isSome(claimRes) && claimRes.value.claimDropRewards) {
+                  yield* Effect.logInfo(chalk`{green ${drop.name}} | {yellow Drops claimed}`);
+                }
               }
             }
           }),
