@@ -187,22 +187,20 @@ const attemptClaimDrop = (
       return 5;
     }
 
-    if (attempt >= 4) {
-      yield* Effect.logInfo(chalk`{green ${drop.name}} | {red Award not found after 5 minutes}`);
-      yield* Ref.update(
-        state.currentDrop,
-        Option.map((dr) => ({ ...dr, hasPreconditionsMet: false })),
-      );
-      return 5;
-    }
-
     if (attempt === 0) {
       yield* Effect.logInfo(chalk`{green ${drop.name}} | {red Award not found}`);
     }
 
     yield* Effect.logInfo(chalk`{yellow Waiting for ${attempt + 1}/5 minutes for claim ID}`);
-    yield* Effect.sleep('1 minute');
 
+    if (attempt >= 5) {
+      yield* Effect.logInfo(chalk`{green ${drop.name}} | {red Award not found after 5 minutes}`);
+      yield* campaignStore.setBroken(campaign.id, true);
+      yield* resetChannel(state);
+      return 5;
+    }
+
+    yield* Effect.sleep('1 minute');
     return attempt + 1;
   });
 

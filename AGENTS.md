@@ -1,8 +1,12 @@
 # TypeScript Development Guide
 
+## Guidelines
+
+- Node is used as runtime and pnpm as package manager.
+
 ## Commands
 
 ```cmd
-# Checks for static errors
-npm run check
+# Check for static errors
+npm run build
 ```

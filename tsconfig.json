@@ -10,7 +10,9 @@
         }
       }
     ],
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.tsbuildinfo",
     "outDir": "dist",
+    "rootDir": "src",
     "skipLibCheck": true,
     "stripInternal": true,
     "removeComments": true,
