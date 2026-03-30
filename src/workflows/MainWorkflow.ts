@@ -191,8 +191,6 @@ const attemptClaimDrop = (
       yield* Effect.logInfo(chalk`{green ${drop.name}} | {red Award not found}`);
     }
 
-    yield* Effect.logInfo(chalk`{yellow Waiting for ${attempt + 1}/5 minutes for claim ID}`);
-
     if (attempt >= 5) {
       yield* Effect.logInfo(chalk`{green ${drop.name}} | {red Award not found after 5 minutes}`);
       yield* campaignStore.setBroken(campaign.id, true);
@@ -200,6 +198,7 @@ const attemptClaimDrop = (
       return 5;
     }
 
+    yield* Effect.logInfo(chalk`{yellow Waiting for ${attempt + 1}/5 minutes for claim ID}`);
     yield* Effect.sleep('1 minute');
     return attempt + 1;
   });
