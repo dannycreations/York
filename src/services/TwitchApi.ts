@@ -40,7 +40,7 @@ export class TwitchApiError extends Data.TaggedError('TwitchApiError')<{
 export interface TwitchApi {
   readonly init: Effect.Effect<void, TwitchApiError>;
   readonly userId: Effect.Effect<string, TwitchApiError>;
-  readonly writeDebugFile: (data: string | object, name?: string) => Effect.Effect<void>;
+  readonly writeDebugFile: (data: string | object, name?: string, force?: boolean) => Effect.Effect<void>;
   readonly graphql: <A, I, R>(
     requests: GraphqlRequest | ReadonlyArray<GraphqlRequest>,
     schema: Schema.Schema<A, I, R>,
@@ -110,19 +110,20 @@ const parseUniqueCookies = (setCookie: readonly string[]): Readonly<Record<strin
 
 const RETRYABLE_GQL_ERRORS = new Set(['service unavailable', 'service timeout', 'context deadline exceeded']);
 
-const handleGraphqlErrors = (errors: ReadonlyArray<{ readonly message: string }>): Effect.Effect<never, TwitchApiError> => {
+const handleGraphqlErrors = (errors: ReadonlyArray<{ readonly message: string }>, operationName?: string): Effect.Effect<never, TwitchApiError> => {
   const hasRetryable = errors.some((e) => RETRYABLE_GQL_ERRORS.has(e.message.toLowerCase()));
+  const opPrefix = operationName ? `[${operationName}] ` : '';
 
   if (hasRetryable) {
-    return Effect.logWarning(chalk`{yellow GraphQL response has retryable errors}`).pipe(
-      Effect.as(new TwitchApiError({ message: 'Retryable GraphQL Error', cause: errors })),
+    return Effect.logWarning(chalk`{yellow ${opPrefix}GraphQL response has retryable errors}`).pipe(
+      Effect.as(new TwitchApiError({ message: `${opPrefix}Retryable GraphQL Error`, cause: errors })),
       Effect.flatMap(Effect.fail),
     );
   }
 
   return Effect.fail(
     new TwitchApiError({
-      message: `GraphQL Error: ${errors[0].message}`,
+      message: `${opPrefix}GraphQL Error: ${errors[0].message}`,
       cause: errors,
     }),
   );
@@ -143,8 +144,8 @@ export const TwitchApiLayer = (authToken: string, isDebug = false): Layer.Layer<
 
       const getUserId = Deferred.await(userIdDeferred);
 
-      const writeDebugFile = (data: string | object, name?: string): Effect.Effect<void> => {
-        if (!isDebug) {
+      const writeDebugFile = (data: string | object, name?: string, force: boolean = false): Effect.Effect<void> => {
+        if (!isDebug && !force) {
           return Effect.void;
         }
 
@@ -301,18 +302,53 @@ export const TwitchApiLayer = (authToken: string, isDebug = false): Layer.Layer<
 
           return yield* Effect.forEach(
             response.body,
-            (res) => {
+            (res, index) => {
+              const op = requestsArray[index];
+              const opName = op?.operationName;
+
               if (res.errors && res.errors.length > 0) {
-                return handleGraphqlErrors(res.errors);
+                return handleGraphqlErrors(res.errors, opName).pipe(
+                  Effect.tapError(() =>
+                    writeDebugFile(
+                      {
+                        operation: opName,
+                        variables: op?.variables,
+                        response: res,
+                      },
+                      `gql-error-${opName}-${Date.now()}`,
+                      true,
+                    ),
+                  ),
+                );
               }
 
-              return decode(res.data).pipe(Effect.mapError((e) => new TwitchApiError({ message: 'GraphQL Validation Error', cause: e })));
+              return decode(res.data).pipe(
+                Effect.tapError((e) =>
+                  writeDebugFile(
+                    {
+                      operation: opName,
+                      variables: op?.variables,
+                      response: res,
+                      error: e,
+                    },
+                    `gql-validation-error-${opName}-${Date.now()}`,
+                    true,
+                  ),
+                ),
+                Effect.mapError(
+                  (e) =>
+                    new TwitchApiError({
+                      message: opName ? `[${opName}] GraphQL Validation Error` : 'GraphQL Validation Error',
+                      cause: e,
+                    }),
+                ),
+              );
             },
             { concurrency: 'unbounded' },
           );
         }).pipe(
           Effect.retry({
-            while: (e) => e.message === 'Retryable GraphQL Error',
+            while: (e) => e.message.includes('Retryable GraphQL Error'),
             schedule: Schedule.exponential('1 seconds').pipe(Schedule.compose(Schedule.recurs(5))),
           }),
         );

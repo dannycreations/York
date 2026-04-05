@@ -237,6 +237,10 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
         response.currentUser.dropCampaigns,
         (data) =>
           Effect.gen(function* () {
+            if (data.game === null) {
+              return Option.none();
+            }
+
             const gameName = data.game.displayName;
 
             if (config.exclusionList.has(gameName)) {
@@ -377,7 +381,7 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
           next.set(campaignId, {
             ...existing,
             name: truncate(dropDetail.name.trim()),
-            game: dropDetail.game,
+            game: dropDetail.game || existing.game,
             allowChannels: dropDetail.allow?.channels?.map((c) => c.name) ?? [],
           });
 
@@ -465,7 +469,7 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
       const seenGames = new Set<string>();
 
       for (const c of campaigns.values()) {
-        if (c.isBroken || c.isOffline) {
+        if (c.isBroken || c.isOffline || c.game === null) {
           continue;
         }
 
@@ -546,6 +550,11 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
     const getChannelsForCampaign = (campaign: Campaign): Effect.Effect<ReadonlyArray<Channel>, TwitchApiError | TwitchSocketError> =>
       Effect.gen(function* () {
         const onlineChannels: Channel[] = [];
+
+        if (campaign.game === null) {
+          return [];
+        }
+
         const hasAllowChannels = campaign.allowChannels.length > 0;
 
         if (hasAllowChannels) {

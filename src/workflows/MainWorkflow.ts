@@ -274,7 +274,7 @@ const mainLoop = (
 
       const config = yield* configStore.get;
       const campaigns = yield* campaignStore.getSortedActive;
-      const priorities = campaigns.filter((c) => config.priorityList.has(c.game.displayName));
+      const priorities = campaigns.filter((c) => c.game !== null && config.priorityList.has(c.game.displayName));
 
       const hasPriority = priorities.length > 0;
       const activeList = hasPriority ? priorities : campaigns;
@@ -445,7 +445,12 @@ const mainLoop = (
 
         const isDifferentCampaign = higherPriority && higherPriority.id !== campaign.id;
         const hasHigherPriority = higherPriority && higherPriority.priority > campaign.priority;
-        const isDifferentGame = Option.isSome(curDropOpt) && higherPriority && higherPriority.game.id !== campaign.game.id;
+        const isDifferentGame =
+          Option.isSome(curDropOpt) &&
+          higherPriority &&
+          higherPriority.game !== null &&
+          campaign.game !== null &&
+          higherPriority.game.id !== campaign.game.id;
         const dropEndsLater = Option.isSome(curDropOpt) && higherPriority && curDropOpt.value.endAt >= higherPriority.endAt;
 
         const shouldSwitch = isDifferentCampaign && (hasHigherPriority || (isDifferentGame && dropEndsLater));

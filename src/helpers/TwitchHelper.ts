@@ -28,10 +28,10 @@ export const isMinutesWatchedMet = (drop: { readonly currentMinutesWatched: numb
   drop.currentMinutesWatched >= drop.requiredMinutesWatched;
 
 export const calculatePriority = (
-  target: { readonly game: { readonly id: string }; readonly endAt: Date },
+  target: { readonly game: { readonly id: string } | null; readonly endAt: Date },
   currentCampaign: Option.Option<{
     readonly priority: number;
-    readonly game: { readonly id: string };
+    readonly game: { readonly id: string } | null;
   }>,
   currentDrop: Option.Option<{ readonly endAt: Date }>,
 ): number => {
@@ -44,6 +44,11 @@ export const calculatePriority = (
   }
 
   const current = currentCampaign.value;
+
+  if (current.game === null || target.game === null) {
+    return 0;
+  }
+
   const isSameGame = current.game.id === target.game.id;
 
   if (isSameGame) {

@@ -57,7 +57,7 @@ export type Drop = Schema.Schema.Type<typeof DropSchema>;
 export const CampaignSchema = Schema.Struct({
   id: Schema.String,
   name: Schema.String,
-  game: GameSchema,
+  game: Schema.NullOr(GameSchema),
   startAt: DateFromAny,
   endAt: DateFromAny,
   isAccountConnected: Schema.Boolean,
@@ -116,7 +116,7 @@ export const ViewerDropsDashboardSchema = Schema.Struct({
       Schema.Struct({
         id: Schema.String,
         name: Schema.String,
-        game: GameSchema,
+        game: Schema.NullOr(GameSchema),
         startAt: DateFromAny,
         endAt: DateFromAny,
         self: Schema.Struct({
@@ -132,7 +132,7 @@ export const CampaignDetailsSchema = Schema.Struct({
     dropCampaign: Schema.Struct({
       id: Schema.String,
       name: Schema.String,
-      game: GameSchema,
+      game: Schema.NullOr(GameSchema),
       allow: Schema.optional(
         Schema.Struct({
           channels: Schema.NullOr(Schema.Array(Schema.Struct({ name: Schema.String }))),

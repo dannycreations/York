@@ -10,6 +10,10 @@ import type { MainState } from './MainWorkflow';
 
 const processOfflineCampaign = (campaign: Campaign, state: MainState) =>
   Effect.gen(function* () {
+    if (campaign.game === null) {
+      return;
+    }
+
     const campaignStore = yield* CampaignStoreTag;
     const { isExpired } = getDropStatus(campaign.startAt, campaign.endAt, Date.now());
 
@@ -58,11 +62,11 @@ export const OfflineWorkflow = (state: MainState) =>
 
       const sortedOffline = pipe(
         Array.fromIterable(campaignsMap.values()),
-        Array.filter((c) => c.isOffline),
+        Array.filter((c) => c.isOffline && c.game !== null),
         Array.sort(
           pipe(
             Order.number,
-            Order.mapInput((c: Campaign) => (config.priorityList.has(c.game.displayName) ? 1 : 0)),
+            Order.mapInput((c: Campaign) => (c.game !== null && config.priorityList.has(c.game.displayName) ? 1 : 0)),
             Order.reverse,
           ),
         ),

@@ -17,6 +17,10 @@ const processUpcomingCampaign = (
   isMainCallSleep: Ref.Ref<boolean>,
 ) =>
   Effect.gen(function* () {
+    if (next.game === null) {
+      return;
+    }
+
     const waitMs = next.startAt.getTime() - Date.now();
     if (waitMs > 0) {
       if (yield* Ref.get(isMainCallSleep)) {
