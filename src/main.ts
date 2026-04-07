@@ -1,19 +1,15 @@
 import 'dotenv/config';
 
-import { Config, Effect, Layer, Logger } from 'effect';
+import { Config, Effect, Layer } from 'effect';
 
 import { ConfigStoreLayer } from './core/Config';
 import { TwitchApiLayer } from './services/TwitchApi';
 import { TwitchSocketLayer } from './services/TwitchSocket';
 import { CampaignStoreLayer } from './stores/CampaignStore';
 import { HttpClientLayer } from './structures/HttpClient';
-import { LoggerClientLayer, makeLoggerClient } from './structures/LoggerClient';
+import { LoggerClientLayer } from './structures/LoggerClient';
 import { runMainCycle } from './structures/RuntimeClient';
 import { MainWorkflow } from './workflows/MainWorkflow';
-
-const logger = makeLoggerClient();
-
-const BaseLayer = Layer.mergeAll(ConfigStoreLayer, HttpClientLayer, LoggerClientLayer(Logger.defaultLogger, logger));
 
 const AppLayer = Layer.unwrapEffect(
   Effect.gen(function* () {
@@ -29,4 +25,8 @@ const AppLayer = Layer.unwrapEffect(
   }),
 );
 
-runMainCycle(MainWorkflow.pipe(Effect.provide(AppLayer.pipe(Layer.provideMerge(BaseLayer)))));
+const BaseLayer = Layer.mergeAll(ConfigStoreLayer, HttpClientLayer);
+
+const MainLayer = AppLayer.pipe(Layer.provideMerge(BaseLayer), Layer.provideMerge(LoggerClientLayer()));
+
+runMainCycle(MainWorkflow.pipe(Effect.provide(MainLayer)));

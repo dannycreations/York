@@ -78,10 +78,11 @@ export const makeStoreClient = <A extends object, I, R>(
     const delayRef = yield* Ref.make(initialDelay);
     const dirtyRef = yield* Ref.make(false);
 
-    const decode = Schema.decodeUnknown(schema);
+    const decode = Schema.decodeUnknown(Schema.partial(schema));
 
     const rawData = yield* loadStore(filePath).pipe(Effect.catchAll(() => Effect.succeed({})));
     const validatedData = yield* decode(rawData).pipe(
+      Effect.map((partial) => defaultsDeep<A>({}, partial, initialData)),
       Effect.catchAll((error) =>
         Effect.gen(function* () {
           yield* Effect.logWarning(`Store validation failed for ${filePath}, merging with defaults`);
@@ -90,10 +91,10 @@ export const makeStoreClient = <A extends object, I, R>(
           const partialDecode = Schema.decodeUnknown(Schema.partial(schema));
           const partial = yield* partialDecode(rawData).pipe(Effect.catchAll(() => Effect.succeed({})));
 
-          const merged = defaultsDeep<A>({}, partial, initialData);
-          return Data.struct(merged);
+          return defaultsDeep<A>({}, partial, initialData);
         }),
       ),
+      Effect.map((merged) => Data.struct(merged)),
     );
 
     yield* Ref.set(dataRef, validatedData);

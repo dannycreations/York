@@ -128,10 +128,12 @@ export const makeLoggerClient = (options: LoggerOptions = {}): pino.Logger => {
   return instance;
 };
 
-export const LoggerClientLayer = (self: Logger.Logger<unknown, void>, logger: pino.Logger): Layer.Layer<never> =>
-  Layer.mergeAll(
+export const LoggerClientLayer = (options: LoggerOptions = {}): Layer.Layer<never> => {
+  const logger = makeLoggerClient(options);
+
+  return Layer.mergeAll(
     Logger.replace(
-      self,
+      Logger.defaultLogger,
       Logger.make(({ logLevel, message, cause }) => {
         // Ignore internal Effect errors
         if (!Array.isArray(message)) {
@@ -156,3 +158,4 @@ export const LoggerClientLayer = (self: Logger.Logger<unknown, void>, logger: pi
     ),
     Logger.minimumLogLevel(PINO_LEVEL_MAP[logger.level] ?? LogLevel.Info),
   );
+};
