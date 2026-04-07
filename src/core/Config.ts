@@ -11,6 +11,7 @@ export const ClientConfigSchema = Schema.Struct({
   isPriorityOnly: Schema.Boolean,
   usePriorityConnected: Schema.Boolean,
   priorityList: Schema.Set(Schema.String),
+  priorityConnectedList: Schema.Set(Schema.String),
   exclusionList: Schema.Set(Schema.String),
 });
 
@@ -23,6 +24,7 @@ export const INITIAL_CONFIG: ClientConfig = Data.struct({
   isPriorityOnly: true,
   usePriorityConnected: true,
   priorityList: new Set<string>(),
+  priorityConnectedList: new Set<string>(),
   exclusionList: new Set<string>(),
 });
 
@@ -33,4 +35,6 @@ export const ConfigStoreLayer: Layer.Layer<ConfigStoreTag, never, Scope.Scope> =
   'sessions/settings.json',
   ClientConfigSchema,
   INITIAL_CONFIG,
+  1000,
+  true,
 );

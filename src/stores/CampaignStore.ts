@@ -247,10 +247,15 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
               return Option.none();
             }
 
-            if (config.usePriorityConnected && data.self.isAccountConnected && !config.priorityList.has(gameName)) {
+            if (
+              config.usePriorityConnected &&
+              data.self.isAccountConnected &&
+              !config.priorityList.has(gameName) &&
+              !config.priorityConnectedList.has(gameName)
+            ) {
               yield* configStore.update((c) => ({
                 ...c,
-                priorityList: new Set([...c.priorityList, gameName]),
+                priorityConnectedList: new Set([...c.priorityConnectedList, gameName]),
               }));
             }
 
@@ -464,24 +469,33 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
       const config = yield* configStore.get;
       const now = Date.now();
 
-      const campaigns = yield* Ref.get(campaignsRef);
+      const campaigns = Array.from((yield* Ref.get(campaignsRef)).values()).filter((c) => {
+        if (c.isBroken || c.isOffline || c.game === null) {
+          return false;
+        }
+        return !getDropStatus(c.startAt, c.endAt, now).isExpired;
+      });
+
+      const priorityList = campaigns.filter((c) => c.game !== null && config.priorityList.has(c.game.displayName));
+      const priorityConnectedList = campaigns.filter((c) => c.game !== null && config.priorityConnectedList.has(c.game.displayName));
+
+      let targets = campaigns;
+
+      if (currentState._tag === 'PriorityOnly') {
+        if (priorityList.length > 0) {
+          targets = priorityList;
+        } else if (priorityConnectedList.length > 0) {
+          targets = priorityConnectedList;
+        } else {
+          targets = [];
+        }
+      }
+
       const result: Campaign[] = [];
       const seenGames = new Set<string>();
 
-      for (const c of campaigns.values()) {
-        if (c.isBroken || c.isOffline || c.game === null) {
-          continue;
-        }
-
-        if (getDropStatus(c.startAt, c.endAt, now).isExpired) {
-          continue;
-        }
-
-        if (currentState._tag === 'PriorityOnly' && !config.priorityList.has(c.game.displayName)) {
-          continue;
-        }
-
-        if (seenGames.has(c.game.id)) {
+      for (const c of targets) {
+        if (c.game === null || seenGames.has(c.game.id)) {
           continue;
         }
 

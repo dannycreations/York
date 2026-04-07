@@ -274,15 +274,24 @@ const mainLoop = (
 
       const config = yield* configStore.get;
       const campaigns = yield* campaignStore.getSortedActive;
-      const priorities = campaigns.filter((c) => c.game !== null && config.priorityList.has(c.game.displayName));
 
-      const hasPriority = priorities.length > 0;
-      const activeList = hasPriority ? priorities : campaigns;
+      const priorityList = campaigns.filter((c) => c.game !== null && config.priorityList.has(c.game.displayName));
+      const priorityConnectedList = campaigns.filter((c) => c.game !== null && config.priorityConnectedList.has(c.game.displayName));
 
-      const priorityMessage = hasPriority ? '' : 'Non-';
+      let activeList = campaigns;
+      let priorityMessage = 'Non-';
+
+      if (priorityList.length > 0) {
+        activeList = priorityList;
+        priorityMessage = '';
+      } else if (priorityConnectedList.length > 0) {
+        activeList = priorityConnectedList;
+        priorityMessage = 'Connected-';
+      }
+
       yield* Effect.logInfo(chalk`{bold.yellow Checking ${activeList.length} ${priorityMessage}Priority game!}`);
 
-      const nextState = hasPriority ? CampaignStoreState.PriorityOnly() : CampaignStoreState.All();
+      const nextState = priorityList.length > 0 || priorityConnectedList.length > 0 ? CampaignStoreState.PriorityOnly() : CampaignStoreState.All();
       yield* Ref.set(campaignStore.state, nextState);
       yield* Ref.set(state.isClaiming, false);
     }

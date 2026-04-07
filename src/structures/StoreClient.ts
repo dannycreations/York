@@ -71,6 +71,7 @@ export const makeStoreClient = <A extends object, I, R>(
   schema: Schema.Schema<A, I, R>,
   initialData: A,
   initialDelay = 1000,
+  isReadOnly = false,
 ): Effect.Effect<StoreClient<A>, never, Scope.Scope | R> =>
   Effect.gen(function* () {
     const dataRef = yield* Ref.make(initialData);
@@ -118,15 +119,17 @@ export const makeStoreClient = <A extends object, I, R>(
       return saveResult;
     });
 
-    yield* Effect.forkScoped(
-      Effect.gen(function* () {
-        const delay = yield* Ref.get(delayRef);
-        yield* Effect.sleep(`${Math.max(1000, delay)} millis`);
-        yield* save;
-      }).pipe(Effect.repeat(Schedule.forever)),
-    );
+    if (!isReadOnly) {
+      yield* Effect.forkScoped(
+        Effect.gen(function* () {
+          const delay = yield* Ref.get(delayRef);
+          yield* Effect.sleep(`${Math.max(1000, delay)} millis`);
+          yield* save;
+        }).pipe(Effect.repeat(Schedule.forever)),
+      );
 
-    yield* Effect.addFinalizer(() => save.pipe(Effect.ignore));
+      yield* Effect.addFinalizer(() => save.pipe(Effect.ignore));
+    }
 
     return {
       get: Ref.get(dataRef),
@@ -150,5 +153,6 @@ export const StoreClientLayer = <I, S extends StoreClient<A>, A extends object, 
   schema: Schema.Schema<A, IS, R>,
   initialData: A,
   initialDelay = 1000,
+  isReadOnly = false,
 ): Layer.Layer<I, never, Scope.Scope | R> =>
-  Layer.scoped(tag, makeStoreClient(filePath, schema, initialData, initialDelay).pipe(Effect.map((client) => client as unknown as S)));
+  Layer.scoped(tag, makeStoreClient(filePath, schema, initialData, initialDelay, isReadOnly).pipe(Effect.map((client) => client as unknown as S)));
