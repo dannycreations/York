@@ -281,12 +281,9 @@ const mainLoop = (
       let activeList = campaigns;
       let priorityMessage = 'Non-';
 
-      if (priorityList.length > 0) {
-        activeList = priorityList;
+      if (priorityList.length > 0 || priorityConnectedList.length > 0) {
+        activeList = [...priorityList, ...priorityConnectedList];
         priorityMessage = '';
-      } else if (priorityConnectedList.length > 0) {
-        activeList = priorityConnectedList;
-        priorityMessage = 'Connected-';
       }
 
       yield* Effect.logInfo(chalk`{bold.yellow Checking ${activeList.length} ${priorityMessage}Priority game!}`);

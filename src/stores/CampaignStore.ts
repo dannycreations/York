@@ -482,13 +482,7 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
       let targets = campaigns;
 
       if (currentState._tag === 'PriorityOnly') {
-        if (priorityList.length > 0) {
-          targets = priorityList;
-        } else if (priorityConnectedList.length > 0) {
-          targets = priorityConnectedList;
-        } else {
-          targets = [];
-        }
+        targets = [...priorityList, ...priorityConnectedList];
       }
 
       const result: Campaign[] = [];
@@ -503,7 +497,33 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
         result.push(c);
       }
 
-      return result.sort((a, b) => b.priority - a.priority || a.endAt.getTime() - b.endAt.getTime());
+      return result.sort((a, b) => {
+        if (a.game !== null && b.game !== null) {
+          const aPriority = config.priorityList.has(a.game.displayName);
+          const bPriority = config.priorityList.has(b.game.displayName);
+
+          if (aPriority && !bPriority) {
+            return -1;
+          }
+
+          if (!aPriority && bPriority) {
+            return 1;
+          }
+
+          const aPriorityConnected = config.priorityConnectedList.has(a.game.displayName);
+          const bPriorityConnected = config.priorityConnectedList.has(b.game.displayName);
+
+          if (aPriorityConnected && !bPriorityConnected) {
+            return -1;
+          }
+
+          if (!aPriorityConnected && bPriorityConnected) {
+            return 1;
+          }
+        }
+
+        return b.priority - a.priority || a.endAt.getTime() - b.endAt.getTime();
+      });
     });
 
     const getSortedUpcoming: Effect.Effect<ReadonlyArray<Campaign>> = Effect.gen(function* () {
