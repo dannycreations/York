@@ -81,7 +81,8 @@ export const runMainCycle = <A, E, R>(program: Effect.Effect<A, E, R>, options: 
 
           if (nextRestarts.length >= maxRestarts) {
             yield* Effect.logFatal(chalk`{bold.red System crashed too many times. Shutting down...}`, cause);
-            return yield* Effect.sync(() => process.exit(1));
+            yield* Effect.promise(() => process.exit(1));
+            return;
           }
 
           yield* Effect.logError(chalk`{bold.red System encountered an error}`, cause);

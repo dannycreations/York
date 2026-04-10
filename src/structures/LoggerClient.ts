@@ -146,7 +146,14 @@ export const LoggerClientLayer = (options: LoggerOptions = {}): Layer.Layer<neve
           const causePretty = { cause: Cause.pretty(cause) };
 
           if (isErrorLike<{ readonly cause: unknown }>(failure) && failure.cause) {
-            message.push({ ...failure.cause, ...causePretty });
+            if (typeof failure.cause === 'object' && failure.cause !== null) {
+              message.push({ ...failure.cause, ...causePretty });
+            } else if (typeof failure.cause === 'string') {
+              message[0] = `${message[0]} (${failure.cause})`;
+              message.push(causePretty);
+            } else {
+              message.push(causePretty);
+            }
           } else {
             message.push(causePretty);
           }
