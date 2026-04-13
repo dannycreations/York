@@ -102,75 +102,56 @@ export const TwitchSocketLayer = (authToken: string): Layer.Layer<TwitchSocketTa
           return [unlistenEffect, next];
         }).pipe(Effect.flatten);
 
-      const messages: Stream.Stream<SocketMessage, never, never> = Stream.filterMap(client.events, (event) => {
-        if (event._tag !== 'Message') {
-          return Option.none();
-        }
+      const parseMessage = (data: string): Effect.Effect<Option.Option<SocketMessage>> =>
+        Effect.gen(function* () {
+          const raw = yield* Effect.try({
+            try: () => JSON.parse(data),
+            catch: () => undefined,
+          }).pipe(Effect.orDie);
 
-        return Option.some(event.data);
-      }).pipe(
-        Stream.mapEffect((data) =>
-          Effect.gen(function* () {
-            const raw = yield* Effect.try({
-              try: () => JSON.parse(data),
-              catch: () => undefined,
-            }).pipe(Effect.orDie);
+          if (
+            !isObjectLike<{
+              readonly type: string;
+              readonly data: { readonly topic: string; readonly message: string };
+            }>(raw) ||
+            raw.type !== 'MESSAGE' ||
+            typeof raw.data.topic !== 'string' ||
+            typeof raw.data.message !== 'string'
+          ) {
+            return Option.none();
+          }
 
-            if (
-              !isObjectLike<{
-                readonly type: string;
-                readonly data: { readonly topic: string; readonly message: string };
-              }>(raw)
-            ) {
-              return Option.none();
-            }
+          const { topic, message } = raw.data;
+          const [topicType, topicId] = topic.split('.');
 
-            if (raw.type !== 'MESSAGE') {
-              return Option.none();
-            }
+          const value = yield* Effect.try({
+            try: () => JSON.parse(message),
+            catch: () => undefined,
+          }).pipe(Effect.orDie);
 
-            if (typeof raw.data.topic !== 'string') {
-              return Option.none();
-            }
+          if (!isObjectLike<{ readonly topic_id: unknown }>(value)) {
+            return Option.none();
+          }
 
-            if (typeof raw.data.message !== 'string') {
-              return Option.none();
-            }
+          const topic_id = typeof value.topic_id === 'string' ? value.topic_id : topicId;
 
-            const { topic, message } = raw.data;
+          const payload = {
+            topicType,
+            topicId,
+            payload: { ...value, topic_id },
+          };
 
-            const [topicType, topicId] = topic.split('.');
+          yield* Effect.logDebug(chalk`TwitchSocket: Emitted ${topicType}.${topicId}`, payload);
 
-            const value = yield* Effect.try({
-              try: () => JSON.parse(message),
-              catch: () => undefined,
-            }).pipe(Effect.orDie);
+          return yield* Schema.decodeUnknown(SocketMessageSchema)(payload).pipe(
+            Effect.map(Option.some),
+            Effect.catchAll(() => Effect.succeed(Option.none())),
+          );
+        });
 
-            if (!isObjectLike<{ readonly topic_id: unknown }>(value)) {
-              return Option.none();
-            }
-
-            const topic_id = typeof value.topic_id === 'string' ? value.topic_id : topicId;
-
-            const payload = {
-              topicType,
-              topicId,
-              payload: {
-                ...value,
-                topic_id,
-              },
-            };
-
-            yield* Effect.logDebug(chalk`TwitchSocket: Emitted ${topicType}.${topicId}`, payload);
-
-            const decodeResult = yield* Schema.decodeUnknown(SocketMessageSchema)(payload).pipe(
-              Effect.map(Option.some),
-              Effect.catchAll(() => Effect.succeed(Option.none())),
-            );
-
-            return decodeResult;
-          }),
-        ),
+      const messages: Stream.Stream<SocketMessage, never, never> = client.events.pipe(
+        Stream.filterMap((event) => (event._tag === 'Message' ? Option.some(event.data) : Option.none())),
+        Stream.mapEffect(parseMessage),
         Stream.filterMap(identity),
       );
 

@@ -46,13 +46,9 @@ const resetChannel = (state: MainState): Effect.Effect<void, never, TwitchSocket
         concurrency: 'unbounded',
         discard: true,
       }).pipe(Effect.catchAllCause(() => Effect.void));
-    }
 
-    yield* Ref.update(
-      state.currentChannel,
-      Option.map((ch) => ({ ...ch, isOnline: false })),
-    );
-    yield* Ref.set(state.currentChannel, Option.none());
+      yield* Ref.set(state.currentChannel, Option.none());
+    }
   });
 
 const shouldSwitchCampaign = (state: MainState, campaign: Campaign, activeCampaigns: readonly Campaign[]): Effect.Effect<boolean, never, never> =>
@@ -112,7 +108,7 @@ const handleDropProgress = (
     yield* Effect.forEach(topics, (topic) => socket.listen(topic, channel.id), {
       concurrency: 'unbounded',
       discard: true,
-    });
+    }).pipe(Effect.ignore);
 
     const localMin = yield* Ref.get(state.localMinutesWatched);
     if (localMin < 20) return;
@@ -381,8 +377,7 @@ const contributeToCommunityGoal = (
       return;
     }
 
-    const nextContribution = yield* Ref.get(state.nextCommunityGoalContribution);
-    if (Date.now() < nextContribution) {
+    if (Date.now() < (yield* Ref.get(state.nextCommunityGoalContribution))) {
       return;
     }
 
@@ -602,22 +597,16 @@ const selectCampaign = (state: MainState, activeList: readonly Campaign[]) =>
     const prevCampaignOpt = yield* Ref.get(state.currentCampaign);
     const oldDropOpt = yield* Ref.get(state.currentDrop);
 
-    let campaign = activeList[0];
-    const isNew = Option.isNone(prevCampaignOpt) || prevCampaignOpt.value.id !== campaign.id;
-
-    yield* Ref.set(state.currentCampaign, Option.some(campaign));
+    const firstCampaign = activeList[0];
+    const isNew = Option.match(prevCampaignOpt, { onNone: () => true, onSome: (c) => c.id !== firstCampaign.id });
 
     if (isNew || Option.isNone(oldDropOpt)) {
       yield* campaignStore.updateProgress;
     }
 
-    const campaignsMap = yield* Ref.get(campaignStore.campaigns);
-    const updated = campaignsMap.get(campaign.id);
+    const campaign = (yield* Ref.get(campaignStore.campaigns)).get(firstCampaign.id) ?? firstCampaign;
 
-    if (updated) {
-      campaign = updated;
-      yield* Ref.set(state.currentCampaign, Option.some(campaign));
-    }
+    yield* Ref.set(state.currentCampaign, Option.some(campaign));
 
     return campaign;
   });
@@ -625,14 +614,14 @@ const selectCampaign = (state: MainState, activeList: readonly Campaign[]) =>
 const selectDrop = (state: MainState, drops: readonly Drop[]) =>
   Effect.gen(function* () {
     const oldDropOpt = yield* Ref.get(state.currentDrop);
-    let drop = drops[0];
-
-    if (Option.isSome(oldDropOpt) && oldDropOpt.value.id === drop.id) {
-      drop = {
-        ...drop,
-        currentMinutesWatched: Math.max(drop.currentMinutesWatched, oldDropOpt.value.currentMinutesWatched),
-      };
-    }
+    const firstDrop = drops[0];
+    const drop = Option.match(oldDropOpt, {
+      onNone: () => firstDrop,
+      onSome: (old) =>
+        old.id === firstDrop.id
+          ? { ...firstDrop, currentMinutesWatched: Math.max(firstDrop.currentMinutesWatched, old.currentMinutesWatched) }
+          : firstDrop,
+    });
 
     yield* Ref.set(state.currentDrop, Option.some(drop));
     return drop;

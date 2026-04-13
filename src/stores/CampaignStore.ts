@@ -299,13 +299,12 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
         }
 
         const existing = existingCampaigns.get(campaign.id);
-
-        if (!existing) {
-          changed = true;
-          continue;
-        }
-
-        if (existing.isBroken !== campaign.isBroken || existing.isOffline !== campaign.isOffline || existing.priority !== campaign.priority) {
+        if (
+          !existing ||
+          existing.isBroken !== campaign.isBroken ||
+          existing.isOffline !== campaign.isOffline ||
+          existing.priority !== campaign.priority
+        ) {
           changed = true;
         }
       }
@@ -353,11 +352,7 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
           }
         }
 
-        if (!changed && currentMap.size === current.length) {
-          return current;
-        }
-
-        return Array.from(currentMap.values());
+        return changed || currentMap.size !== current.length ? Array.from(currentMap.values()) : current;
       });
     });
 
@@ -454,11 +449,7 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
             }
           }
 
-          if (!changed && currentMap.size === current.length) {
-            return current;
-          }
-
-          return Array.from(currentMap.values());
+          return changed || currentMap.size !== current.length ? Array.from(currentMap.values()) : current;
         });
 
         return result;

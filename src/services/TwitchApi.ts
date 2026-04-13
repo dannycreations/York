@@ -111,19 +111,19 @@ const parseUniqueCookies = (setCookie: readonly string[]): Readonly<Record<strin
 const RETRYABLE_GQL_ERRORS = new Set(['service unavailable', 'service timeout', 'context deadline exceeded']);
 
 const handleGraphqlErrors = (errors: ReadonlyArray<{ readonly message: string }>, operationName?: string): Effect.Effect<never, TwitchApiError> => {
-  const hasRetryable = errors.some((e) => RETRYABLE_GQL_ERRORS.has(e.message.toLowerCase()));
   const opPrefix = operationName ? `[${operationName}] ` : '';
+  const firstErrorMessage = errors[0]?.message ?? 'Unknown error';
+  const hasRetryable = errors.some((e) => RETRYABLE_GQL_ERRORS.has(e.message.toLowerCase()));
 
   if (hasRetryable) {
     return Effect.logWarning(chalk`{yellow ${opPrefix}GraphQL response has retryable errors}`).pipe(
-      Effect.as(new TwitchApiError({ message: `${opPrefix}Retryable GraphQL Error`, cause: errors })),
-      Effect.flatMap(Effect.fail),
+      Effect.zipRight(Effect.fail(new TwitchApiError({ message: `${opPrefix}Retryable GraphQL Error`, cause: errors }))),
     );
   }
 
   return Effect.fail(
     new TwitchApiError({
-      message: `${opPrefix}GraphQL Error: ${errors[0].message}`,
+      message: `${opPrefix}GraphQL Error: ${firstErrorMessage}`,
       cause: errors,
     }),
   );
@@ -452,20 +452,18 @@ export const TwitchApiLayer = (authToken: string, isDebug = false): Layer.Layer<
             return { success: false };
           }
 
-          const sendStream = Effect.gen(function* () {
-            const initialHlsUrl = channel.hlsUrl || (yield* getHlsUrl(channel.login));
-            const isInitialSuccess = yield* checkStream(initialHlsUrl);
+          const streamResult = yield* Effect.gen(function* () {
+            const hlsUrl = channel.hlsUrl || (yield* getHlsUrl(channel.login));
+            const isSuccess = yield* checkStream(hlsUrl);
 
-            if (isInitialSuccess) {
-              const isMinuteSent = yield* sendMinuteWatched(channel);
-              return { success: isMinuteSent, hlsUrl: initialHlsUrl };
+            if (isSuccess) {
+              const success = yield* sendMinuteWatched(channel);
+              return { success, hlsUrl };
             }
 
             const live = yield* channelLive(channel.login);
-            const streamId = live.user?.stream?.id;
-
-            if (!streamId) {
-              return { success: false, hlsUrl: initialHlsUrl };
+            if (!live.user?.stream?.id) {
+              return { success: false, hlsUrl };
             }
 
             const freshHlsUrl = yield* getHlsUrl(channel.login);
@@ -475,16 +473,11 @@ export const TwitchApiLayer = (authToken: string, isDebug = false): Layer.Layer<
               return { success: false, hlsUrl: freshHlsUrl };
             }
 
-            const isMinuteSent = yield* sendMinuteWatched(channel);
-            return { success: isMinuteSent, hlsUrl: freshHlsUrl };
+            const success = yield* sendMinuteWatched(channel);
+            return { success, hlsUrl: freshHlsUrl };
           }).pipe(Effect.catchAll(() => Effect.succeed({ success: false, hlsUrl: channel.hlsUrl })));
 
-          const streamResult = yield* sendStream;
-
-          return {
-            success: streamResult.success,
-            hlsUrl: streamResult.hlsUrl,
-          };
+          return streamResult;
         });
 
       const mapFirst = <A, E, R>(effect: Effect.Effect<ReadonlyArray<A>, E, R>) => effect.pipe(Effect.map((res) => res[0]));

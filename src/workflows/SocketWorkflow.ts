@@ -309,29 +309,21 @@ const processMessage = (
     const payload = msg.payload;
     const type = msg.topicType;
 
-    if (type === WsTopic.UserDrop) {
-      const dropOpt = yield* Ref.get(state.currentDrop);
-      return yield* handleUserDrop(payload, dropOpt, state);
-    }
-
-    if (type === WsTopic.UserPoint) {
-      return yield* handleUserPoint(payload, channel, state);
-    }
-
-    if (type === WsTopic.ChannelStream) {
-      return yield* handleChannelStream(msg, channel, state);
-    }
-
-    if (type === WsTopic.ChannelMoment) {
-      return yield* handleChannelMoment(msg, channel);
-    }
-
-    if (type === WsTopic.ChannelPoint) {
-      return yield* handleChannelPoint(msg, channel);
-    }
-
-    if (type === WsTopic.ChannelUpdate) {
-      return yield* handleChannelUpdate(msg, channel, state);
+    switch (type) {
+      case WsTopic.UserDrop: {
+        const dropOpt = yield* Ref.get(state.currentDrop);
+        return yield* handleUserDrop(payload, dropOpt, state);
+      }
+      case WsTopic.UserPoint:
+        return yield* handleUserPoint(payload, channel, state);
+      case WsTopic.ChannelStream:
+        return yield* handleChannelStream(msg, channel, state);
+      case WsTopic.ChannelMoment:
+        return yield* handleChannelMoment(msg, channel);
+      case WsTopic.ChannelPoint:
+        return yield* handleChannelPoint(msg, channel);
+      case WsTopic.ChannelUpdate:
+        return yield* handleChannelUpdate(msg, channel, state);
     }
 
     if (payload.type !== 'community-goal-created' && payload.type !== 'community-goal-updated') {
