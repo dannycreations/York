@@ -344,7 +344,11 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
 
         for (const drop of newProgress) {
           const existing = currentMap.get(drop.id);
-          const isStateChanged = existing && (existing.currentMinutesWatched !== drop.currentMinutesWatched || existing.isClaimed !== drop.isClaimed);
+          const isStateChanged =
+            existing &&
+            (existing.currentMinutesWatched !== drop.currentMinutesWatched ||
+              existing.isClaimed !== drop.isClaimed ||
+              existing.dropInstanceID !== drop.dropInstanceID);
 
           if (!existing || isStateChanged) {
             currentMap.set(drop.id, drop);
@@ -441,7 +445,10 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
           for (const drop of result) {
             const existing = currentMap.get(drop.id);
             const isStateChanged =
-              existing && (existing.currentMinutesWatched !== drop.currentMinutesWatched || existing.isClaimed !== drop.isClaimed);
+              existing &&
+              (existing.currentMinutesWatched !== drop.currentMinutesWatched ||
+                existing.isClaimed !== drop.isClaimed ||
+                existing.dropInstanceID !== drop.dropInstanceID);
 
             if (!existing || isStateChanged) {
               currentMap.set(drop.id, drop);

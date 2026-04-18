@@ -302,6 +302,7 @@ const attemptClaimDrop = (
           Option.map(current, (cur) => ({
             ...updatedDrop,
             currentMinutesWatched: Math.max(cur.currentMinutesWatched, updatedDrop.currentMinutesWatched),
+            dropInstanceID: updatedDrop.dropInstanceID || cur.dropInstanceID,
           })),
         );
       }
