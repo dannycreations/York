@@ -341,10 +341,12 @@ const attemptClaimDrop = (
 
       if (isBroken) {
         yield* campaignStore.setBroken(dropCheck.campaignId, true);
+        yield* Ref.set(state.currentDrop, Option.none());
         yield* resetChannel(state);
         return 5;
       }
 
+      yield* Ref.set(state.currentDrop, Option.none());
       yield* resetChannel(state);
       return 5;
     }
@@ -358,6 +360,7 @@ const attemptClaimDrop = (
     if (attempt >= 4) {
       yield* Effect.logInfo(chalk`{green ${drop.name}} | {red Award not found after 5 minutes}`);
       yield* campaignStore.setBroken(campaign.id, true);
+      yield* Ref.set(state.currentDrop, Option.none());
       yield* resetChannel(state);
       return 5;
     }

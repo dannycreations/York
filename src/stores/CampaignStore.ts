@@ -231,89 +231,63 @@ export const CampaignStoreLayer: Layer.Layer<CampaignStoreTag, never, TwitchApiT
     const stateRef = yield* Ref.make<CampaignStoreState>(CampaignStoreState.Initial());
 
     const updateCampaigns: Effect.Effect<void, TwitchApiError> = Effect.gen(function* () {
-      const [response, existingCampaigns, config] = yield* Effect.all([api.dropsDashboard, Ref.get(campaignsRef), configStore.get]);
+      const [response, config] = yield* Effect.all([api.dropsDashboard, configStore.get]);
 
-      const newCampaignsList = yield* Effect.forEach(
-        response.currentUser.dropCampaigns,
-        (data) =>
-          Effect.gen(function* () {
-            if (data.game === null) {
-              return Option.none();
-            }
-
+      const newPriorityGames: string[] = [];
+      if (config.usePriorityConnected) {
+        for (const data of response.currentUser.dropCampaigns) {
+          if (data.game && data.self.isAccountConnected) {
             const gameName = data.game.displayName;
-
-            if (config.exclusionList.has(gameName)) {
-              return Option.none();
+            if (!config.priorityList.has(gameName) && !config.priorityConnectedList.has(gameName)) {
+              newPriorityGames.push(gameName);
             }
-
-            if (
-              config.usePriorityConnected &&
-              data.self.isAccountConnected &&
-              !config.priorityList.has(gameName) &&
-              !config.priorityConnectedList.has(gameName)
-            ) {
-              yield* configStore.update((c) => ({
-                ...c,
-                priorityConnectedList: new Set([...c.priorityConnectedList, gameName]),
-              }));
-            }
-
-            if (config.isPriorityOnly && !config.priorityList.has(gameName)) {
-              return Option.none();
-            }
-
-            const existing = existingCampaigns.get(data.id);
-
-            const campaign: Campaign = {
-              id: data.id,
-              name: truncate((existing?.name || data.name).trim()),
-              game: existing?.game || data.game,
-              startAt: data.startAt,
-              endAt: data.endAt,
-              isAccountConnected: data.self.isAccountConnected,
-              priority: existing?.priority ?? 0,
-              isBroken: existing?.isBroken ?? false,
-              isOffline: existing?.isOffline ?? false,
-              allowChannels: existing?.allowChannels ?? [],
-            };
-
-            return Option.some(campaign);
-          }),
-        { concurrency: 10 },
-      );
-
-      const campaignMap = new Map<string, Campaign>();
-      let changed = false;
-
-      for (const opt of newCampaignsList) {
-        if (Option.isNone(opt)) {
-          continue;
-        }
-
-        const campaign = opt.value;
-        campaignMap.set(campaign.id, campaign);
-
-        if (changed) {
-          continue;
-        }
-
-        const existing = existingCampaigns.get(campaign.id);
-        if (
-          !existing ||
-          existing.isBroken !== campaign.isBroken ||
-          existing.isOffline !== campaign.isOffline ||
-          existing.priority !== campaign.priority
-        ) {
-          changed = true;
+          }
         }
       }
 
-      const isSizeChanged = campaignMap.size !== existingCampaigns.size;
-
-      if (changed || isSizeChanged) {
-        yield* Ref.set(campaignsRef, campaignMap);
+      if (newPriorityGames.length > 0) {
+        yield* configStore.update((c) => ({
+          ...c,
+          priorityConnectedList: new Set([...c.priorityConnectedList, ...newPriorityGames]),
+        }));
       }
+
+      yield* Ref.update(campaignsRef, (existingMap) => {
+        const nextMap = new Map<string, Campaign>();
+
+        for (const data of response.currentUser.dropCampaigns) {
+          if (data.game === null) {
+            continue;
+          }
+
+          const gameName = data.game.displayName;
+
+          if (config.exclusionList.has(gameName)) {
+            continue;
+          }
+
+          if (config.isPriorityOnly && !config.priorityList.has(gameName)) {
+            continue;
+          }
+
+          const existing = existingMap.get(data.id);
+
+          nextMap.set(data.id, {
+            id: data.id,
+            name: truncate((existing?.name || data.name).trim()),
+            game: existing?.game || data.game,
+            startAt: data.startAt,
+            endAt: data.endAt,
+            isAccountConnected: data.self.isAccountConnected,
+            priority: existing?.priority ?? 0,
+            isBroken: existing?.isBroken ?? false,
+            isOffline: existing?.isOffline ?? false,
+            allowChannels: existing?.allowChannels ?? [],
+          });
+        }
+
+        return nextMap;
+      });
     });
 
     const updateProgress: Effect.Effect<void, TwitchApiError> = Effect.gen(function* () {
