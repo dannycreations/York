@@ -116,9 +116,7 @@ const handleGraphqlErrors = (errors: ReadonlyArray<{ readonly message: string }>
   const hasRetryable = errors.some((e) => RETRYABLE_GQL_ERRORS.has(e.message.toLowerCase()));
 
   if (hasRetryable) {
-    return Effect.logWarning(chalk`{yellow ${opPrefix}GraphQL response has retryable errors}`).pipe(
-      Effect.zipRight(Effect.fail(new TwitchApiError({ message: `${opPrefix}Retryable GraphQL Error`, cause: errors }))),
-    );
+    return Effect.fail(new TwitchApiError({ message: `${opPrefix}Retryable GraphQL Error`, cause: errors }));
   }
 
   return Effect.fail(
@@ -484,7 +482,20 @@ export const TwitchApiLayer = (authToken: string, isDebug = false): Layer.Layer<
 
       const dropsDashboard = mapFirst(graphql(GqlQueries.dropsDashboard, ViewerDropsDashboardSchema));
 
-      const inventory = mapFirst(graphql(GqlQueries.inventory, InventorySchema));
+      const inventory = mapFirst(graphql(GqlQueries.inventory, InventorySchema)).pipe(
+        Effect.catchAll((e) =>
+          Effect.logWarning(chalk`{yellow ${e.message}. Using empty inventory.}`).pipe(
+            Effect.as({
+              currentUser: {
+                inventory: {
+                  gameEventDrops: [],
+                  dropCampaignsInProgress: [],
+                },
+              },
+            } as Schema.Schema.Type<typeof InventorySchema>),
+          ),
+        ),
+      );
 
       const currentDrops = mapFirst(graphql(GqlQueries.currentDrops, CurrentDropsSchema));
 
