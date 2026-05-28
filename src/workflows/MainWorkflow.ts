@@ -547,8 +547,10 @@ const mainLoop = (
 
     yield* ensureChannelPoints(state, activeList);
 
-    const campaign = yield* selectCampaign(state, activeList);
-    const drops = yield* campaignStore.getDropsForCampaign(campaign.id);
+    const campaignInitial = yield* selectCampaign(state, activeList);
+    const drops = yield* campaignStore.getDropsForCampaign(campaignInitial.id);
+
+    const campaign = (yield* Ref.get(campaignStore.campaigns)).get(campaignInitial.id) ?? campaignInitial;
 
     if (drops.length === 0) {
       yield* Effect.logInfo(chalk`${campaign.name} | {red No active drops}`);

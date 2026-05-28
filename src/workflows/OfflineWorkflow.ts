@@ -39,7 +39,7 @@ const processOfflineCampaign = (campaign: Campaign, state: MainState) =>
       return;
     }
 
-    yield* Effect.logInfo(chalk`{bold.yellow ${campaign.name}} | {bold.yellow {strikethrough Offline}}`);
+    yield* Effect.logInfo(chalk`{bold.yellow ${campaign.name}} | {bold.green Campaigns online}`);
     yield* campaignStore.setOffline(campaign.id, false);
 
     const currentCampaign = yield* Ref.get(state.currentCampaign);
