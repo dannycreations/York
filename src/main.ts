@@ -14,11 +14,8 @@ import { LoggerClientLayer } from './structures/LoggerClient';
 import { runMainCycle } from './structures/RuntimeClient';
 import { MainWorkflow } from './workflows/MainWorkflow';
 
-const MainLayer = Layer.unwrapEffect(
-  Effect.gen(function* () {
-    const authToken = yield* Config.string('AUTH_TOKEN');
-    const isDebug = yield* Config.boolean('IS_DEBUG').pipe(Config.withDefault(false));
-
+const makeMainLayer = (authToken: string, isDebug: boolean) =>
+  Layer.suspend(() => {
     const core = Layer.mergeAll(ConfigStoreLayer, HttpClientLayer, LoggerClientLayer());
 
     const api = TwitchApiLayer(authToken, isDebug).pipe(Layer.provide(core));
@@ -33,7 +30,13 @@ const MainLayer = Layer.unwrapEffect(
     const domain = Layer.mergeAll(points, drops, watch);
 
     return Layer.mergeAll(domain, campaign, infrastructure, core);
-  }),
-);
+  });
 
-runMainCycle(MainWorkflow.pipe(Effect.provide(MainLayer)));
+const program = Effect.gen(function* () {
+  const authToken = yield* Config.string('AUTH_TOKEN');
+  const isDebug = yield* Config.boolean('IS_DEBUG').pipe(Config.withDefault(false));
+
+  return yield* MainWorkflow.pipe(Effect.provide(makeMainLayer(authToken, isDebug)));
+});
+
+runMainCycle(program);

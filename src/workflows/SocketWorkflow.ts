@@ -220,13 +220,13 @@ export const SocketWorkflow = (
     const userId = yield* api.userId.pipe(Effect.orDie);
 
     yield* socket.messages.pipe(
-      Stream.filterEffect(() =>
-        Effect.all([Ref.get(state.currentCampaign), Ref.get(state.currentChannel)]).pipe(
-          Effect.map(([camp, chan]) => Option.isSome(camp) && Option.isSome(chan)),
-        ),
-      ),
       Stream.runForEach((msg) =>
         Effect.gen(function* () {
+          const [camp, chan] = yield* Effect.all([Ref.get(state.currentCampaign), Ref.get(state.currentChannel)]);
+          if (Option.isNone(camp) || Option.isNone(chan)) {
+            return;
+          }
+
           const handler = HANDLERS[msg.topicType];
           if (handler) {
             yield* api.writeDebugFile(msg, `${msg.topicType}-${msg.payload.type ?? uniqueId()}`);

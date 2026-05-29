@@ -104,8 +104,8 @@ export const runMainCycle = <A, E, R>(program: Effect.Effect<A, E, R>, options: 
         .catch(() => process.exit(1));
     };
 
-    process.once('SIGINT', cleanUp);
-    process.once('SIGTERM', cleanUp);
+    process.once('SIGINT', () => cleanUp());
+    process.once('SIGTERM', () => cleanUp());
   });
 
   Effect.runFork(mainEffect as Effect.Effect<never, never, never>);

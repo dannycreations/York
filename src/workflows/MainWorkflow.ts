@@ -447,8 +447,12 @@ export const MainWorkflow: Effect.Effect<
 
   yield* api.claimAllDropsFromInventory.pipe(Effect.ignore, Effect.forkScoped);
 
-  yield* socket.listen(WsTopic.UserDrop, userId).pipe(Effect.orDie);
-  yield* socket.listen(WsTopic.UserPoint, userId).pipe(Effect.orDie);
+  yield* Effect.acquireRelease(socket.listen(WsTopic.UserDrop, userId).pipe(Effect.orDie), () =>
+    socket.unlisten(WsTopic.UserDrop, userId).pipe(Effect.ignore),
+  );
+  yield* Effect.acquireRelease(socket.listen(WsTopic.UserPoint, userId).pipe(Effect.orDie), () =>
+    socket.unlisten(WsTopic.UserPoint, userId).pipe(Effect.ignore),
+  );
 
   yield* SocketWorkflow(state).pipe(Effect.orDie);
 
@@ -462,5 +466,5 @@ export const MainWorkflow: Effect.Effect<
 
   yield* Effect.all([mainTaskLoop, claimInventoryLoop, UpcomingWorkflow(state), OfflineWorkflow(state), cycleUntilMidnight], {
     concurrency: 'unbounded',
-  });
+  }).pipe(Effect.onInterrupt(() => resetChannel(state)));
 });
