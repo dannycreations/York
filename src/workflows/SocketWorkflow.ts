@@ -24,6 +24,8 @@ const handleUserDrop: MessageHandler = (msg, state) =>
     const drop = dropOpt.value;
 
     if (msg.payload.type === 'drop-progress') {
+      if (msg.payload.data.drop_id !== drop.id) return;
+
       const progress = msg.payload.data.current_progress_min;
       const desync = progress - drop.currentMinutesWatched;
       if (desync === 0) return;
@@ -45,12 +47,12 @@ const handleUserDrop: MessageHandler = (msg, state) =>
       }
     } else if (msg.payload.type === 'drop-claim') {
       const payload = msg.payload as Extract<SocketMessage['payload'], { type: 'drop-claim' }>;
-      if (payload.data.drop_id === drop.id) {
-        yield* Ref.update(
-          state.currentDrop,
-          Option.map((dr) => ({ ...dr, dropInstanceID: payload.data.drop_instance_id })),
-        );
-      }
+      if (payload.data.drop_id !== drop.id) return;
+
+      yield* Ref.update(
+        state.currentDrop,
+        Option.map((dr) => ({ ...dr, dropInstanceID: payload.data.drop_instance_id })),
+      );
     }
   });
 
