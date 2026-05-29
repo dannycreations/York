@@ -1,6 +1,6 @@
 import { Socket } from '@effect/platform';
 import { NodeSocket } from '@effect/platform-node';
-import { Context, Data, Deferred, Duration, Effect, Exit, Layer, Option, PubSub, Queue, Ref, Schedule, Scope, Stream } from 'effect';
+import { Cause, Context, Data, Deferred, Duration, Effect, Exit, Layer, Option, PubSub, Ref, Schedule, Scope, Stream } from 'effect';
 
 import { HttpClientTag } from './HttpClient';
 
@@ -65,6 +65,9 @@ export const makeSocketClient = (options: SocketClientOptions): Effect.Effect<So
 
         yield* Ref.set(socketRef, Option.none());
 
+        const currentDeferred = yield* Ref.get(openedDeferredRef);
+        yield* Deferred.fail(currentDeferred, new SocketClientError({ message: 'Socket disconnected manually' })).pipe(Effect.ignore);
+
         const nextDeferred = yield* Deferred.make<void, SocketClientError>();
         yield* Ref.set(openedDeferredRef, nextDeferred);
 
@@ -75,7 +78,8 @@ export const makeSocketClient = (options: SocketClientOptions): Effect.Effect<So
       const isConnecting = yield* Ref.getAndUpdate(isConnectingRef, () => true);
 
       if (isConnecting) {
-        return;
+        const currentDeferred = yield* Ref.get(openedDeferredRef);
+        return yield* Deferred.await(currentDeferred);
       }
 
       const currentSocket = yield* Ref.get(socketRef);
@@ -92,31 +96,10 @@ export const makeSocketClient = (options: SocketClientOptions): Effect.Effect<So
 
       const opened = yield* Deferred.make<void, SocketClientError>();
 
-      const writeQueue = yield* Queue.unbounded<{
-        readonly data: string;
-        readonly deferred: Deferred.Deferred<void, SocketClientError>;
-      }>();
-
       const runLoop = Effect.gen(function* () {
         yield* Effect.logDebug(`SocketClient: Connecting to ${url}`);
         const socket = yield* Socket.makeWebSocket(url).pipe(Effect.provide(NodeSocket.layerWebSocketConstructor));
         yield* Ref.set(socketRef, Option.some(socket));
-
-        yield* Effect.gen(function* () {
-          const write = yield* socket.writer;
-          return yield* Queue.take(writeQueue).pipe(
-            Effect.flatMap(({ data, deferred }) =>
-              write(new TextEncoder().encode(data)).pipe(
-                Effect.mapError((cause) => new SocketClientError({ message: 'Failed to send message', cause })),
-                Effect.matchEffect({
-                  onFailure: (err) => Deferred.fail(deferred, err),
-                  onSuccess: () => Deferred.succeed(deferred, undefined),
-                }),
-              ),
-            ),
-            Effect.forever,
-          );
-        }).pipe(Effect.forkScoped);
 
         yield* socket.run(
           (chunk: Uint8Array) =>
@@ -140,10 +123,12 @@ export const makeSocketClient = (options: SocketClientOptions): Effect.Effect<So
         Effect.scoped,
         Effect.catchAllCause((cause) =>
           Effect.gen(function* () {
-            yield* Effect.logError('SocketClient: WebSocket error', cause);
+            if (!Cause.isInterruptedOnly(cause)) {
+              yield* Effect.logError('SocketClient: WebSocket error', cause);
+            }
             const error = new SocketClientError({ message: 'WebSocket error', cause });
             const currentOpened = yield* Ref.get(openedDeferredRef);
-            yield* Deferred.fail(currentOpened, error);
+            yield* Deferred.fail(currentOpened, error).pipe(Effect.ignore);
             yield* PubSub.publish(eventsPubSub, SocketEvent.Error({ cause }));
             return yield* Effect.failCause(cause);
           }),
@@ -151,18 +136,22 @@ export const makeSocketClient = (options: SocketClientOptions): Effect.Effect<So
         Effect.onExit((exit) =>
           Effect.gen(function* () {
             yield* Ref.set(socketRef, Option.none());
+
+            const currentDeferred = yield* Ref.get(openedDeferredRef);
+            yield* Deferred.fail(currentDeferred, new SocketClientError({ message: 'Connection lost' })).pipe(Effect.ignore);
+
             const nextDeferred = yield* Deferred.make<void, SocketClientError>();
             yield* Ref.set(openedDeferredRef, nextDeferred);
             yield* PubSub.publish(eventsPubSub, SocketEvent.Close());
 
             if (exit._tag === 'Failure' && !Exit.isInterrupted(exit)) {
               const failureError = new SocketClientError({ message: 'Fatal connection failure' });
-              yield* Deferred.fail(opened, failureError);
+              yield* Deferred.fail(opened, failureError).pipe(Effect.ignore);
               return;
             }
 
             const closeError = new SocketClientError({ message: 'Connection closed' });
-            yield* Deferred.fail(opened, closeError);
+            yield* Deferred.fail(opened, closeError).pipe(Effect.ignore);
           }),
         ),
         Effect.retry(
@@ -209,13 +198,22 @@ export const makeSocketClient = (options: SocketClientOptions): Effect.Effect<So
 
           if (Option.isNone(socketOpt)) {
             const opened = yield* Ref.get(openedDeferredRef);
-            yield* Deferred.await(opened);
+            yield* Deferred.await(opened).pipe(
+              Effect.catchAll((err) => {
+                if (err.message.includes('disconnected manually')) {
+                  return Effect.fail(err);
+                }
+                return Effect.void;
+              }),
+            );
             return yield* writeLoop;
           }
 
           const write = yield* socketOpt.value.writer;
-          yield* write(new TextEncoder().encode(data));
-        }).pipe(Effect.mapError((cause) => new SocketClientError({ message: 'Failed to send message', cause })));
+          return yield* write(new TextEncoder().encode(data)).pipe(
+            Effect.mapError((cause) => new SocketClientError({ message: 'Failed to send message', cause })),
+          );
+        });
 
         return yield* writeLoop;
       });

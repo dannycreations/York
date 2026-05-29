@@ -157,7 +157,7 @@ export const TwitchSocketLayer = (authToken: string): Layer.Layer<TwitchSocketTa
 
       yield* client.events.pipe(
         Stream.filter((e) => e._tag === 'Open'),
-        Stream.runForEach(() =>
+        Stream.tap(() =>
           Effect.gen(function* () {
             const topics = yield* Ref.get(subscribedTopics);
             const hasNoTopics = topics.size === 0;
@@ -170,6 +170,7 @@ export const TwitchSocketLayer = (authToken: string): Layer.Layer<TwitchSocketTa
             yield* Effect.forEach(topics, (topicKey) => performListen(topicKey), { discard: true });
           }),
         ),
+        Stream.runDrain,
         Effect.forkScoped,
       );
 
