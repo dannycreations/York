@@ -3,7 +3,7 @@ import { Array, Effect, Order, pipe, Ref, Schedule } from 'effect';
 
 import { ConfigStoreTag } from '../core/Config';
 import { calculatePriority, getDropStatus } from '../helpers/TwitchHelper';
-import { CampaignStoreTag } from '../stores/CampaignStore';
+import { CampaignServiceTag } from '../services/CampaignService';
 
 import type { Campaign } from '../core/Schemas';
 import type { MainState } from './MainWorkflow';
@@ -14,11 +14,11 @@ const processOfflineCampaign = (campaign: Campaign, state: MainState) =>
       return;
     }
 
-    const campaignStore = yield* CampaignStoreTag;
+    const campaignService = yield* CampaignServiceTag;
     const { isExpired } = getDropStatus(campaign.startAt, campaign.endAt, Date.now());
 
     if (isExpired) {
-      yield* Ref.update(campaignStore.campaigns, (map) => {
+      yield* Ref.update(campaignService.campaigns, (map) => {
         const next = new Map(map);
         next.delete(campaign.id);
         return next;
@@ -27,37 +27,37 @@ const processOfflineCampaign = (campaign: Campaign, state: MainState) =>
       return;
     }
 
-    const drops = yield* campaignStore.getDropsForCampaign(campaign.id).pipe(Effect.orDie);
+    const drops = yield* campaignService.getDropsForCampaign(campaign.id).pipe(Effect.orDie);
 
     if (drops.length === 0) {
       return;
     }
 
-    const channels = yield* campaignStore.getChannelsForCampaign(campaign).pipe(Effect.orDie);
+    const channels = yield* campaignService.getChannelsForCampaign(campaign).pipe(Effect.orDie);
 
     if (channels.length === 0) {
       return;
     }
 
     yield* Effect.logInfo(chalk`{bold.yellow ${campaign.name}} | {bold.green Campaigns online}`);
-    yield* campaignStore.setOffline(campaign.id, false);
+    yield* campaignService.setOffline(campaign.id, false);
 
     const currentCampaign = yield* Ref.get(state.currentCampaign);
     const currentDrop = yield* Ref.get(state.currentDrop);
     const priority = calculatePriority(campaign, currentCampaign, currentDrop);
 
-    yield* campaignStore.setPriority(campaign.id, priority);
+    yield* campaignService.setPriority(campaign.id, priority);
   });
 
 export const OfflineWorkflow = (state: MainState) =>
   Effect.gen(function* () {
-    const campaignStore = yield* CampaignStoreTag;
+    const campaignService = yield* CampaignServiceTag;
     const configStore = yield* ConfigStoreTag;
 
     yield* Effect.sleep('120 seconds');
 
     const loop = Effect.gen(function* () {
-      const campaignsMap = yield* Ref.get(campaignStore.campaigns);
+      const campaignsMap = yield* Ref.get(campaignService.campaigns);
       const config = yield* configStore.get;
 
       const sortedOffline = pipe(

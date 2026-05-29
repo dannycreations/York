@@ -2,366 +2,192 @@ import { chalk } from '@vegapunk/utilities';
 import { uniqueId } from '@vegapunk/utilities/common';
 import { Effect, Option, Ref, Scope, Stream } from 'effect';
 
+import { TwitchApiTag } from '../api/TwitchApi';
+import { TwitchSocketTag } from '../api/TwitchSocket';
 import { ConfigStoreTag } from '../core/Config';
 import { WsTopic } from '../core/Constants';
-import { TwitchApiTag } from '../services/TwitchApi';
-import { TwitchSocketTag } from '../services/TwitchSocket';
-import { CampaignStoreTag } from '../stores/CampaignStore';
+import { CampaignServiceTag } from '../services/CampaignService';
 
-import type { Channel, Drop, SocketMessage } from '../core/Schemas';
+import type { SocketMessage } from '../core/Schemas';
 import type { MainState } from './MainWorkflow';
 
-const handleClaimAvailable = (
-  payload: Extract<SocketMessage['payload'], { type: 'claim-available' }>,
-  channel: Channel,
-  state: MainState,
-): Effect.Effect<void, never, TwitchApiTag> =>
-  Effect.gen(function* () {
-    if (payload.data.claim.channel_id !== channel.id) {
-      return;
-    }
-
-    const api = yield* TwitchApiTag;
-
-    yield* api
-      .claimPoints(channel.id, payload.data.claim.id)
-      .pipe(
-        Effect.zipRight(Effect.logInfo(chalk`{green ${channel.login}} | {yellow Points claimed}`)),
-        Effect.zipRight(Ref.set(state.nextPointClaim, Date.now() + 900_000)),
-        Effect.ignore,
-      );
-  });
-
-const handlePointsEarned = (
-  payload: Extract<SocketMessage['payload'], { type: 'points-earned' }>,
-  channel: Channel,
-  state: MainState,
-): Effect.Effect<void, never, TwitchApiTag> =>
-  Effect.gen(function* () {
-    if (payload.data.channel_id !== channel.id) {
-      return;
-    }
-
-    const api = yield* TwitchApiTag;
-    const now = Date.now();
-    const nextClaim = yield* Ref.get(state.nextPointClaim);
-
-    if (now < nextClaim) {
-      return;
-    }
-
-    const channelDataOpt = yield* api.channelPoints(channel.login).pipe(Effect.option);
-
-    if (Option.isNone(channelDataOpt)) {
-      yield* Ref.set(state.nextPointClaim, Date.now() + 900_000);
-      return;
-    }
-
-    const channelData = channelDataOpt.value;
-    const communityPoints = channelData.community.channel.self.communityPoints;
-    const availableClaim = communityPoints.availableClaim;
-
-    if (!availableClaim) {
-      yield* Ref.set(state.nextPointClaim, Date.now() + 900_000);
-      return;
-    }
-
-    yield* api.claimPoints(channel.id, availableClaim.id).pipe(Effect.ignore);
-    yield* Effect.logInfo(chalk`{green ${channel.login}} | {yellow Points claimed}`);
-
-    yield* Ref.set(state.nextPointClaim, Date.now() + 900_000);
-  });
-
-const handleUserPoint = (
-  payload: SocketMessage['payload'],
-  channel: Channel,
-  state: MainState,
-): Effect.Effect<void, never, TwitchApiTag | ConfigStoreTag> =>
-  Effect.gen(function* () {
-    const configStore = yield* ConfigStoreTag;
-    const config = yield* configStore.get;
-
-    if (!config.isClaimPoints) {
-      return;
-    }
-
-    if (payload.type === 'claim-available') {
-      yield* handleClaimAvailable(payload, channel, state);
-      return;
-    }
-
-    if (payload.type === 'points-earned') {
-      yield* handlePointsEarned(payload, channel, state);
-      return;
-    }
-  });
-
-const handleDropProgress = (
-  payload: Extract<SocketMessage['payload'], { type: 'drop-progress' }>,
-  drop: Drop,
-  state: MainState,
-): Effect.Effect<void, never, CampaignStoreTag> =>
-  Effect.gen(function* () {
-    if (payload.data.drop_id !== drop.id) {
-      return;
-    }
-
-    const progress = payload.data.current_progress_min;
-    const desync = progress - drop.currentMinutesWatched;
-
-    if (desync === 0) {
-      return;
-    }
-
-    const updatedDrop = { ...drop, currentMinutesWatched: progress };
-
-    yield* Ref.set(state.currentDrop, Option.some(updatedDrop));
-    yield* Ref.set(state.localMinutesWatched, 1);
-    yield* Effect.logInfo(chalk`{green ${drop.name}} | {yellow Desync ${desync > 0 ? '+' : ''}${desync} minutes}`);
-
-    if (progress >= drop.requiredMinutesWatched) {
-      const isBroken = !updatedDrop.dropInstanceID;
-
-      if (isBroken) {
-        yield* Effect.logInfo(chalk`{green ${drop.name}} | {red Possible broken drops}`);
-        const campaignStore = yield* CampaignStoreTag;
-        yield* campaignStore.setBroken(drop.campaignId, true);
-      } else {
-        yield* Effect.logInfo(chalk`{green ${drop.name}} | {green Completed!} | {green ${progress}/${drop.requiredMinutesWatched}}`);
-      }
-
-      yield* Ref.set(state.currentChannel, Option.none());
-    }
-  });
-
-const handleDropClaim = (payload: Extract<SocketMessage['payload'], { type: 'drop-claim' }>, drop: Drop, state: MainState): Effect.Effect<void> => {
-  if (payload.data.drop_id !== drop.id) {
-    return Effect.void;
-  }
-
-  const updateEffect = Ref.update(state.currentDrop, (d) =>
-    Option.map(d, (dr) => ({
-      ...dr,
-      dropInstanceID: payload.data.drop_instance_id,
-    })),
-  );
-
-  return updateEffect;
-};
-
-const handleUserDrop = (
-  payload: SocketMessage['payload'],
-  currentDrop: Option.Option<Drop>,
-  state: MainState,
-): Effect.Effect<void, never, CampaignStoreTag> =>
-  Effect.gen(function* () {
-    if (Option.isNone(currentDrop)) {
-      return;
-    }
-
-    const drop = currentDrop.value;
-
-    if (payload.type === 'drop-progress') {
-      yield* handleDropProgress(payload, drop, state);
-      return;
-    }
-
-    if (payload.type === 'drop-claim') {
-      yield* handleDropClaim(payload, drop, state);
-      return;
-    }
-  });
-
-const handleChannelStream = (msg: SocketMessage, channel: Channel, state: MainState): Effect.Effect<void> => {
-  if (msg.payload.type !== 'stream-down') {
-    return Effect.void;
-  }
-
-  return Ref.update(state.currentChannel, (current) =>
-    Option.match(current, {
-      onNone: () => current,
-      onSome: (c) => (c.id === channel.id ? Option.some({ ...c, isOnline: false }) : current),
-    }),
-  ).pipe(Effect.zipRight(Effect.logInfo(chalk`{red ${channel.login}} | {red Stream down}`)));
-};
-
-const handleChannelMoment = (msg: SocketMessage, channel: Channel): Effect.Effect<void, never, TwitchSocketTag | TwitchApiTag | ConfigStoreTag> =>
-  Effect.gen(function* () {
-    const api = yield* TwitchApiTag;
-    const configStore = yield* ConfigStoreTag;
-    const isOtherTopic = msg.topicId !== channel.id;
-
-    if (isOtherTopic) {
-      const socket = yield* TwitchSocketTag;
-      const unlistenEffect = socket.unlisten(WsTopic.ChannelMoment, msg.topicId).pipe(Effect.ignore);
-      return yield* unlistenEffect;
-    }
-
-    if (msg.payload.type !== 'active') {
-      return;
-    }
-
-    const config = yield* configStore.get;
-
-    if (!config.isClaimMoments) {
-      return;
-    }
-
-    yield* api.claimMoments(msg.payload.data.moment_id).pipe(Effect.ignore);
-    yield* Effect.logInfo(chalk`{green ${channel.login}} | {yellow Moments claimed}`);
-  });
-
-const handleChannelPoint = (msg: SocketMessage, channel: Channel): Effect.Effect<void, never, TwitchApiTag | ConfigStoreTag> =>
-  Effect.gen(function* () {
-    const api = yield* TwitchApiTag;
-    const configStore = yield* ConfigStoreTag;
-    const isOtherTopic = msg.topicId !== channel.id;
-
-    if (isOtherTopic) {
-      return;
-    }
-
-    if (msg.payload.type !== 'claim-available') {
-      return;
-    }
-
-    const config = yield* configStore.get;
-
-    if (!config.isClaimPoints) {
-      return;
-    }
-
-    yield* api.claimPoints(channel.id, msg.payload.data.claim.id).pipe(Effect.ignore);
-    yield* Effect.logInfo(chalk`{green ${channel.login}} | {yellow Points claimed}`);
-  });
-
-const handleChannelUpdate = (msg: SocketMessage, channel: Channel, state: MainState): Effect.Effect<void> =>
-  Effect.gen(function* () {
-    if (msg.payload.type !== 'broadcast_settings_update') {
-      return;
-    }
-
-    const payload = msg.payload;
-
-    if (!!payload.channel_id && payload.channel_id !== channel.id) {
-      return;
-    }
-
-    const currentGameId = String(payload.data.game_id);
-    if (!!channel.gameId && currentGameId !== channel.gameId) {
-      yield* Ref.update(state.currentChannel, (current) =>
-        Option.match(current, {
-          onNone: () => current,
-          onSome: (c) => (c.id === channel.id ? Option.some({ ...c, isOnline: false }) : current),
-        }),
-      );
-
-      yield* Effect.logInfo(chalk`{red ${channel.login}} | {red Game changed to ${payload.data.game}}`);
-    }
-
-    yield* Ref.update(state.currentChannel, (current) =>
-      Option.match(current, {
-        onNone: () => current,
-        onSome: (c) => {
-          if (c.id !== channel.id) {
-            return current;
-          }
-
-          return Option.some({
-            ...c,
-            currentGameId,
-            currentGameName: payload.data.game,
-          });
-        },
-      }),
-    );
-  });
-
-const processMessage = (
+type MessageHandler = (
   msg: SocketMessage,
   state: MainState,
   userId: string,
-): Effect.Effect<void, never, TwitchApiTag | TwitchSocketTag | ConfigStoreTag | CampaignStoreTag> =>
+) => Effect.Effect<void, never, TwitchApiTag | TwitchSocketTag | ConfigStoreTag | CampaignServiceTag>;
+
+const handleUserDrop: MessageHandler = (msg, state) =>
   Effect.gen(function* () {
-    const channelOpt = yield* Ref.get(state.currentChannel);
+    const dropOpt = yield* Ref.get(state.currentDrop);
+    if (Option.isNone(dropOpt)) return;
+    const drop = dropOpt.value;
 
-    if (Option.isNone(channelOpt)) {
-      return;
-    }
+    if (msg.payload.type === 'drop-progress') {
+      const progress = msg.payload.data.current_progress_min;
+      const desync = progress - drop.currentMinutesWatched;
+      if (desync === 0) return;
 
-    const channel = channelOpt.value;
-    if (msg.topicId !== userId && msg.topicId !== channel.id) {
-      const type = msg.topicType;
+      const updatedDrop = { ...drop, currentMinutesWatched: progress };
+      yield* Ref.set(state.currentDrop, Option.some(updatedDrop));
+      yield* Ref.set(state.localMinutesWatched, 1);
+      yield* Effect.logInfo(chalk`{green ${drop.name}} | {yellow Desync ${desync > 0 ? '+' : ''}${desync} minutes}`);
 
-      if (type === WsTopic.ChannelStream || type === WsTopic.ChannelMoment || type === WsTopic.ChannelUpdate || type === WsTopic.ChannelPoint) {
-        const socket = yield* TwitchSocketTag;
-        yield* socket.unlisten(type, msg.topicId).pipe(Effect.ignore);
+      if (progress >= drop.requiredMinutesWatched) {
+        if (!updatedDrop.dropInstanceID) {
+          yield* Effect.logInfo(chalk`{green ${drop.name}} | {red Possible broken drops}`);
+          const campaignService = yield* CampaignServiceTag;
+          yield* campaignService.setBroken(drop.campaignId, true);
+        } else {
+          yield* Effect.logInfo(chalk`{green ${drop.name}} | {green Completed!} | {green ${progress}/${drop.requiredMinutesWatched}}`);
+        }
+        yield* Ref.set(state.currentChannel, Option.none());
       }
-
-      return;
+    } else if (msg.payload.type === 'drop-claim') {
+      const payload = msg.payload as Extract<SocketMessage['payload'], { type: 'drop-claim' }>;
+      if (payload.data.drop_id === drop.id) {
+        yield* Ref.update(
+          state.currentDrop,
+          Option.map((dr) => ({ ...dr, dropInstanceID: payload.data.drop_instance_id })),
+        );
+      }
     }
+  });
+
+const handleUserPoint: MessageHandler = (msg, state) =>
+  Effect.gen(function* () {
+    const configStore = yield* ConfigStoreTag;
+    const config = yield* configStore.get;
+    if (!config.isClaimPoints) return;
+
+    const channelOpt = yield* Ref.get(state.currentChannel);
+    if (Option.isNone(channelOpt)) return;
+    const channel = channelOpt.value;
 
     const api = yield* TwitchApiTag;
 
-    const debugFileName = `${msg.topicType}-${msg.payload.type ?? uniqueId()}`;
-    yield* api.writeDebugFile(msg, debugFileName);
-
-    const payload = msg.payload;
-    const type = msg.topicType;
-
-    switch (type) {
-      case WsTopic.UserDrop: {
-        const dropOpt = yield* Ref.get(state.currentDrop);
-        return yield* handleUserDrop(payload, dropOpt, state);
+    if (msg.payload.type === 'claim-available') {
+      if (msg.payload.data.claim.channel_id === channel.id) {
+        yield* api
+          .claimPoints(channel.id, msg.payload.data.claim.id)
+          .pipe(
+            Effect.zipRight(Effect.logInfo(chalk`{green ${channel.login}} | {yellow Points claimed}`)),
+            Effect.zipRight(Ref.set(state.nextPointClaim, Date.now() + 900_000)),
+            Effect.ignore,
+          );
       }
-      case WsTopic.UserPoint:
-        return yield* handleUserPoint(payload, channel, state);
-      case WsTopic.ChannelStream:
-        return yield* handleChannelStream(msg, channel, state);
-      case WsTopic.ChannelMoment:
-        return yield* handleChannelMoment(msg, channel);
-      case WsTopic.ChannelPoint:
-        return yield* handleChannelPoint(msg, channel);
-      case WsTopic.ChannelUpdate:
-        return yield* handleChannelUpdate(msg, channel, state);
-    }
+    } else if (msg.payload.type === 'points-earned') {
+      if (msg.payload.data.channel_id !== channel.id) return;
+      const now = Date.now();
+      const nextClaim = yield* Ref.get(state.nextPointClaim);
+      if (now < nextClaim) return;
 
-    if (payload.type !== 'community-goal-created' && payload.type !== 'community-goal-updated') {
+      const channelData = yield* api.channelPoints(channel.login).pipe(Effect.option);
+      if (Option.isNone(channelData)) {
+        yield* Ref.set(state.nextPointClaim, now + 900_000);
+        return;
+      }
+
+      const availableClaim = channelData.value.community.channel.self.communityPoints.availableClaim;
+      if (!availableClaim) {
+        yield* Ref.set(state.nextPointClaim, now + 900_000);
+        return;
+      }
+
+      yield* api.claimPoints(channel.id, availableClaim.id).pipe(Effect.ignore);
+      yield* Effect.logInfo(chalk`{green ${channel.login}} | {yellow Points claimed}`);
+      yield* Ref.set(state.nextPointClaim, now + 900_000);
+    }
+  });
+
+const handleChannelStream: MessageHandler = (msg, state) =>
+  Effect.gen(function* () {
+    if (msg.payload.type !== 'stream-down') return;
+    const channelOpt = yield* Ref.get(state.currentChannel);
+    if (Option.isSome(channelOpt) && channelOpt.value.id === msg.topicId) {
+      yield* Ref.update(
+        state.currentChannel,
+        Option.map((c) => ({ ...c, isOnline: false })),
+      );
+      yield* Effect.logInfo(chalk`{red ${channelOpt.value.login}} | {red Stream down}`);
+    }
+  });
+
+const handleChannelMoment: MessageHandler = (msg, state) =>
+  Effect.gen(function* () {
+    const channelOpt = yield* Ref.get(state.currentChannel);
+    if (Option.isNone(channelOpt) || msg.topicId !== channelOpt.value.id) {
+      const socket = yield* TwitchSocketTag;
+      yield* socket.unlisten(WsTopic.ChannelMoment, msg.topicId).pipe(Effect.ignore);
       return;
     }
 
+    if (msg.payload.type !== 'active') return;
     const configStore = yield* ConfigStoreTag;
     const config = yield* configStore.get;
+    if (!config.isClaimMoments) return;
 
-    if (!config.isClaimPoints) {
-      return;
+    const api = yield* TwitchApiTag;
+    yield* api.claimMoments(msg.payload.data.moment_id).pipe(Effect.ignore);
+    yield* Effect.logInfo(chalk`{green ${channelOpt.value.login}} | {yellow Moments claimed}`);
+  });
+
+const handleChannelUpdate: MessageHandler = (msg, state) =>
+  Effect.gen(function* () {
+    if (msg.payload.type !== 'broadcast_settings_update') return;
+    const channelOpt = yield* Ref.get(state.currentChannel);
+    if (Option.isNone(channelOpt)) return;
+
+    const channel = channelOpt.value;
+    const payload = msg.payload as Extract<SocketMessage['payload'], { type: 'broadcast_settings_update' }>;
+    if (!!payload.channel_id && payload.channel_id !== channel.id) return;
+
+    const currentGameId = String(payload.data.game_id);
+
+    if (!!channel.gameId && currentGameId !== channel.gameId) {
+      yield* Ref.update(
+        state.currentChannel,
+        Option.map((c) => ({ ...c, isOnline: false })),
+      );
+      yield* Effect.logInfo(chalk`{red ${channel.login}} | {red Game changed to ${payload.data.game}}`);
     }
 
+    yield* Ref.update(
+      state.currentChannel,
+      Option.map((c) => (c.id === channel.id ? { ...c, currentGameId, currentGameName: payload.data.game } : c)),
+    );
+  });
+
+const handleCommunityGoal: MessageHandler = (msg, state) =>
+  Effect.gen(function* () {
+    if (msg.payload.type !== 'community-goal-created' && msg.payload.type !== 'community-goal-updated') return;
+    const configStore = yield* ConfigStoreTag;
+    const config = yield* configStore.get;
+    if (!config.isClaimPoints) return;
+
+    const channelOpt = yield* Ref.get(state.currentChannel);
+    if (Option.isNone(channelOpt)) return;
+    const channel = channelOpt.value;
+
+    const api = yield* TwitchApiTag;
     yield* api.channelPoints(channel.login).pipe(
       Effect.flatMap((data) => {
-        const goals = data.community.channel.communityPointsSettings.goals;
-        const startedGoals = goals.filter((g) => g.status === 'STARTED' && g.isInStock);
-
-        if (startedGoals.length === 0) {
-          return Effect.void;
-        }
+        const startedGoals = data.community.channel.communityPointsSettings.goals.filter((g) => g.status === 'STARTED' && g.isInStock);
+        if (startedGoals.length === 0) return Effect.void;
 
         return api.userPointsContribution(channel.login).pipe(
-          Effect.flatMap((contributionData) => {
-            const userContributions = contributionData.user.channel.self.communityPoints.goalContributions;
+          Effect.flatMap((contrib) => {
             const balance = data.community.channel.self.communityPoints.balance;
+            const userContribs = contrib.user.channel.self.communityPoints.goalContributions;
 
             return Effect.forEach(startedGoals, (goal) => {
-              const userContrib = userContributions.find((uc) => uc.goal.id === goal.id);
-              const userPointsContributedThisStream = userContrib?.userPointsContributedThisStream ?? 0;
-              const userLeftToContribute = goal.perStreamUserMaximumContribution - userPointsContributedThisStream;
-              const goalLeft = goal.amountNeeded - goal.pointsContributed;
-              const amount = Math.min(goalLeft, userLeftToContribute, balance);
-
-              if (amount <= 0) {
-                return Effect.void;
-              }
-
+              const uc = userContribs.find((u) => u.goal.id === goal.id);
+              const amount = Math.min(
+                goal.amountNeeded - goal.pointsContributed,
+                goal.perStreamUserMaximumContribution - (uc?.userPointsContributedThisStream ?? 0),
+                balance,
+              );
+              if (amount <= 0) return Effect.void;
               return api
                 .contributeCommunityGoal(channel.id, goal.id, amount)
                 .pipe(
@@ -376,24 +202,39 @@ const processMessage = (
     );
   });
 
+const HANDLERS: Record<string, MessageHandler> = {
+  [WsTopic.UserDrop]: handleUserDrop,
+  [WsTopic.UserPoint]: handleUserPoint,
+  [WsTopic.ChannelStream]: handleChannelStream,
+  [WsTopic.ChannelMoment]: handleChannelMoment,
+  [WsTopic.ChannelUpdate]: handleChannelUpdate,
+  [WsTopic.ChannelPoint]: handleUserPoint,
+};
+
 export const SocketWorkflow = (
   state: MainState,
-): Effect.Effect<void, never, TwitchApiTag | TwitchSocketTag | Scope.Scope | ConfigStoreTag | CampaignStoreTag> =>
+): Effect.Effect<void, never, TwitchApiTag | TwitchSocketTag | Scope.Scope | ConfigStoreTag | CampaignServiceTag> =>
   Effect.gen(function* () {
     const api = yield* TwitchApiTag;
     const socket = yield* TwitchSocketTag;
     const userId = yield* api.userId.pipe(Effect.orDie);
 
-    const messageStream = socket.messages.pipe(
+    yield* socket.messages.pipe(
       Stream.filterEffect(() =>
+        Effect.all([Ref.get(state.currentCampaign), Ref.get(state.currentChannel)]).pipe(
+          Effect.map(([camp, chan]) => Option.isSome(camp) && Option.isSome(chan)),
+        ),
+      ),
+      Stream.runForEach((msg) =>
         Effect.gen(function* () {
-          const currentCampaign = yield* Ref.get(state.currentCampaign);
-          const currentChannel = yield* Ref.get(state.currentChannel);
-          return Option.isSome(currentCampaign) && Option.isSome(currentChannel);
+          const handler = HANDLERS[msg.topicType];
+          if (handler) {
+            yield* api.writeDebugFile(msg, `${msg.topicType}-${msg.payload.type ?? uniqueId()}`);
+            yield* handler(msg, state, userId);
+          }
+          yield* handleCommunityGoal(msg, state, userId);
         }),
       ),
-      Stream.runForEach((msg) => processMessage(msg, state, userId)),
+      Effect.forkScoped,
     );
-
-    yield* Effect.forkScoped(messageStream);
   });

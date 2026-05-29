@@ -2,17 +2,17 @@ import { chalk } from '@vegapunk/utilities';
 import { Effect, Option, Ref, Schedule } from 'effect';
 
 import { calculatePriority } from '../helpers/TwitchHelper';
-import { CampaignStoreState, CampaignStoreTag } from '../stores/CampaignStore';
+import { CampaignServiceState, CampaignServiceTag } from '../services/CampaignService';
 
 import type { Campaign } from '../core/Schemas';
-import type { CampaignStore } from '../stores/CampaignStore';
+import type { CampaignService } from '../services/CampaignService';
 import type { MainState } from './MainWorkflow';
 
 const processUpcomingCampaign = (
   next: Campaign,
   upcomingCount: number,
   state: MainState,
-  campaignStore: CampaignStore,
+  campaignService: CampaignService,
   isMainCall: boolean,
   isMainCallSleep: Ref.Ref<boolean>,
 ) =>
@@ -45,7 +45,7 @@ const processUpcomingCampaign = (
     }
 
     if (isMainCall) {
-      yield* Ref.set(campaignStore.state, CampaignStoreState.All());
+      yield* Ref.set(campaignService.state, CampaignServiceState.All());
     }
 
     yield* Effect.logInfo(chalk`{bold.yellow ${next.name}} | {bold.yellow {strikethrough Upcoming}}`);
@@ -54,14 +54,14 @@ const processUpcomingCampaign = (
     const currentDrop = yield* Ref.get(state.currentDrop);
     const priority = calculatePriority(next, currentCampaign, currentDrop);
 
-    yield* campaignStore.setPriority(next.id, priority);
+    yield* campaignService.setPriority(next.id, priority);
 
     yield* Effect.sleep(`${Math.floor(Math.random() * 5000)} millis`);
   });
 
 export const UpcomingWorkflow = (state: MainState) =>
   Effect.gen(function* () {
-    const campaignStore = yield* CampaignStoreTag;
+    const campaignService = yield* CampaignServiceTag;
     const sleepTime = 7_200_000;
     const nextRefreshRef = yield* Ref.make(Date.now() + sleepTime);
     const isMainCallSleep = yield* Ref.make(false);
@@ -72,16 +72,16 @@ export const UpcomingWorkflow = (state: MainState) =>
       const now = Date.now();
       const nextRefresh = yield* Ref.get(nextRefreshRef);
 
-      const campaignState = yield* Ref.get(campaignStore.state);
+      const campaignState = yield* Ref.get(campaignService.state);
       const currentCampaign = yield* Ref.get(state.currentCampaign);
       const isMainCall = campaignState._tag === 'Initial' && Option.isNone(currentCampaign);
 
       if (isMainCall || now >= nextRefresh) {
-        yield* campaignStore.updateCampaigns.pipe(Effect.orDie);
+        yield* campaignService.updateCampaigns.pipe(Effect.orDie);
         yield* Ref.set(nextRefreshRef, Date.now() + sleepTime);
       }
 
-      const upcoming = yield* campaignStore.getSortedUpcoming;
+      const upcoming = yield* campaignService.getSortedUpcoming;
       if (upcoming.length === 0) {
         if (isMainCall) {
           yield* Effect.logInfo(chalk`{bold.yellow No upcoming campaigns}`);
@@ -90,7 +90,7 @@ export const UpcomingWorkflow = (state: MainState) =>
         return;
       }
 
-      yield* processUpcomingCampaign(upcoming[0], upcoming.length, state, campaignStore, isMainCall, isMainCallSleep);
+      yield* processUpcomingCampaign(upcoming[0], upcoming.length, state, campaignService, isMainCall, isMainCallSleep);
     });
 
     yield* Effect.repeat(loop, Schedule.spaced('120 seconds'));
