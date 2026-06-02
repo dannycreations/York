@@ -2,10 +2,13 @@ import { chalk } from '@vegapunk/utilities';
 import { Context, Effect, Layer, Option, Ref } from 'effect';
 
 import { TwitchApiTag } from '../api/TwitchApi';
+import { TwitchSocketTag } from '../api/TwitchSocket';
+import { resetChannel } from '../workflows/MainWorkflow';
 import { CampaignServiceTag } from './CampaignService';
 
 import type { TwitchApiError } from '../api/TwitchApi';
 import type { Campaign, Channel, Drop } from '../core/Schemas';
+import type { MainState } from '../workflows/MainWorkflow';
 
 export interface DropService {
   readonly claimDropSequence: (
@@ -19,7 +22,7 @@ export interface DropService {
     localMinutesWatchedRef: Ref.Ref<number>,
     currentDropRef: Ref.Ref<Option.Option<Drop>>,
     currentChannelRef: Ref.Ref<Option.Option<Channel>>,
-  ) => Effect.Effect<void, TwitchApiError>;
+  ) => Effect.Effect<void, TwitchApiError, TwitchSocketTag>;
 }
 
 export class DropServiceTag extends Context.Tag('@services/DropService')<DropServiceTag, DropService>() {}
@@ -29,6 +32,7 @@ export const DropServiceLayer = Layer.effect(
   Effect.gen(function* () {
     const campaignService = yield* CampaignServiceTag;
     const api = yield* TwitchApiTag;
+    const socket = yield* TwitchSocketTag;
 
     return {
       claimDropSequence: (campaign, drop, isClaimingRef, currentDropRef) =>
@@ -115,10 +119,11 @@ export const DropServiceLayer = Layer.effect(
 
           const desync = drop.currentMinutesWatched - freshDrop.currentMinutesWatched;
           if (desync >= 20) {
-            yield* Ref.update(
-              currentChannelRef,
-              Option.map((ch) => ({ ...ch, isOnline: false })),
-            );
+            const curOpt = yield* Ref.get(currentChannelRef);
+
+            if (Option.isSome(curOpt)) {
+              yield* resetChannel({ currentChannel: currentChannelRef } as MainState).pipe(Effect.provideService(TwitchSocketTag, socket));
+            }
           }
 
           yield* Ref.set(currentDropRef, Option.some(freshDrop));

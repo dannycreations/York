@@ -7,6 +7,7 @@ import { TwitchSocketTag } from '../api/TwitchSocket';
 import { ConfigStoreTag } from '../core/Config';
 import { WsTopic } from '../core/Constants';
 import { CampaignServiceTag } from '../services/CampaignService';
+import { resetChannel } from './MainWorkflow';
 
 import type { SocketMessage } from '../core/Schemas';
 import type { MainState } from './MainWorkflow';
@@ -43,7 +44,7 @@ const handleUserDrop: MessageHandler = (msg, state) =>
         } else {
           yield* Effect.logInfo(chalk`{green ${drop.name}} | {green Completed!} | {green ${progress}/${drop.requiredMinutesWatched}}`);
         }
-        yield* Ref.set(state.currentChannel, Option.none());
+        yield* resetChannel(state);
       }
     } else if (msg.payload.type === 'drop-claim') {
       const payload = msg.payload as Extract<SocketMessage['payload'], { type: 'drop-claim' }>;

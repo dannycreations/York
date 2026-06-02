@@ -37,7 +37,7 @@ export interface MainState {
   readonly nextCommunityGoalContribution: Ref.Ref<number>;
 }
 
-const resetChannel = (state: MainState): Effect.Effect<void, never, TwitchSocketTag> =>
+export const resetChannel = (state: MainState): Effect.Effect<void, never, TwitchSocketTag> =>
   Effect.gen(function* () {
     const socket = yield* TwitchSocketTag;
     const curOpt = yield* Ref.get(state.currentChannel);
@@ -45,6 +45,7 @@ const resetChannel = (state: MainState): Effect.Effect<void, never, TwitchSocket
     if (Option.isSome(curOpt)) {
       const chan = curOpt.value;
       const topics = [WsTopic.ChannelStream, WsTopic.ChannelMoment, WsTopic.ChannelUpdate, WsTopic.ChannelPoint] as const;
+
       yield* Effect.forEach(topics, (topic) => socket.unlisten(topic, chan.id), {
         concurrency: 'unbounded',
         discard: true,
@@ -52,6 +53,17 @@ const resetChannel = (state: MainState): Effect.Effect<void, never, TwitchSocket
 
       yield* Ref.set(state.currentChannel, Option.none());
     }
+  });
+
+export const setChannel = (state: MainState, channel: Channel): Effect.Effect<void, never, TwitchSocketTag> =>
+  Effect.gen(function* () {
+    const curOpt = yield* Ref.get(state.currentChannel);
+    if (Option.isSome(curOpt) && curOpt.value.id === channel.id) {
+      return;
+    }
+
+    yield* resetChannel(state);
+    yield* Ref.set(state.currentChannel, Option.some(channel));
   });
 
 const shouldSwitchCampaign = (state: MainState, campaign: Campaign, activeCampaigns: readonly Campaign[]): Effect.Effect<boolean, never, never> =>
@@ -274,7 +286,7 @@ const processCampaignChannels = (
       const isMet = yield* Ref.get(state.currentDrop).pipe(Effect.map(Option.match({ onNone: () => false, onSome: isMinutesWatchedMet })));
       if (isMet) break;
 
-      yield* Ref.set(state.currentChannel, Option.some(channel));
+      yield* setChannel(state, channel);
       const chanOpt = yield* watchService.updateChannelInfo(channel, state.localMinutesWatched, state.currentChannel);
       if (Option.isNone(chanOpt)) continue;
 
