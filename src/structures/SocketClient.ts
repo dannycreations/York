@@ -99,7 +99,6 @@ export const makeSocketClient = (options: SocketClientOptions): Effect.Effect<So
       const runLoop = Effect.gen(function* () {
         yield* Effect.logDebug(`SocketClient: Connecting to ${url}`);
         const socket = yield* Socket.makeWebSocket(url).pipe(Effect.provide(NodeSocket.layerWebSocketConstructor));
-        yield* Ref.set(socketRef, Option.some(socket));
 
         yield* socket.run(
           (chunk: Uint8Array) =>
@@ -112,6 +111,7 @@ export const makeSocketClient = (options: SocketClientOptions): Effect.Effect<So
             onOpen: Effect.gen(function* () {
               yield* Effect.logDebug('SocketClient: Connection established');
               yield* Ref.set(lastPongReceivedAt, Date.now());
+              yield* Ref.set(socketRef, Option.some(socket));
               yield* PubSub.publish(eventsPubSub, SocketEvent.Open());
               yield* Deferred.succeed(opened, undefined);
               const currentOpened = yield* Ref.get(openedDeferredRef);
@@ -219,6 +219,11 @@ export const makeSocketClient = (options: SocketClientOptions): Effect.Effect<So
       });
 
     const pingLoop = Effect.gen(function* () {
+      const isConnecting = yield* Ref.get(isConnectingRef);
+      if (isConnecting) {
+        return;
+      }
+
       const socketOpt = yield* Ref.get(socketRef);
       if (Option.isNone(socketOpt)) {
         return;
@@ -232,6 +237,11 @@ export const makeSocketClient = (options: SocketClientOptions): Effect.Effect<So
     }).pipe(Effect.repeat(Schedule.spaced(`${pingIntervalMs} millis`)));
 
     const timeoutLoop = Effect.gen(function* () {
+      const isConnecting = yield* Ref.get(isConnectingRef);
+      if (isConnecting) {
+        return;
+      }
+
       const socketOpt = yield* Ref.get(socketRef);
 
       if (Option.isNone(socketOpt)) {
