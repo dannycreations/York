@@ -115,7 +115,7 @@ export const makeSocketClient = (options: SocketClientOptions): Effect.Effect<So
               yield* PubSub.publish(eventsPubSub, SocketEvent.Open());
               yield* Deferred.succeed(opened, undefined);
               const currentOpened = yield* Ref.get(openedDeferredRef);
-              yield* Deferred.succeed(currentOpened, undefined);
+              yield* Deferred.succeed(currentOpened, undefined).pipe(Effect.ignore);
             }),
           },
         );

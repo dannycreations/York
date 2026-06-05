@@ -27,7 +27,7 @@ export const makeRuntimeBridge = Effect.gen(function* () {
       ),
     runSync: (effect) => runSync(effect),
     runPromise: (effect) => runPromise(effect),
-  } satisfies RuntimeBridge;
+  } as RuntimeBridge;
 });
 
 export interface RuntimeCycleOptions {
@@ -44,61 +44,59 @@ export const cycleUntilMidnight: Effect.Effect<never, RuntimeRestart> = Effect.g
   });
 
   yield* Effect.sleep(`${msUntilMidnight} millis`);
-  yield* Effect.logInfo(chalk`{bold.yellow It's midnight time. Restarting app...}`);
+  yield* Effect.logInfo(chalk`{bold.yellow It's midnight time. Restarting system...}`);
   return yield* new RuntimeRestart();
 });
 
 export const runMainCycle = <A, E, R>(program: Effect.Effect<A, E, R>, options: RuntimeCycleOptions = {}): void => {
   const { maxRestarts = 3, intervalMs = 60_000, restartDelayMs = 5_000 } = options;
 
-  const mainEffect = Effect.gen(function* () {
-    const { runFork, runPromise } = yield* makeRuntimeBridge;
+  const isRuntimeRestart = (error: unknown): error is RuntimeRestart => {
+    return (
+      (isErrorLike<{ readonly _tag: string }>(error) && error._tag === 'RuntimeRestart') ||
+      error instanceof RuntimeRestart ||
+      (typeof error === 'object' && error !== null && '_tag' in error && error._tag === 'RuntimeRestart')
+    );
+  };
 
+  const mainEffect = Effect.gen(function* () {
     const restartTimesRef = yield* Ref.make<readonly number[]>([]);
 
-    const cycle = program.pipe(
-      Effect.scoped,
-      Effect.catchAllCause((cause) =>
-        Effect.gen(function* () {
-          const failures = Cause.failures(cause);
-          const hasRestart = Chunk.some(failures, (error: unknown): error is RuntimeRestart => {
-            if (!isErrorLike<{ readonly _tag: string }>(error)) {
-              return false;
+    const loop = Effect.repeat(
+      program.pipe(
+        Effect.scoped,
+        Effect.catchAllCause((cause) => {
+          if (Chunk.some(Cause.failures(cause), isRuntimeRestart)) {
+            return Effect.void;
+          }
+
+          return Effect.gen(function* () {
+            const now = Date.now();
+            const restartTimes = yield* Ref.get(restartTimesRef);
+            const nextRestarts = [...restartTimes.filter((t) => now - t < intervalMs), now];
+
+            yield* Ref.set(restartTimesRef, nextRestarts);
+
+            if (nextRestarts.length >= maxRestarts) {
+              yield* Effect.logFatal(chalk`{bold.red System crashed too many times. Shutting down...}`, cause);
+              yield* Effect.promise(() => process.exit(1));
+              return;
             }
 
-            return error._tag === 'RuntimeRestart';
+            yield* Effect.logError(chalk`{bold.red System encountered an error}`, cause);
+            yield* Effect.logInfo(chalk`{bold.yellow System restarting in ${restartDelayMs / 1000} seconds...}`);
+            yield* Effect.sleep(`${restartDelayMs} millis`);
           });
-
-          if (hasRestart) {
-            return;
-          }
-
-          const now = yield* Effect.sync(() => Date.now());
-          const restartTimes = yield* Ref.get(restartTimesRef);
-          const nextRestarts = [...restartTimes.filter((t) => now - t < intervalMs), now];
-
-          yield* Ref.set(restartTimesRef, nextRestarts);
-
-          if (nextRestarts.length >= maxRestarts) {
-            yield* Effect.logFatal(chalk`{bold.red System crashed too many times. Shutting down...}`, cause);
-            yield* Effect.promise(() => process.exit(1));
-            return;
-          }
-
-          yield* Effect.logError(chalk`{bold.red System encountered an error}`, cause);
-          yield* Effect.logInfo(chalk`{bold.yellow System restarting in ${restartDelayMs / 1000} seconds...}`);
-          yield* Effect.sleep(`${restartDelayMs} millis`);
         }),
       ),
-      Effect.repeat(Schedule.forever),
-      Effect.ignore,
+      Schedule.forever,
     );
 
-    const fiber = runFork(cycle, { name: 'MainCycle' });
+    const { runFork, runPromise } = yield* makeRuntimeBridge;
+
+    const fiber = runFork(loop);
 
     const cleanUp = () => {
-      process.removeAllListeners('SIGINT');
-      process.removeAllListeners('SIGTERM');
       runPromise(Fiber.interrupt(fiber))
         .then(() => process.exit(0))
         .catch(() => process.exit(1));
@@ -106,6 +104,8 @@ export const runMainCycle = <A, E, R>(program: Effect.Effect<A, E, R>, options: 
 
     process.once('SIGINT', () => cleanUp());
     process.once('SIGTERM', () => cleanUp());
+
+    yield* Fiber.await(fiber);
   });
 
   Effect.runFork(mainEffect as Effect.Effect<never, never, never>);
