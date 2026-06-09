@@ -2,5 +2,4 @@ allowBuilds:
   '@parcel/watcher': true
   esbuild: true
   msgpackr-extract: true
-minimumReleaseAgeExclude:
-  - user-agents@2.1.74
+minimumReleaseAge: 0

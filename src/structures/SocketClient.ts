@@ -89,14 +89,14 @@ export const makeSocketClient = (options: SocketClientOptions): Effect.Effect<So
         return;
       }
 
-      yield* httpClient.waitForConnection();
-
       const scope = yield* Scope.make();
       yield* Ref.set(runFiberRef, Option.some(scope));
 
       const opened = yield* Deferred.make<void, SocketClientError>();
 
       const runLoop = Effect.gen(function* () {
+        yield* httpClient.waitForConnection();
+
         yield* Effect.logDebug(`SocketClient: Connecting to ${url}`);
         const socket = yield* Socket.makeWebSocket(url).pipe(Effect.provide(NodeSocket.layerWebSocketConstructor));
 
