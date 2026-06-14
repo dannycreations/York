@@ -366,7 +366,7 @@ const mainLoop = (
       return;
     }
 
-    if (isMinutesWatchedMet(drop)) {
+    if (isMinutesWatchedMet(drop) && !drop.isClaimed) {
       const configStore = yield* ConfigStoreTag;
       const config = yield* configStore.get;
       if (!config.isClaimDrops) {
@@ -458,7 +458,7 @@ export const MainWorkflow: Effect.Effect<
   const userId = yield* api.userId.pipe(Effect.orDie);
 
   const flow = Effect.gen(function* () {
-    yield* api.claimAllDropsFromInventory.pipe(Effect.ignore, Effect.forkScoped);
+    yield* api.claimAllDropsFromInventory.pipe(Effect.ignore);
 
     yield* Effect.acquireRelease(socket.listen(WsTopic.UserDrop, userId).pipe(Effect.orDie), () =>
       socket.unlisten(WsTopic.UserDrop, userId).pipe(Effect.ignore),
@@ -482,5 +482,5 @@ export const MainWorkflow: Effect.Effect<
     });
   });
 
-  yield* Effect.race(flow, cycleUntilMidnight).pipe(Effect.onInterrupt(() => resetChannel(state)));
+  return yield* cycleUntilMidnight(flow).pipe(Effect.onInterrupt(() => resetChannel(state)));
 });

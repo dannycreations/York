@@ -1,6 +1,6 @@
 import { chalk } from '@vegapunk/utilities';
 import { isErrorLike } from '@vegapunk/utilities/result';
-import { Cause, Chunk, Data, Effect, Fiber, Ref, Runtime, Schedule } from 'effect';
+import { Cause, Chunk, Data, Effect, Fiber, Ref, Runtime } from 'effect';
 
 export class RuntimeRestart extends Data.TaggedError('RuntimeRestart') {}
 
@@ -36,38 +36,42 @@ export interface RuntimeCycleOptions {
   readonly restartDelayMs?: number;
 }
 
-export const cycleUntilMidnight: Effect.Effect<never, RuntimeRestart> = Effect.gen(function* () {
-  const msUntilMidnight = yield* Effect.sync(() => {
-    const now = new Date();
-    const tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 0, 0);
-    return tomorrow.getTime() - now.getTime();
-  });
+export const cycleUntilMidnight = <A, E, R>(flow: Effect.Effect<A, E, R> = Effect.never): Effect.Effect<A, E | RuntimeRestart, R> =>
+  Effect.gen(function* () {
+    const msUntilMidnight = yield* Effect.sync(() => {
+      const now = new Date();
+      const tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 0, 0);
+      return tomorrow.getTime() - now.getTime();
+    });
 
-  yield* Effect.sleep(`${msUntilMidnight} millis`);
-  yield* Effect.logInfo(chalk`{bold.yellow It's midnight time. Restarting system...}`);
-  return yield* new RuntimeRestart();
-});
+    const midnightTask = Effect.gen(function* () {
+      yield* Effect.sleep(`${msUntilMidnight} millis`);
+      yield* Effect.logInfo(chalk`{bold.yellow It's midnight time. Restarting system...}`);
+      return yield* new RuntimeRestart();
+    });
+
+    return yield* Effect.race(flow, midnightTask);
+  });
 
 export const runMainCycle = <A, E, R>(program: Effect.Effect<A, E, R>, options: RuntimeCycleOptions = {}): void => {
   const { maxRestarts = 3, intervalMs = 60_000, restartDelayMs = 5_000 } = options;
 
   const isRuntimeRestart = (error: unknown): error is RuntimeRestart => {
     return (
-      (isErrorLike<{ readonly _tag: string }>(error) && error._tag === 'RuntimeRestart') ||
       error instanceof RuntimeRestart ||
-      (typeof error === 'object' && error !== null && '_tag' in error && error._tag === 'RuntimeRestart')
+      (typeof error === 'object' && error !== null && '_tag' in error && error._tag === 'RuntimeRestart') ||
+      (isErrorLike<{ readonly _tag: string }>(error) && error._tag === 'RuntimeRestart')
     );
   };
 
   const mainEffect = Effect.gen(function* () {
     const restartTimesRef = yield* Ref.make<readonly number[]>([]);
 
-    const loop = Effect.repeat(
-      program.pipe(
-        Effect.scoped,
+    const loop = Effect.forever(
+      Effect.scoped(program).pipe(
         Effect.catchAllCause((cause) => {
           if (Chunk.some(Cause.failures(cause), isRuntimeRestart)) {
-            return Effect.void;
+            return Ref.set(restartTimesRef, []);
           }
 
           return Effect.gen(function* () {
@@ -89,7 +93,6 @@ export const runMainCycle = <A, E, R>(program: Effect.Effect<A, E, R>, options: 
           });
         }),
       ),
-      Schedule.forever,
     );
 
     const { runFork, runPromise } = yield* makeRuntimeBridge;
@@ -108,5 +111,5 @@ export const runMainCycle = <A, E, R>(program: Effect.Effect<A, E, R>, options: 
     yield* Fiber.await(fiber);
   });
 
-  Effect.runFork(mainEffect as Effect.Effect<never, never, never>);
+  Effect.runPromise(mainEffect as Effect.Effect<never, never, never>);
 };
