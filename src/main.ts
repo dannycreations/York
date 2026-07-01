@@ -11,7 +11,7 @@ import { PointServiceLayer } from './services/PointService';
 import { WatchServiceLayer } from './services/WatchService';
 import { HttpClientLayer } from './structures/HttpClient';
 import { LoggerClientLayer } from './structures/LoggerClient';
-import { runMainCycle } from './structures/RuntimeClient';
+import { cycleUntilMidnight, runMainCycle } from './structures/RuntimeClient';
 import { MainWorkflow } from './workflows/MainWorkflow';
 
 const makeMainLayer = (authToken: string, isDebug: boolean) => {
@@ -35,7 +35,9 @@ const program = Effect.gen(function* () {
   const authToken = yield* Config.string('AUTH_TOKEN');
   const isDebug = yield* Config.boolean('IS_DEBUG').pipe(Config.withDefault(false));
 
-  return yield* MainWorkflow.pipe(Effect.provide(makeMainLayer(authToken, isDebug)));
+  const mainLayer = makeMainLayer(authToken, isDebug);
+
+  yield* Effect.all([cycleUntilMidnight, MainWorkflow], { concurrency: 'unbounded' }).pipe(Effect.provide(mainLayer));
 });
 
 runMainCycle(program);

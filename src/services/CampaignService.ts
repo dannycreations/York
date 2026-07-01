@@ -195,7 +195,7 @@ export const CampaignServiceLayer: Layer.Layer<CampaignServiceTag, never, Twitch
     const rewardsRef = yield* Ref.make<ReadonlyMap<string, Date>>(new Map());
     const stateRef = yield* Ref.make<CampaignServiceState>(CampaignServiceState.Initial());
 
-    const updateCampaigns: Effect.Effect<void, TwitchApiError> = Effect.gen(function* () {
+    const updateCampaigns = Effect.gen(function* () {
       const [response, config] = yield* Effect.all([api.dropsDashboard, configStore.get]);
       const newPriorityGames: string[] = [];
 
@@ -269,7 +269,7 @@ export const CampaignServiceLayer: Layer.Layer<CampaignServiceTag, never, Twitch
         return changed || currentMap.size !== current.length ? Array.from(currentMap.values()) : current;
       });
 
-    const updateProgress: Effect.Effect<void, TwitchApiError> = Effect.gen(function* () {
+    const updateProgress = Effect.gen(function* () {
       const config = yield* configStore.get;
       const response = yield* api.inventory;
       const now = Date.now();
@@ -339,7 +339,7 @@ export const CampaignServiceLayer: Layer.Layer<CampaignServiceTag, never, Twitch
         return result;
       });
 
-    const getSortedActive: Effect.Effect<ReadonlyArray<Campaign>> = Effect.gen(function* () {
+    const getSortedActive = Effect.gen(function* () {
       const currentState = yield* Ref.get(stateRef);
       const config = yield* configStore.get;
       const now = Date.now();

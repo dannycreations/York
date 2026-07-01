@@ -1,4 +1,4 @@
-# TypeScript Development Guide
+# York Development Guide
 
 ## Guidelines
 

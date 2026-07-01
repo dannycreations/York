@@ -11,7 +11,6 @@ import { CampaignServiceState, CampaignServiceTag } from '../services/CampaignSe
 import { DropServiceTag } from '../services/DropService';
 import { PointServiceTag } from '../services/PointService';
 import { WatchServiceTag } from '../services/WatchService';
-import { cycleUntilMidnight } from '../structures/RuntimeClient';
 import { OfflineWorkflow } from './OfflineWorkflow';
 import { SocketWorkflow } from './SocketWorkflow';
 import { UpcomingWorkflow } from './UpcomingWorkflow';
@@ -457,30 +456,26 @@ export const MainWorkflow: Effect.Effect<
   yield* api.init.pipe(Effect.orDie);
   const userId = yield* api.userId.pipe(Effect.orDie);
 
-  const flow = Effect.gen(function* () {
-    yield* api.claimAllDropsFromInventory.pipe(Effect.ignore, Effect.forkScoped);
+  yield* api.claimAllDropsFromInventory.pipe(Effect.ignore, Effect.forkScoped);
 
-    yield* Effect.acquireRelease(socket.listen(WsTopic.UserDrop, userId).pipe(Effect.orDie), () =>
-      socket.unlisten(WsTopic.UserDrop, userId).pipe(Effect.ignore),
-    );
-    yield* Effect.acquireRelease(socket.listen(WsTopic.UserPoint, userId).pipe(Effect.orDie), () =>
-      socket.unlisten(WsTopic.UserPoint, userId).pipe(Effect.ignore),
-    );
+  yield* Effect.acquireRelease(socket.listen(WsTopic.UserDrop, userId).pipe(Effect.orDie), () =>
+    socket.unlisten(WsTopic.UserDrop, userId).pipe(Effect.ignore),
+  );
+  yield* Effect.acquireRelease(socket.listen(WsTopic.UserPoint, userId).pipe(Effect.orDie), () =>
+    socket.unlisten(WsTopic.UserPoint, userId).pipe(Effect.ignore),
+  );
 
-    yield* SocketWorkflow(state).pipe(Effect.orDie);
+  yield* SocketWorkflow(state).pipe(Effect.orDie);
 
-    const mainTaskLoop = mainLoop(state).pipe(Effect.orDie, Effect.repeat(Schedule.forever));
+  const mainTaskLoop = mainLoop(state).pipe(Effect.orDie, Effect.repeat(Schedule.forever));
 
-    const claimInventoryLoop = api.claimAllDropsFromInventory.pipe(
-      Effect.ignore,
-      Effect.zipRight(Effect.sleep('30 minutes')),
-      Effect.repeat(Schedule.forever),
-    );
+  const claimInventoryLoop = api.claimAllDropsFromInventory.pipe(
+    Effect.ignore,
+    Effect.zipRight(Effect.sleep('30 minutes')),
+    Effect.repeat(Schedule.forever),
+  );
 
-    yield* Effect.all([mainTaskLoop, claimInventoryLoop, UpcomingWorkflow(state), OfflineWorkflow(state)], {
-      concurrency: 'unbounded',
-    });
-  });
-
-  yield* Effect.race(flow, cycleUntilMidnight).pipe(Effect.onInterrupt(() => resetChannel(state)));
+  yield* Effect.all([mainTaskLoop, claimInventoryLoop, UpcomingWorkflow(state), OfflineWorkflow(state)], {
+    concurrency: 'unbounded',
+  }).pipe(Effect.onInterrupt(() => resetChannel(state)));
 });
