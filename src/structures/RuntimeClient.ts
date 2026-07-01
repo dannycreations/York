@@ -47,11 +47,32 @@ export const runMainCycle = <A, E, R>(program: Effect.Effect<A, E, R>, options: 
   const isRuntimeRestart = (error: unknown): error is RuntimeRestart =>
     error instanceof RuntimeRestart || (isObjectLike<{ readonly _tag: string }>(error) && error._tag === 'RuntimeRestart');
 
+  let keepAlive: NodeJS.Timeout | undefined = undefined;
+  let isShuttingDown = false;
+
+  const wrappedProgram = Effect.gen(function* () {
+    yield* Effect.acquireRelease(
+      Effect.sync(() => {
+        if (keepAlive) {
+          clearInterval(keepAlive);
+          keepAlive = undefined;
+        }
+      }),
+      () =>
+        Effect.sync(() => {
+          if (!isShuttingDown && !keepAlive) {
+            keepAlive = setInterval(() => {}, 60_000);
+          }
+        }),
+    );
+    return yield* program;
+  });
+
   const mainCycle = Effect.gen(function* () {
     const restartTimesRef = yield* Ref.make<readonly number[]>([]);
 
     while (true) {
-      const exitValue = yield* Effect.exit(Effect.scoped(program));
+      const exitValue = yield* Effect.exit(Effect.scoped(wrappedProgram));
 
       if (Exit.isSuccess(exitValue)) {
         yield* Ref.set(restartTimesRef, []);
@@ -72,6 +93,12 @@ export const runMainCycle = <A, E, R>(program: Effect.Effect<A, E, R>, options: 
       yield* Ref.set(restartTimesRef, nextRestarts);
 
       if (nextRestarts.length >= maxRestarts) {
+        isShuttingDown = true;
+        if (keepAlive) {
+          clearInterval(keepAlive);
+          keepAlive = undefined;
+        }
+
         yield* Effect.logFatal(chalk`{bold.red System crashed too many times. Shutting down...}`, cause);
         yield* Effect.promise(() => process.exit(1));
         return;
@@ -88,10 +115,16 @@ export const runMainCycle = <A, E, R>(program: Effect.Effect<A, E, R>, options: 
 
     const fiber = runFork(mainCycle);
 
-    const cleanUp = () =>
-      runPromise(Fiber.interrupt(fiber))
+    const cleanUp = async () => {
+      isShuttingDown = true;
+      if (keepAlive) {
+        clearInterval(keepAlive);
+        keepAlive = undefined;
+      }
+      return runPromise(Fiber.interrupt(fiber))
         .then(() => process.exit(0))
         .catch(() => process.exit(1));
+    };
 
     process.once('SIGINT', () => cleanUp());
     process.once('SIGTERM', () => cleanUp());
