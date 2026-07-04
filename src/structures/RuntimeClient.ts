@@ -1,8 +1,7 @@
+import { ChildProcess, fork } from 'node:child_process';
+import process from 'node:process';
 import { chalk } from '@vegapunk/utilities';
-import { isObjectLike } from '@vegapunk/utilities/common';
-import { Cause, Chunk, Data, Effect, Exit, Fiber, Ref, Runtime } from 'effect';
-
-export class RuntimeRestart extends Data.TaggedError('RuntimeRestart') {}
+import { Cause, Data, Effect, Exit, Fiber, Ref, Runtime } from 'effect';
 
 export interface RuntimeBridge {
   readonly runFork: <A, E, R>(effect: Effect.Effect<A, E, R>) => Fiber.RuntimeFiber<A, E>;
@@ -12,22 +11,32 @@ export interface RuntimeBridge {
 
 export const makeRuntimeBridge = Effect.gen(function* () {
   const runtime = yield* Effect.runtime<unknown>();
-  const runFork = Runtime.runFork(runtime);
-  const runSync = Runtime.runSync(runtime);
-  const runPromise = Runtime.runPromise(runtime);
-
   return {
-    runFork: (effect) => runFork(effect),
-    runSync: (effect) => runSync(effect),
-    runPromise: (effect) => runPromise(effect),
+    runFork: Runtime.runFork(runtime),
+    runSync: Runtime.runSync(runtime),
+    runPromise: Runtime.runPromise(runtime),
   } as RuntimeBridge;
 });
+
+class RuntimeRestartSignal extends Data.TaggedError('RuntimeRestartSignal') {}
+class RuntimeShutdownSignal extends Data.TaggedError('RuntimeShutdownSignal') {}
+
+const RESTART_EXIT_CODE = 240699;
+const SHUTDOWN_EXIT_CODE = 240700;
 
 export interface RuntimeCycleOptions {
   readonly maxRestarts?: number;
   readonly intervalMs?: number;
   readonly restartDelayMs?: number;
 }
+
+export const restartMainCycle = (): Effect.Effect<never, RuntimeRestartSignal> => {
+  return Effect.fail(new RuntimeRestartSignal());
+};
+
+export const shutdownMainCycle = (): Effect.Effect<never, RuntimeShutdownSignal> => {
+  return Effect.fail(new RuntimeShutdownSignal());
+};
 
 export const cycleUntilMidnight = Effect.gen(function* () {
   const msUntilMidnight = yield* Effect.sync(() => {
@@ -38,64 +47,184 @@ export const cycleUntilMidnight = Effect.gen(function* () {
 
   yield* Effect.sleep(`${msUntilMidnight} millis`);
   yield* Effect.logInfo(chalk`{bold.yellow It's midnight time. Restarting system...}`);
-  return yield* new RuntimeRestart();
+  return yield* restartMainCycle();
 });
 
 export const runMainCycle = <A, E, R>(program: Effect.Effect<A, E, R>, options: RuntimeCycleOptions = {}): void => {
   const { maxRestarts = 3, intervalMs = 60_000, restartDelayMs = 5_000 } = options;
 
-  const isRuntimeRestart = (error: unknown): error is RuntimeRestart =>
-    error instanceof RuntimeRestart || (isObjectLike<{ readonly _tag: string }>(error) && error._tag === 'RuntimeRestart');
+  if (process.argv.includes('--child')) {
+    const childMain = Effect.gen(function* () {
+      const { runFork, runPromise } = yield* makeRuntimeBridge;
 
-  const mainCycle = Effect.gen(function* () {
-    const restartTimesRef = yield* Ref.make<readonly number[]>([]);
+      const fiber = runFork(Effect.scoped(program));
 
-    while (true) {
-      const exitValue = yield* Effect.exit(Effect.scoped(program));
+      let cleaningUp = false;
+      const cleanUp = () => {
+        if (cleaningUp) {
+          return;
+        }
 
-      if (Exit.isSuccess(exitValue)) {
-        yield* Ref.set(restartTimesRef, []);
-        continue;
-      }
+        cleaningUp = true;
+        runPromise(Fiber.interrupt(fiber))
+          .then(() => process.exit(0))
+          .catch(() => process.exit(1));
+      };
 
-      const cause = exitValue.cause;
-      const restartTriggered = Chunk.some(Cause.failures(cause), isRuntimeRestart);
+      process.once('SIGINT', cleanUp);
+      process.once('SIGTERM', cleanUp);
 
-      if (restartTriggered) {
-        yield* Ref.set(restartTimesRef, []);
-        continue;
-      }
+      const exitValue = yield* Fiber.join(fiber).pipe(Effect.exit);
 
-      const now = Date.now();
-      const restartTimes = yield* Ref.get(restartTimesRef);
-      const nextRestarts = [...restartTimes.filter((t) => now - t < intervalMs), now];
-      yield* Ref.set(restartTimesRef, nextRestarts);
+      process.off('SIGINT', cleanUp);
+      process.off('SIGTERM', cleanUp);
 
-      if (nextRestarts.length >= maxRestarts) {
-        yield* Effect.logFatal(chalk`{bold.red System crashed too many times. Shutting down...}`, cause);
-        yield* Effect.promise(() => process.exit(1));
+      if (cleaningUp) {
         return;
       }
 
-      yield* Effect.logError(chalk`{bold.red System encountered an error}`, cause);
-      yield* Effect.logInfo(chalk`{bold.yellow Restarting in ${restartDelayMs / 1000}s...}`);
-      yield* Effect.sleep(`${restartDelayMs} millis`);
+      if (Exit.isSuccess(exitValue)) {
+        process.exit(0);
+      } else {
+        const cause = exitValue.cause;
+        const failures = Cause.failures(cause);
+
+        let signalRestart = false;
+        let signalShutdown = false;
+        for (const failure of failures) {
+          if (failure instanceof RuntimeRestartSignal) {
+            signalRestart = true;
+          } else if (failure instanceof RuntimeShutdownSignal) {
+            signalShutdown = true;
+          }
+        }
+
+        if (signalRestart) {
+          process.exit(RESTART_EXIT_CODE);
+        } else if (signalShutdown) {
+          process.exit(SHUTDOWN_EXIT_CODE);
+        } else {
+          yield* Effect.logError(chalk`{bold.red System encountered an error}`, cause);
+          process.exit(1);
+        }
+      }
+    });
+
+    Effect.runPromise(childMain as Effect.Effect<never, never, never>);
+    return;
+  }
+
+  const runChildProcess = (currentChildRef: { current: ChildProcess | null }) => {
+    return Effect.async<{ code: number | null; signal: NodeJS.Signals | null }, never, never>((resume) => {
+      if (currentChildRef.current) {
+        try {
+          currentChildRef.current.kill('SIGTERM');
+        } catch {}
+        currentChildRef.current = null;
+      }
+
+      const child = fork(process.argv[1], ['--child'], {
+        execPath: process.execPath,
+        stdio: 'inherit',
+      });
+      currentChildRef.current = child;
+
+      let resolved = false;
+      const handleExit = (code: number | null, signal: NodeJS.Signals | null) => {
+        if (resolved) {
+          return;
+        }
+
+        resolved = true;
+        currentChildRef.current = null;
+        resume(Effect.succeed({ code, signal }));
+      };
+
+      const handleError = () => handleExit(1, null);
+
+      child.once('exit', handleExit);
+      child.once('error', handleError);
+
+      return Effect.sync(() => {
+        child.off('exit', handleExit);
+        child.off('error', handleError);
+
+        if (currentChildRef.current) {
+          try {
+            currentChildRef.current.kill('SIGTERM');
+          } catch {}
+          currentChildRef.current = null;
+        }
+      });
+    });
+  };
+
+  const parentMain = Effect.gen(function* () {
+    const restartTimesRef = yield* Ref.make<readonly number[]>([]);
+    const currentChildRef = { current: null as ChildProcess | null };
+
+    let isShuttingDown = false;
+    const cleanUp = (signal: NodeJS.Signals) => {
+      if (isShuttingDown) {
+        return;
+      }
+
+      isShuttingDown = true;
+      if (currentChildRef.current) {
+        try {
+          currentChildRef.current.kill(signal);
+        } catch {}
+      }
+      process.exit(0);
+    };
+
+    const onSigInt = () => cleanUp('SIGINT');
+    const onSigTerm = () => cleanUp('SIGTERM');
+
+    process.once('SIGINT', onSigInt);
+    process.once('SIGTERM', onSigTerm);
+
+    try {
+      while (true) {
+        const { code, signal } = yield* runChildProcess(currentChildRef);
+
+        if (isShuttingDown) {
+          process.exit(0);
+        }
+
+        if (code === SHUTDOWN_EXIT_CODE) {
+          yield* Effect.logInfo(chalk`{bold.green Child process requested SHUTDOWN. Parent exiting.}`);
+          process.exit(0);
+        }
+
+        if (signal === 'SIGINT' || signal === 'SIGTERM') {
+          yield* Effect.logInfo(chalk`{bold.yellow Child process requested ${signal}. Parent exiting.}`);
+          process.exit(0);
+        }
+
+        if (code === RESTART_EXIT_CODE || code === 0) {
+          yield* Ref.set(restartTimesRef, []);
+          continue;
+        }
+
+        const now = Date.now();
+        const restartTimes = yield* Ref.get(restartTimesRef);
+        const nextRestarts = [...restartTimes.filter((t) => now - t < intervalMs), now];
+        yield* Ref.set(restartTimesRef, nextRestarts);
+
+        if (nextRestarts.length >= maxRestarts) {
+          yield* Effect.logFatal(chalk`{bold.red System crashed too many times. Shutting down...}`);
+          process.exit(1);
+        }
+
+        yield* Effect.logInfo(chalk`{bold.yellow Restarting in ${restartDelayMs / 1000}s (${nextRestarts.length}/${maxRestarts})...}`);
+        yield* Effect.sleep(`${restartDelayMs} millis`);
+      }
+    } finally {
+      process.off('SIGINT', onSigInt);
+      process.off('SIGTERM', onSigTerm);
     }
   });
 
-  const mainEffect = Effect.gen(function* () {
-    const { runFork, runPromise } = yield* makeRuntimeBridge;
-
-    const fiber = runFork(mainCycle);
-
-    const cleanUp = () =>
-      runPromise(Fiber.interrupt(fiber))
-        .then(() => process.exit(0))
-        .catch(() => process.exit(1));
-
-    process.once('SIGINT', () => cleanUp());
-    process.once('SIGTERM', () => cleanUp());
-  });
-
-  Effect.runPromise(mainEffect as Effect.Effect<never, never, never>);
+  Effect.runPromise(parentMain as Effect.Effect<never, never, never>);
 };

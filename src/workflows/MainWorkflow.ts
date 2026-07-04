@@ -18,7 +18,6 @@ import { UpcomingWorkflow } from './UpcomingWorkflow';
 import type { TwitchApiError } from '../api/TwitchApi';
 import type { TwitchSocketError } from '../api/TwitchSocket';
 import type { Campaign, Channel, Drop } from '../core/Schemas';
-import type { RuntimeRestart } from '../structures/RuntimeClient';
 
 export class MainWorkflowError extends Data.TaggedError('MainWorkflowError')<{
   readonly message: string;
@@ -434,7 +433,7 @@ const ensureSettingsDir = Effect.gen(function* () {
 
 export const MainWorkflow: Effect.Effect<
   void,
-  RuntimeRestart,
+  never,
   CampaignServiceTag | TwitchApiTag | ConfigStoreTag | TwitchSocketTag | Scope.Scope | PointServiceTag | WatchServiceTag | DropServiceTag
 > = Effect.gen(function* () {
   const api = yield* TwitchApiTag;
