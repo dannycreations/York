@@ -14,8 +14,10 @@ import { LoggerClientLayer } from './structures/LoggerClient';
 import { cycleUntilMidnight, runMainCycle } from './structures/RuntimeClient';
 import { MainWorkflow } from './workflows/MainWorkflow';
 
+const logger = LoggerClientLayer();
+
 const makeMainLayer = (authToken: string, isDebug: boolean) => {
-  const core = Layer.mergeAll(ConfigStoreLayer, HttpClientLayer, LoggerClientLayer());
+  const core = Layer.mergeAll(ConfigStoreLayer, HttpClientLayer, logger);
 
   const api = TwitchApiLayer(authToken, isDebug).pipe(Layer.provide(core));
   const socket = TwitchSocketLayer(authToken).pipe(Layer.provide(core));
@@ -40,4 +42,4 @@ const program = Effect.gen(function* () {
   yield* Effect.all([cycleUntilMidnight, MainWorkflow], { concurrency: 'unbounded' }).pipe(Effect.provide(mainLayer));
 });
 
-runMainCycle(program);
+runMainCycle(program, { logger });

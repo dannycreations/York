@@ -33,8 +33,8 @@ importers:
         specifier: ^13.1.3
         version: 13.1.3
       user-agents:
-        specifier: ^2.1.112
-        version: 2.1.112
+        specifier: ^2.1.114
+        version: 2.1.114
     devDependencies:
       '@effect/language-service':
         specifier: ^0.86.4
@@ -897,8 +897,8 @@ packages:
     resolution: {integrity: sha512-H/nlJ/h0ggGC+uRL3ovD+G0i4bqhvsDOpbDv7At5eFLlj2b41L8QliGbnl2H7SnDiYhENphh1tQFJZf+MyfLsQ==}
     engines: {node: '>=20.18.1'}
 
-  user-agents@2.1.112:
-    resolution: {integrity: sha512-EpIPKE4LkuuXVVAix6gS6Cc4R/MDrJTql88lckkmY+Y057iVMuumsNN25y0fuYxJ6/P/bbVQZWzu4x7/iTE5aQ==}
+  user-agents@2.1.114:
+    resolution: {integrity: sha512-bvveWMn3O8krOLeTBSdfykA1WRQBM3lBI01iiS4kqdgy3+lZ8yTT5B+HwC5JGkgxdzguWMmKTX6zbwvvczRURw==}
     engines: {node: '>=18'}
 
   uuid@11.1.0:
@@ -1652,7 +1652,7 @@ snapshots:
 
   undici@7.24.7: {}
 
-  user-agents@2.1.112: {}
+  user-agents@2.1.114: {}
 
   uuid@11.1.0: {}
 
