@@ -145,7 +145,7 @@ export const TwitchSocketLayer = (authToken: string): Layer.Layer<TwitchSocketTa
 
           return yield* Schema.decodeUnknown(SocketMessageSchema)(payload).pipe(
             Effect.map(Option.some),
-            Effect.catchAll(() => Effect.succeed(Option.none())),
+            Effect.orElseSucceed(() => Option.none()),
           );
         });
 

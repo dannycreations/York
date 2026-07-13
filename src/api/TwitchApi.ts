@@ -407,7 +407,7 @@ export const TwitchApiLayer = (authToken: string, isDebug = false): Layer.Layer<
 
           const res = yield* request({ method: 'HEAD', url: chunkUrl });
           return res.statusCode === 200;
-        }).pipe(Effect.catchAll(() => Effect.succeed(false)));
+        }).pipe(Effect.orElseSucceed(() => false));
 
       const sendMinuteWatched = (channel: Channel): Effect.Effect<boolean, TwitchApiError> =>
         Effect.gen(function* () {
@@ -440,7 +440,7 @@ export const TwitchApiLayer = (authToken: string, isDebug = false): Layer.Layer<
           });
 
           return response.statusCode === 204;
-        }).pipe(Effect.catchAll(() => Effect.succeed(false)));
+        }).pipe(Effect.orElseSucceed(() => false));
 
       const watch = (channel: Channel): Effect.Effect<{ readonly success: boolean; readonly hlsUrl?: string }, TwitchApiError> =>
         Effect.gen(function* () {
@@ -473,7 +473,7 @@ export const TwitchApiLayer = (authToken: string, isDebug = false): Layer.Layer<
 
             const success = yield* sendMinuteWatched(channel);
             return { success, hlsUrl: freshHlsUrl };
-          }).pipe(Effect.catchAll(() => Effect.succeed({ success: false, hlsUrl: channel.hlsUrl })));
+          }).pipe(Effect.orElseSucceed(() => ({ success: false, hlsUrl: channel.hlsUrl })));
 
           return streamResult;
         });
