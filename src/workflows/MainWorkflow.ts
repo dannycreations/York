@@ -203,8 +203,8 @@ const initializeCampaigns = (state: MainState): Effect.Effect<void, never, Campa
       return;
     }
 
-    yield* campaignService.updateCampaigns.pipe(Effect.orDie);
-    yield* campaignService.updateProgress.pipe(Effect.orDie);
+    yield* campaignService.updateCampaigns.pipe(Effect.catchAll(() => Effect.void));
+    yield* campaignService.updateProgress.pipe(Effect.catchAll(() => Effect.void));
 
     const config = yield* configStore.get;
     const campaigns = yield* campaignService.getSortedActive;
@@ -466,7 +466,10 @@ export const MainWorkflow: Effect.Effect<
 
   yield* SocketWorkflow(state).pipe(Effect.orDie);
 
-  const mainTaskLoop = mainLoop(state).pipe(Effect.orDie, Effect.repeat(Schedule.forever));
+  const mainTaskLoop = mainLoop(state).pipe(
+    Effect.catchAll((e) => Effect.logWarning(chalk`{yellow Main loop error: ${e.message}}`).pipe(Effect.zipRight(Effect.sleep('60 seconds')))),
+    Effect.repeat(Schedule.forever),
+  );
 
   const claimInventoryLoop = api.claimAllDropsFromInventory.pipe(
     Effect.ignore,

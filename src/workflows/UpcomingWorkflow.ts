@@ -77,7 +77,7 @@ export const UpcomingWorkflow = (state: MainState) =>
       const isMainCall = campaignState._tag === 'Initial' && Option.isNone(currentCampaign);
 
       if (isMainCall || now >= nextRefresh) {
-        yield* campaignService.updateCampaigns.pipe(Effect.orDie);
+        yield* campaignService.updateCampaigns.pipe(Effect.catchAll((e) => Effect.logWarning(chalk`{yellow Upcoming check error: ${e.message}}`)));
         yield* Ref.set(nextRefreshRef, Date.now() + sleepTime);
       }
 

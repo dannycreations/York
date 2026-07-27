@@ -47,8 +47,8 @@ export const DropServiceLayer = Layer.effect(
                   if (Option.isSome(currentDropInitial) && currentDropInitial.value.isClaimed) return 5;
 
                   if (attempt > 0 || !drop.dropInstanceID) {
-                    yield* campaignService.updateProgress.pipe(Effect.orDie);
-                    const drops = yield* campaignService.getDropsForCampaign(campaign.id).pipe(Effect.orDie);
+                    yield* campaignService.updateProgress.pipe(Effect.ignore);
+                    const drops = yield* campaignService.getDropsForCampaign(campaign.id).pipe(Effect.orElseSucceed(() => []));
                     const updatedDrop = drops.find((p) => p.id === drop.id);
                     if (updatedDrop) {
                       yield* Ref.update(currentDropRef, (current) =>
@@ -66,10 +66,10 @@ export const DropServiceLayer = Layer.effect(
                     if (curDropOpt.value.isClaimed) return 5;
 
                     if (!!curDropOpt.value.dropInstanceID) {
-                      const claimRes = yield* api.claimDrops(curDropOpt.value.dropInstanceID).pipe(Effect.option, Effect.orDie);
+                      const claimRes = yield* api.claimDrops(curDropOpt.value.dropInstanceID).pipe(Effect.option);
                       if (Option.isSome(claimRes) && claimRes.value.claimDropRewards) {
                         yield* Effect.logInfo(chalk`{green ${drop.name}} | {yellow Drops claimed}`);
-                        yield* campaignService.addRewards(drop.benefits.map((id) => ({ id, lastAwardedAt: new Date() }))).pipe(Effect.orDie);
+                        yield* campaignService.addRewards(drop.benefits.map((id) => ({ id, lastAwardedAt: new Date() })));
                         yield* Ref.update(
                           currentDropRef,
                           Option.map((d) => ({ ...d, isClaimed: true })),
