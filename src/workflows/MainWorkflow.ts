@@ -1,11 +1,13 @@
 import { mkdir } from 'node:fs/promises';
 import { chalk } from '@vegapunk/utilities';
-import { Data, Effect, Option, Ref, Schedule, Scope } from 'effect';
+import { Data, Effect, Option, Ref, Schedule, Schema, Scope } from 'effect';
 
 import { TwitchApiTag } from '../api/TwitchApi';
 import { TwitchSocketTag } from '../api/TwitchSocket';
 import { ConfigStoreTag } from '../core/Config';
 import { WsTopic } from '../core/Constants';
+import { HelixStreamsSchema } from '../core/Schemas';
+import { resetChannel, setChannel } from '../helpers/ChannelHelper';
 import { getDropStatus, isMinutesWatchedMet } from '../helpers/TwitchHelper';
 import { CampaignServiceState, CampaignServiceTag } from '../services/CampaignService';
 import { DropServiceTag } from '../services/DropService';
@@ -15,7 +17,7 @@ import { OfflineWorkflow } from './OfflineWorkflow';
 import { SocketWorkflow } from './SocketWorkflow';
 import { UpcomingWorkflow } from './UpcomingWorkflow';
 
-import type { TwitchApiError } from '../api/TwitchApi';
+import type { TwitchApi, TwitchApiError } from '../api/TwitchApi';
 import type { TwitchSocketError } from '../api/TwitchSocket';
 import type { Campaign, Channel, Drop } from '../core/Schemas';
 
@@ -32,37 +34,7 @@ export interface MainState {
   readonly nextPointClaim: Ref.Ref<number>;
   readonly nextWatch: Ref.Ref<number>;
   readonly isClaiming: Ref.Ref<boolean>;
-  readonly nextCommunityGoalContribution: Ref.Ref<number>;
 }
-
-export const resetChannel = (state: MainState): Effect.Effect<void, never, TwitchSocketTag> =>
-  Effect.gen(function* () {
-    const socket = yield* TwitchSocketTag;
-    const curOpt = yield* Ref.get(state.currentChannel);
-
-    if (Option.isSome(curOpt)) {
-      const chan = curOpt.value;
-      const topics = [WsTopic.ChannelStream, WsTopic.ChannelMoment, WsTopic.ChannelUpdate, WsTopic.ChannelPoint] as const;
-
-      yield* Effect.forEach(topics, (topic) => socket.unlisten(topic, chan.id), {
-        concurrency: 'unbounded',
-        discard: true,
-      }).pipe(Effect.catchAllCause(() => Effect.void));
-
-      yield* Ref.set(state.currentChannel, Option.none());
-    }
-  });
-
-export const setChannel = (state: MainState, channel: Channel): Effect.Effect<void, never, TwitchSocketTag> =>
-  Effect.gen(function* () {
-    const curOpt = yield* Ref.get(state.currentChannel);
-    if (Option.isSome(curOpt) && curOpt.value.id === channel.id) {
-      return;
-    }
-
-    yield* resetChannel(state);
-    yield* Ref.set(state.currentChannel, Option.some(channel));
-  });
 
 const shouldSwitchCampaign = (state: MainState, campaign: Campaign, activeCampaigns: readonly Campaign[]): Effect.Effect<boolean, never, never> =>
   Effect.gen(function* () {
@@ -102,7 +74,7 @@ const handleDropProgress = (
     if (isMinutesWatchedMet(updatedDrop)) {
       yield* Effect.logInfo(chalk`{green ${drop.name}} | {green Completed!} | {green ${currentMinutesWatched}/${drop.requiredMinutesWatched}}`);
       yield* dropService.claimDropSequence(campaign, updatedDrop, state.isClaiming, state.currentDrop);
-      yield* resetChannel(state);
+      yield* resetChannel(state.currentChannel);
       return;
     }
 
@@ -141,7 +113,7 @@ const watchSession = (
 
     if (higherPriorityCampaign && (yield* shouldSwitchCampaign(state, campaign, activeCampaigns))) {
       yield* Effect.logInfo(chalk`{yellow Switching to higher priority campaign: ${higherPriorityCampaign.name}}`);
-      yield* resetChannel(state);
+      yield* resetChannel(state.currentChannel);
       return;
     }
 
@@ -153,23 +125,16 @@ const watchSession = (
 
     const curChanOpt = yield* Ref.get(state.currentChannel);
     if (Option.isNone(curChanOpt) || !curChanOpt.value.isOnline) {
-      yield* resetChannel(state);
+      yield* resetChannel(state.currentChannel);
       return;
     }
 
-    const curChan = curChanOpt.value;
-    const updatedCurChanOpt = yield* watchService.updateChannelInfo(curChan, state.localMinutesWatched, state.currentChannel);
-    if (Option.isNone(updatedCurChanOpt)) {
-      yield* resetChannel(state);
-      return;
-    }
-
-    const updatedCurChan = updatedCurChanOpt.value;
+    const updatedCurChan = curChanOpt.value;
     const isGameChanged = !!updatedCurChan.gameId && !!updatedCurChan.currentGameId && updatedCurChan.gameId !== updatedCurChan.currentGameId;
 
     if (isGameChanged) {
       yield* Effect.logInfo(chalk`{red ${updatedCurChan.login}} | {red Game changed to ${updatedCurChan.currentGameName}}`);
-      yield* resetChannel(state);
+      yield* resetChannel(state.currentChannel);
       return;
     }
 
@@ -180,7 +145,7 @@ const watchSession = (
     }
 
     if (!watchResult.success) {
-      yield* resetChannel(state);
+      yield* resetChannel(state.currentChannel);
       return;
     }
 
@@ -204,7 +169,6 @@ const initializeCampaigns = (state: MainState): Effect.Effect<void, never, Campa
     }
 
     yield* campaignService.updateCampaigns.pipe(Effect.catchAll(() => Effect.void));
-    yield* campaignService.updateProgress.pipe(Effect.catchAll(() => Effect.void));
 
     const config = yield* configStore.get;
     const campaigns = yield* campaignService.getSortedActive;
@@ -228,32 +192,26 @@ const initializeCampaigns = (state: MainState): Effect.Effect<void, never, Campa
     yield* Ref.set(state.isClaiming, false);
   });
 
-const ensureChannelPoints = (
-  state: MainState,
-  activeList: readonly Campaign[],
-): Effect.Effect<
-  void,
-  TwitchApiError | TwitchSocketError | MainWorkflowError,
-  CampaignServiceTag | TwitchApiTag | ConfigStoreTag | PointServiceTag
-> =>
+const enrichChannelsWithStreamInfo = (api: TwitchApi, channels: readonly Channel[]): Effect.Effect<ReadonlyArray<Channel>, never> =>
   Effect.gen(function* () {
-    const api = yield* TwitchApiTag;
-    const campaignService = yield* CampaignServiceTag;
-    const pointService = yield* PointServiceTag;
-
-    const channelOpt = yield* Ref.get(state.currentChannel);
-    if (Option.isSome(channelOpt)) {
-      yield* pointService.claimPoints(channelOpt.value).pipe(Effect.ignore);
-      return;
+    if (channels.length === 0) {
+      return [];
     }
 
-    for (const campaign of activeList) {
-      const channels = yield* campaignService.getChannelsForCampaign(campaign);
-      if (channels.length > 0) {
-        yield* api.channelPoints(channels[0].login).pipe(Effect.ignore);
-        break;
+    const streams = yield* api
+      .helixStreams(channels.map((c) => c.id))
+      .pipe(Effect.orElseSucceed(() => ({ data: [] }) as Schema.Schema.Type<typeof HelixStreamsSchema>));
+
+    const streamById = new Map(streams.data.map((s) => [s.user_id, s]));
+
+    return channels.map((channel) => {
+      const live = streamById.get(channel.id);
+      if (!live) {
+        return channel;
       }
-    }
+
+      return { ...channel, currentSid: live.id, currentGameId: live.game_id, currentGameName: live.game_name };
+    });
   });
 
 const processCampaignChannels = (
@@ -267,6 +225,7 @@ const processCampaignChannels = (
   ConfigStoreTag | TwitchApiTag | TwitchSocketTag | CampaignServiceTag | PointServiceTag | WatchServiceTag | DropServiceTag
 > =>
   Effect.gen(function* () {
+    const api = yield* TwitchApiTag;
     const pointService = yield* PointServiceTag;
     const watchService = yield* WatchServiceTag;
     const currentChannelOpt = yield* Ref.get(state.currentChannel);
@@ -280,19 +239,18 @@ const processCampaignChannels = (
       onSome: (cur) => (channels.some((c) => c.id === cur.id) ? [cur, ...channels.filter((c) => c.id !== cur.id)] : channels),
     });
 
-    for (const channel of targetChannels) {
+    const enrichedChannels = yield* enrichChannelsWithStreamInfo(api, targetChannels);
+
+    for (const channel of enrichedChannels) {
       const isMet = yield* Ref.get(state.currentDrop).pipe(Effect.map(Option.match({ onNone: () => false, onSome: isMinutesWatchedMet })));
       if (isMet) break;
 
-      yield* setChannel(state, channel);
+      yield* setChannel(state.currentChannel, channel);
       const chanOpt = yield* watchService.updateChannelInfo(channel, state.localMinutesWatched, state.currentChannel);
       if (Option.isNone(chanOpt)) continue;
 
       const chan = chanOpt.value;
-      yield* Effect.all([pointService.claimPoints(chan), pointService.contributeGoal(chan)], {
-        concurrency: 'unbounded',
-        discard: true,
-      }).pipe(Effect.ignore);
+      yield* pointService.claimAndContribute(chan).pipe(Effect.ignore);
 
       yield* watchSession(state, campaign);
 
@@ -305,7 +263,7 @@ const processCampaignChannels = (
       return;
     }
 
-    yield* resetChannel(state);
+    yield* resetChannel(state.currentChannel);
   });
 
 const mainLoop = (
@@ -335,8 +293,6 @@ const mainLoop = (
       return;
     }
 
-    yield* ensureChannelPoints(state, activeList);
-
     const campaignInitial = yield* selectCampaign(state, activeList);
     const drops = yield* campaignService.getDropsForCampaign(campaignInitial.id);
 
@@ -360,7 +316,7 @@ const mainLoop = (
     if (!drop.hasPreconditionsMet) {
       yield* Effect.logInfo(chalk`{green ${drop.name}} | {red Preconditions not met}`);
       yield* campaignService.setOffline(campaign.id, true);
-      yield* resetChannel(state);
+      yield* resetChannel(state.currentChannel);
       return;
     }
 
@@ -380,7 +336,7 @@ const mainLoop = (
     if (channels.length === 0) {
       yield* Effect.logInfo(chalk`${campaign.name} | {red Campaigns offline}`);
       yield* campaignService.setOffline(campaign.id, true);
-      yield* resetChannel(state);
+      yield* resetChannel(state.currentChannel);
       return;
     }
 
@@ -390,15 +346,8 @@ const mainLoop = (
 const selectCampaign = (state: MainState, activeList: readonly Campaign[]) =>
   Effect.gen(function* () {
     const campaignService = yield* CampaignServiceTag;
-    const prevCampaignOpt = yield* Ref.get(state.currentCampaign);
-    const oldDropOpt = yield* Ref.get(state.currentDrop);
 
     const firstCampaign = activeList[0];
-    const isNew = Option.match(prevCampaignOpt, { onNone: () => true, onSome: (c) => c.id !== firstCampaign.id });
-
-    if (isNew || Option.isNone(oldDropOpt)) {
-      yield* campaignService.updateProgress;
-    }
 
     const campaign = (yield* Ref.get(campaignService.campaigns)).get(firstCampaign.id) ?? firstCampaign;
 
@@ -449,7 +398,6 @@ export const MainWorkflow: Effect.Effect<
     nextPointClaim: yield* Ref.make(0),
     nextWatch: yield* Ref.make(0),
     isClaiming: yield* Ref.make(false),
-    nextCommunityGoalContribution: yield* Ref.make(0),
   };
 
   yield* api.init.pipe(Effect.orDie);
@@ -479,5 +427,5 @@ export const MainWorkflow: Effect.Effect<
 
   yield* Effect.all([mainTaskLoop, claimInventoryLoop, UpcomingWorkflow(state), OfflineWorkflow(state)], {
     concurrency: 'unbounded',
-  }).pipe(Effect.onInterrupt(() => resetChannel(state)));
+  }).pipe(Effect.onInterrupt(() => resetChannel(state.currentChannel)));
 });

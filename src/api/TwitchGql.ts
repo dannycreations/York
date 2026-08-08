@@ -46,11 +46,6 @@ export const GqlQueries = {
     hash: 'd86775d0ef16a63a33ad52e80eaff963b2d5b72fada7c991504a57496e1d8e4b',
     variables: { fetchRewardCampaigns: true },
   } satisfies GraphqlRequest,
-  currentDrops: {
-    operationName: 'DropCurrentSessionContext',
-    hash: '4d06b702d25d652afb9ef835d2a550031f1cf762b193523a92166f40ea3d142b',
-    variables: {},
-  } satisfies GraphqlRequest,
   channelLive: (channelLogin: string): GraphqlRequest => ({
     operationName: 'UseLive',
     hash: '639d5f11bfb8bf3053b424d9ef650d04c4ebb7d94711d644afb08fe9a0fad5d9',

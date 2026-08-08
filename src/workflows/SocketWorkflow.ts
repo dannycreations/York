@@ -6,8 +6,9 @@ import { TwitchApiTag } from '../api/TwitchApi';
 import { TwitchSocketTag } from '../api/TwitchSocket';
 import { ConfigStoreTag } from '../core/Config';
 import { WsTopic } from '../core/Constants';
+import { resetChannel } from '../helpers/ChannelHelper';
 import { CampaignServiceTag } from '../services/CampaignService';
-import { resetChannel } from './MainWorkflow';
+import { PointServiceTag } from '../services/PointService';
 
 import type { SocketMessage } from '../core/Schemas';
 import type { MainState } from './MainWorkflow';
@@ -16,7 +17,7 @@ type MessageHandler = (
   msg: SocketMessage,
   state: MainState,
   userId: string,
-) => Effect.Effect<void, never, TwitchApiTag | TwitchSocketTag | ConfigStoreTag | CampaignServiceTag>;
+) => Effect.Effect<void, never, TwitchApiTag | TwitchSocketTag | ConfigStoreTag | CampaignServiceTag | PointServiceTag>;
 
 const handleUserDrop: MessageHandler = (msg, state) =>
   Effect.gen(function* () {
@@ -44,7 +45,7 @@ const handleUserDrop: MessageHandler = (msg, state) =>
         } else {
           yield* Effect.logInfo(chalk`{green ${drop.name}} | {green Completed!} | {green ${progress}/${drop.requiredMinutesWatched}}`);
         }
-        yield* resetChannel(state);
+        yield* resetChannel(state.currentChannel);
       }
     } else if (msg.payload.type === 'drop-claim') {
       const payload = msg.payload as Extract<SocketMessage['payload'], { type: 'drop-claim' }>;
@@ -172,37 +173,8 @@ const handleCommunityGoal: MessageHandler = (msg, state) =>
     if (Option.isNone(channelOpt)) return;
     const channel = channelOpt.value;
 
-    const api = yield* TwitchApiTag;
-    yield* api.channelPoints(channel.login).pipe(
-      Effect.flatMap((data) => {
-        const startedGoals = data.community.channel.communityPointsSettings.goals.filter((g) => g.status === 'STARTED' && g.isInStock);
-        if (startedGoals.length === 0) return Effect.void;
-
-        return api.userPointsContribution(channel.login).pipe(
-          Effect.flatMap((contrib) => {
-            const balance = data.community.channel.self.communityPoints.balance;
-            const userContribs = contrib.user.channel.self.communityPoints.goalContributions;
-
-            return Effect.forEach(startedGoals, (goal) => {
-              const uc = userContribs.find((u) => u.goal.id === goal.id);
-              const amount = Math.min(
-                goal.amountNeeded - goal.pointsContributed,
-                goal.perStreamUserMaximumContribution - (uc?.userPointsContributedThisStream ?? 0),
-                balance,
-              );
-              if (amount <= 0) return Effect.void;
-              return api
-                .contributeCommunityGoal(channel.id, goal.id, amount)
-                .pipe(
-                  Effect.zipRight(Effect.logInfo(chalk`{green ${channel.login}} | {yellow Contributed ${amount} points to goal: ${goal.title}}`)),
-                  Effect.ignore,
-                );
-            });
-          }),
-        );
-      }),
-      Effect.ignore,
-    );
+    const pointService = yield* PointServiceTag;
+    yield* pointService.contributeGoals(channel).pipe(Effect.ignore);
   });
 
 const HANDLERS: Record<string, MessageHandler> = {
@@ -216,7 +188,7 @@ const HANDLERS: Record<string, MessageHandler> = {
 
 export const SocketWorkflow = (
   state: MainState,
-): Effect.Effect<void, never, TwitchApiTag | TwitchSocketTag | Scope.Scope | ConfigStoreTag | CampaignServiceTag> =>
+): Effect.Effect<void, never, TwitchApiTag | TwitchSocketTag | Scope.Scope | ConfigStoreTag | CampaignServiceTag | PointServiceTag> =>
   Effect.gen(function* () {
     const api = yield* TwitchApiTag;
     const socket = yield* TwitchSocketTag;

@@ -5,10 +5,6 @@ export const DateFromAny = Schema.transform(Schema.Union(Schema.String, Schema.N
   encode: (d) => d,
 });
 
-export const DropStatus = Schema.Literal('ACTIVE', 'EXPIRED', 'UPCOMING');
-
-export type DropStatus = Schema.Schema.Type<typeof DropStatus>;
-
 export const CommunityGoalSchema = Schema.Struct({
   id: Schema.String,
   title: Schema.String,
@@ -78,8 +74,6 @@ export const ChannelSchema = Schema.Struct({
   currentGameId: Schema.optional(Schema.String),
   currentGameName: Schema.optional(Schema.String),
   hlsUrl: Schema.optional(Schema.String),
-  points: Schema.optional(Schema.Number),
-  communityGoals: Schema.optional(Schema.Map({ key: Schema.String, value: CommunityGoalSchema })),
 }).pipe(Schema.annotations({ identifier: 'Channel' }));
 
 export type Channel = Schema.Schema.Type<typeof ChannelSchema>;
@@ -232,11 +226,6 @@ export const ChannelPointsSchema = Schema.Struct({
         }),
       }),
     }),
-    currentUser: Schema.optional(
-      Schema.Struct({
-        id: Schema.String,
-      }),
-    ),
   }),
 });
 
@@ -270,32 +259,6 @@ export const HelixStreamsSchema = Schema.Struct({
       started_at: DateFromAny,
     }),
   ),
-});
-
-export const CurrentDropsSchema = Schema.Struct({
-  currentUser: Schema.Struct({
-    id: Schema.String,
-    dropCurrentSession: Schema.NullOr(
-      Schema.Struct({
-        channel: Schema.NullOr(
-          Schema.Struct({
-            id: Schema.String,
-            name: Schema.String,
-            displayName: Schema.String,
-          }),
-        ),
-        game: Schema.NullOr(
-          Schema.Struct({
-            id: Schema.String,
-            displayName: Schema.String,
-          }),
-        ),
-        currentMinutesWatched: Schema.Number,
-        requiredMinutesWatched: Schema.Number,
-        dropID: Schema.String,
-      }),
-    ),
-  }),
 });
 
 export const GameDirectorySchema = Schema.Struct({

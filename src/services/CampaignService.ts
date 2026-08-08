@@ -1,12 +1,12 @@
 import { truncate } from '@vegapunk/utilities/common';
-import { Context, Data, Effect, Layer, Option, Ref } from 'effect';
+import { Context, Data, Effect, Layer, Option, Ref, Schema } from 'effect';
 
 import { TwitchApiTag } from '../api/TwitchApi';
 import { GqlQueries } from '../api/TwitchGql';
 import { TwitchSocketTag } from '../api/TwitchSocket';
 import { ConfigStoreTag } from '../core/Config';
 import { WsTopic } from '../core/Constants';
-import { ChannelDropsSchema } from '../core/Schemas';
+import { CampaignDetailsSchema, ChannelDropsSchema, InventorySchema } from '../core/Schemas';
 import { getDropStatus, isMinutesWatchedMet } from '../helpers/TwitchHelper';
 
 import type { TwitchApi, TwitchApiError } from '../api/TwitchApi';
@@ -103,7 +103,6 @@ export interface CampaignService {
   readonly updateProgress: Effect.Effect<void, TwitchApiError>;
   readonly getSortedActive: Effect.Effect<ReadonlyArray<Campaign>>;
   readonly getSortedUpcoming: Effect.Effect<ReadonlyArray<Campaign>>;
-  readonly getOffline: Effect.Effect<ReadonlyArray<Campaign>>;
   readonly setBroken: (id: string, isBroken: boolean) => Effect.Effect<void>;
   readonly setOffline: (id: string, isOffline: boolean) => Effect.Effect<void>;
   readonly setPriority: (id: string, priority: number) => Effect.Effect<void>;
@@ -287,7 +286,14 @@ export const CampaignServiceLayer: Layer.Layer<CampaignServiceTag, never, Twitch
 
     const getDropsForCampaign = (campaignId: string): Effect.Effect<ReadonlyArray<Drop>, TwitchApiError> =>
       Effect.gen(function* () {
-        const detailRes = yield* api.campaignDetails(campaignId);
+        const config = yield* configStore.get;
+        const now = Date.now();
+
+        const [detailRes, invRes] = (yield* api.graphqlBatch(
+          [GqlQueries.campaignDetails(campaignId), GqlQueries.inventory],
+          [CampaignDetailsSchema, InventorySchema],
+        )) as [Schema.Schema.Type<typeof CampaignDetailsSchema>, Schema.Schema.Type<typeof InventorySchema>];
+
         const dropDetail = detailRes.user?.dropCampaign;
 
         if (!dropDetail) {
@@ -314,12 +320,18 @@ export const CampaignServiceLayer: Layer.Layer<CampaignServiceTag, never, Twitch
 
         if (!dropDetail.timeBasedDrops || dropDetail.timeBasedDrops.length === 0) return [];
 
-        const rewardsMap = yield* Ref.get(rewardsRef);
+        const rewardsMap = new Map<string, Date>();
+        for (const drop of invRes.currentUser.inventory.gameEventDrops) {
+          if (now - drop.lastAwardedAt.getTime() < REWARD_EXPIRED_MS) {
+            rewardsMap.set(drop.id, drop.lastAwardedAt);
+          }
+        }
+        yield* Ref.set(rewardsRef, rewardsMap);
+        yield* syncProgressRef(processInventoryDrops(invRes.currentUser.inventory.dropCampaignsInProgress, config, rewardsMap, now), now);
+
         const progress = yield* Ref.get(progressRef);
         const progressMap = new Map(progress.map((d) => [d.id, d]));
         const sortedDrops = [...dropDetail.timeBasedDrops].sort((a, b) => a.requiredMinutesWatched - b.requiredMinutesWatched);
-        const config = yield* configStore.get;
-        const now = Date.now();
         const activeDrops: Drop[] = [];
 
         for (const d of sortedDrops) {
@@ -400,9 +412,6 @@ export const CampaignServiceLayer: Layer.Layer<CampaignServiceTag, never, Twitch
         return Array.from((yield* Ref.get(campaignsRef)).values())
           .filter((c) => getDropStatus(c.startAt, c.endAt, now).isUpcoming)
           .sort((a, b) => a.startAt.getTime() - b.startAt.getTime());
-      }),
-      getOffline: Effect.gen(function* () {
-        return Array.from((yield* Ref.get(campaignsRef)).values()).filter((c) => c.isOffline);
       }),
       setBroken: (id, isBroken) => setCampaignField(id, (c) => ({ ...c, isBroken })),
       setOffline: (id, isOffline) => setCampaignField(id, (c) => ({ ...c, isOffline })),

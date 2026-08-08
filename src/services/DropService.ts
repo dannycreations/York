@@ -2,13 +2,12 @@ import { chalk } from '@vegapunk/utilities';
 import { Context, Effect, Layer, Option, Ref } from 'effect';
 
 import { TwitchApiTag } from '../api/TwitchApi';
-import { TwitchSocketTag } from '../api/TwitchSocket';
-import { resetChannel } from '../workflows/MainWorkflow';
+import { resetChannel } from '../helpers/ChannelHelper';
 import { CampaignServiceTag } from './CampaignService';
 
 import type { TwitchApiError } from '../api/TwitchApi';
+import type { TwitchSocketTag } from '../api/TwitchSocket';
 import type { Campaign, Channel, Drop } from '../core/Schemas';
-import type { MainState } from '../workflows/MainWorkflow';
 
 export interface DropService {
   readonly claimDropSequence: (
@@ -32,7 +31,6 @@ export const DropServiceLayer = Layer.effect(
   Effect.gen(function* () {
     const campaignService = yield* CampaignServiceTag;
     const api = yield* TwitchApiTag;
-    const socket = yield* TwitchSocketTag;
 
     return {
       claimDropSequence: (campaign, drop, isClaimingRef, currentDropRef) =>
@@ -48,8 +46,7 @@ export const DropServiceLayer = Layer.effect(
 
                   if (attempt > 0 || !drop.dropInstanceID) {
                     yield* campaignService.updateProgress.pipe(Effect.ignore);
-                    const drops = yield* campaignService.getDropsForCampaign(campaign.id).pipe(Effect.orElseSucceed(() => []));
-                    const updatedDrop = drops.find((p) => p.id === drop.id);
+                    const updatedDrop = (yield* Ref.get(campaignService.progress)).find((p) => p.id === drop.id);
                     if (updatedDrop) {
                       yield* Ref.update(currentDropRef, (current) =>
                         Option.map(current, (cur) => ({
@@ -113,8 +110,7 @@ export const DropServiceLayer = Layer.effect(
           yield* Ref.set(localMinutesWatchedRef, 0);
           yield* campaignService.updateProgress;
 
-          const freshDrops = yield* campaignService.getDropsForCampaign(drop.campaignId);
-          const freshDrop = freshDrops.find((d) => d.id === drop.id);
+          const freshDrop = (yield* Ref.get(campaignService.progress)).find((d) => d.id === drop.id);
           if (!freshDrop) return;
 
           const desync = drop.currentMinutesWatched - freshDrop.currentMinutesWatched;
@@ -122,7 +118,7 @@ export const DropServiceLayer = Layer.effect(
             const curOpt = yield* Ref.get(currentChannelRef);
 
             if (Option.isSome(curOpt)) {
-              yield* resetChannel({ currentChannel: currentChannelRef } as MainState).pipe(Effect.provideService(TwitchSocketTag, socket));
+              yield* resetChannel(currentChannelRef);
             }
           }
 

@@ -29,11 +29,11 @@ export const WatchServiceLayer = Layer.effect(
         Effect.gen(function* () {
           const localMin = yield* Ref.get(localMinutesWatchedRef);
 
-          if (!!chan.currentSid && localMin > 0 && localMin < 15) {
+          if (!!chan.currentSid && localMin < 15) {
             return Option.some(chan);
           }
 
-          const streamRes = yield* api.helixStreams(chan.id).pipe(Effect.option);
+          const streamRes = yield* api.helixStreams([chan.id]).pipe(Effect.option);
           if (Option.isNone(streamRes)) return Option.none();
 
           const live = streamRes.value.data[0];

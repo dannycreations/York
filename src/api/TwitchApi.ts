@@ -16,12 +16,10 @@ import {
   ClaimMomentsSchema,
   ClaimPointsSchema,
   ContributeCommunityGoalSchema,
-  CurrentDropsSchema,
   GameDirectorySchema,
   HelixStreamsSchema,
   InventorySchema,
   PlaybackTokenSchema,
-  UserPointsContributionSchema,
   ViewerDropsDashboardSchema,
 } from '../core/Schemas';
 import { HttpClientError, HttpClientTag } from '../structures/HttpClient';
@@ -46,6 +44,11 @@ export interface TwitchApi {
     schema: Schema.Schema<A, I, R>,
     waitForUserId?: boolean,
   ) => Effect.Effect<ReadonlyArray<A>, TwitchApiError, R>;
+  readonly graphqlBatch: (
+    requests: ReadonlyArray<GraphqlRequest>,
+    schemas: ReadonlyArray<AnySchema>,
+    waitForUserId?: boolean,
+  ) => Effect.Effect<ReadonlyArray<unknown>, TwitchApiError>;
   readonly request: <T = string>(
     options: string | DefaultOptions,
     isDebugOverride?: boolean,
@@ -59,18 +62,16 @@ export interface TwitchApi {
   >;
   readonly dropsDashboard: Effect.Effect<Schema.Schema.Type<typeof ViewerDropsDashboardSchema>, TwitchApiError>;
   readonly inventory: Effect.Effect<Schema.Schema.Type<typeof InventorySchema>, TwitchApiError>;
-  readonly currentDrops: Effect.Effect<Schema.Schema.Type<typeof CurrentDropsSchema>, TwitchApiError>;
   readonly gameDirectory: (slug: string) => Effect.Effect<Schema.Schema.Type<typeof GameDirectorySchema>, TwitchApiError>;
   readonly channelPoints: (channelLogin: string) => Effect.Effect<Schema.Schema.Type<typeof ChannelPointsSchema>, TwitchApiError>;
   readonly channelLive: (channelLogin: string) => Effect.Effect<Schema.Schema.Type<typeof ChannelLiveSchema>, TwitchApiError>;
-  readonly helixStreams: (userId: string) => Effect.Effect<Schema.Schema.Type<typeof HelixStreamsSchema>, TwitchApiError>;
+  readonly helixStreams: (userIds: readonly string[]) => Effect.Effect<Schema.Schema.Type<typeof HelixStreamsSchema>, TwitchApiError>;
   readonly channelStreams: (logins: readonly string[]) => Effect.Effect<Schema.Schema.Type<typeof ChannelStreamsSchema>, TwitchApiError>;
   readonly channelDrops: (channelID: string) => Effect.Effect<Schema.Schema.Type<typeof ChannelDropsSchema>, TwitchApiError>;
   readonly claimPoints: (channelID: string, claimID: string) => Effect.Effect<Schema.Schema.Type<typeof ClaimPointsSchema>, TwitchApiError>;
   readonly claimMoments: (momentID: string) => Effect.Effect<Schema.Schema.Type<typeof ClaimMomentsSchema>, TwitchApiError>;
   readonly claimDrops: (dropInstanceID: string) => Effect.Effect<Schema.Schema.Type<typeof ClaimDropsSchema>, TwitchApiError>;
   readonly claimAllDropsFromInventory: Effect.Effect<void, TwitchApiError>;
-  readonly userPointsContribution: (channelLogin: string) => Effect.Effect<Schema.Schema.Type<typeof UserPointsContributionSchema>, TwitchApiError>;
   readonly contributeCommunityGoal: (
     channelID: string,
     goalID: string,
@@ -108,10 +109,12 @@ const parseUniqueCookies = (setCookie: readonly string[]): Readonly<Record<strin
   return result;
 };
 
+type AnySchema = Schema.Schema<any, any, never>;
+
 const RETRYABLE_GQL_ERRORS = new Set(['service unavailable', 'service timeout', 'context deadline exceeded']);
 
 const handleGraphqlErrors = (errors: ReadonlyArray<{ readonly message: string }>, operationName?: string): Effect.Effect<never, TwitchApiError> => {
-  const opPrefix = operationName ? `[${operationName}] ` : '';
+  const opPrefix = operationName ? `${operationName} ` : '';
   const firstErrorMessage = errors[0]?.message ?? 'Unknown error';
   const hasRetryable = errors.some((e) => RETRYABLE_GQL_ERRORS.has(e.message.toLowerCase()));
 
@@ -121,7 +124,7 @@ const handleGraphqlErrors = (errors: ReadonlyArray<{ readonly message: string }>
 
   return Effect.fail(
     new TwitchApiError({
-      message: `${opPrefix}GraphQL Error: ${firstErrorMessage}`,
+      message: `${opPrefix}GraphQL Error (${firstErrorMessage})`,
       cause: errors,
     }),
   );
@@ -252,42 +255,28 @@ export const TwitchApiLayer = (authToken: string, isDebug = false): Layer.Layer<
 
       const init = Effect.all([unique, validate], { concurrency: 'unbounded' });
 
-      const graphql = <A, I, R>(
-        requests: GraphqlRequest | ReadonlyArray<GraphqlRequest>,
-        schema: Schema.Schema<A, I, R>,
-        waitForUserId = true,
-      ): Effect.Effect<ReadonlyArray<A>, TwitchApiError, R> => {
-        const requestsArray = Array.isArray(requests) ? requests : [requests];
-        const decode = Schema.decodeUnknown(schema);
-
-        return Effect.gen(function* () {
+      const executeGql = <Schemas extends ReadonlyArray<AnySchema>>(
+        requestsArray: ReadonlyArray<GraphqlRequest>,
+        schemas: Schemas,
+        waitForUserId: boolean,
+      ): Effect.Effect<ReadonlyArray<unknown>, TwitchApiError> =>
+        Effect.gen(function* () {
           const userId = waitForUserId ? yield* getUserId : '';
 
           const payload = requestsArray.map((r) => {
             const isDetails = r.operationName === 'DropCampaignDetails';
             const hasNoLogin = !r.variables.channelLogin;
-
             const variables = isDetails && hasNoLogin && userId ? { ...r.variables, channelLogin: userId } : r.variables;
 
             if (!r.hash) {
-              return {
-                operationName: r.operationName,
-                variables,
-                query: r.query,
-                extensions: undefined,
-              };
+              return { operationName: r.operationName, variables, query: r.query, extensions: undefined };
             }
 
             return {
               operationName: r.operationName,
               variables,
               query: r.query,
-              extensions: {
-                persistedQuery: {
-                  version: 1,
-                  sha256Hash: r.hash,
-                },
-              },
+              extensions: { persistedQuery: { version: 1, sha256Hash: r.hash } },
             };
           });
 
@@ -320,7 +309,7 @@ export const TwitchApiLayer = (authToken: string, isDebug = false): Layer.Layer<
                 );
               }
 
-              return decode(res.data).pipe(
+              return Schema.decodeUnknown(schemas[index])(res.data).pipe(
                 Effect.tapError((e) =>
                   writeDebugFile(
                     {
@@ -350,7 +339,25 @@ export const TwitchApiLayer = (authToken: string, isDebug = false): Layer.Layer<
             schedule: Schedule.exponential('1 seconds').pipe(Schedule.compose(Schedule.recurs(5))),
           }),
         );
+
+      const graphql = <A, I, R>(
+        requests: GraphqlRequest | ReadonlyArray<GraphqlRequest>,
+        schema: Schema.Schema<A, I, R>,
+        waitForUserId = true,
+      ): Effect.Effect<ReadonlyArray<A>, TwitchApiError, R> => {
+        const requestsArray = Array.isArray(requests) ? requests : [requests];
+        return executeGql(
+          requestsArray,
+          requestsArray.map(() => schema as AnySchema),
+          waitForUserId,
+        ) as unknown as Effect.Effect<ReadonlyArray<A>, TwitchApiError, R>;
       };
+
+      const graphqlBatch = (
+        requests: ReadonlyArray<GraphqlRequest>,
+        schemas: ReadonlyArray<AnySchema>,
+        waitForUserId = true,
+      ): Effect.Effect<ReadonlyArray<unknown>, TwitchApiError> => executeGql(requests, schemas, waitForUserId);
 
       const findLastHttpUrl = (text: string): string | undefined => {
         const lastIndex = text.lastIndexOf('\nhttp');
@@ -497,8 +504,6 @@ export const TwitchApiLayer = (authToken: string, isDebug = false): Layer.Layer<
         ),
       );
 
-      const currentDrops = mapFirst(graphql(GqlQueries.currentDrops, CurrentDropsSchema));
-
       const gameDirectory = (slug: string): Effect.Effect<Schema.Schema.Type<typeof GameDirectorySchema>, TwitchApiError> =>
         mapFirst(graphql(GqlQueries.gameDirectory(slug), GameDirectorySchema));
 
@@ -508,12 +513,16 @@ export const TwitchApiLayer = (authToken: string, isDebug = false): Layer.Layer<
       const channelLive = (channelLogin: string): Effect.Effect<Schema.Schema.Type<typeof ChannelLiveSchema>, TwitchApiError> =>
         mapFirst(graphql(GqlQueries.channelLive(channelLogin), ChannelLiveSchema));
 
-      const helixStreams = (userId: string): Effect.Effect<Schema.Schema.Type<typeof HelixStreamsSchema>, TwitchApiError> =>
+      const helixStreams = (userIds: readonly string[]): Effect.Effect<Schema.Schema.Type<typeof HelixStreamsSchema>, TwitchApiError> =>
         Effect.gen(function* () {
+          if (userIds.length === 0) {
+            return { data: [] } as Schema.Schema.Type<typeof HelixStreamsSchema>;
+          }
+
           const res = yield* request<Schema.Schema.Encoded<typeof HelixStreamsSchema>>({
             url: 'https://api.twitch.tv/helix/streams',
             headers: { 'client-id': 'uaw3vx1k0ttq74u9b2zfvt768eebh1' },
-            searchParams: { user_id: userId },
+            searchParams: new URLSearchParams(userIds.map((id) => ['user_id', id] as [string, string])),
             responseType: 'json',
           });
 
@@ -563,9 +572,6 @@ export const TwitchApiLayer = (authToken: string, isDebug = false): Layer.Layer<
         ),
       );
 
-      const userPointsContribution = (channelLogin: string): Effect.Effect<Schema.Schema.Type<typeof UserPointsContributionSchema>, TwitchApiError> =>
-        mapFirst(graphql(GqlQueries.userPointsContribution(channelLogin), UserPointsContributionSchema));
-
       const contributeCommunityGoal = (
         channelID: string,
         goalID: string,
@@ -587,11 +593,11 @@ export const TwitchApiLayer = (authToken: string, isDebug = false): Layer.Layer<
         userId: getUserId,
         writeDebugFile,
         graphql,
+        graphqlBatch,
         request,
         watch,
         dropsDashboard,
         inventory,
-        currentDrops,
         gameDirectory,
         channelPoints,
         channelLive,
@@ -602,7 +608,6 @@ export const TwitchApiLayer = (authToken: string, isDebug = false): Layer.Layer<
         claimMoments,
         claimDrops,
         claimAllDropsFromInventory,
-        userPointsContribution,
         contributeCommunityGoal,
         campaignDetails,
         playbackToken,

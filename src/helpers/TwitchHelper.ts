@@ -27,38 +27,26 @@ export const getDropStatus = (startAt: Date, endAt: Date, nowMs: number, minutes
 export const isMinutesWatchedMet = (drop: { readonly currentMinutesWatched: number; readonly requiredMinutesWatched: number }): boolean =>
   drop.currentMinutesWatched >= drop.requiredMinutesWatched;
 
+export interface PriorityTarget {
+  readonly game: { readonly id: string } | null;
+  readonly endAt: Date;
+}
+
 export const calculatePriority = (
-  target: { readonly game: { readonly id: string } | null; readonly endAt: Date },
-  currentCampaign: Option.Option<{
-    readonly priority: number;
-    readonly game: { readonly id: string } | null;
-  }>,
+  target: PriorityTarget,
+  currentCampaign: Option.Option<{ readonly priority: number; readonly game: { readonly id: string } | null }>,
   currentDrop: Option.Option<{ readonly endAt: Date }>,
 ): number => {
-  if (Option.isNone(currentCampaign)) {
-    return 0;
-  }
-
-  if (Option.isNone(currentDrop)) {
+  if (Option.isNone(currentCampaign) || Option.isNone(currentDrop)) {
     return 0;
   }
 
   const current = currentCampaign.value;
-
-  if (current.game === null || target.game === null) {
+  if (current.game === null || target.game === null || current.game.id === target.game.id) {
     return 0;
   }
 
-  const isSameGame = current.game.id === target.game.id;
-
-  if (isSameGame) {
-    return 0;
-  }
-
-  const currentDropValue = currentDrop.value;
-  const isCurrentEndingSooner = currentDropValue.endAt < target.endAt;
-
-  if (isCurrentEndingSooner) {
+  if (currentDrop.value.endAt < target.endAt) {
     return 0;
   }
 
