@@ -5,8 +5,8 @@ import { TwitchApiTag } from '../api/TwitchApi';
 import { GqlQueries } from '../api/TwitchGql';
 import { TwitchSocketTag } from '../api/TwitchSocket';
 import { ConfigStoreTag } from '../core/Config';
-import { WsTopic } from '../core/Constants';
 import { CampaignDetailsSchema, ChannelDropsSchema, InventorySchema } from '../core/Schemas';
+import { CHANNEL_LISTENER_TOPICS } from '../helpers/ChannelHelper';
 import { getDropStatus, isMinutesWatchedMet } from '../helpers/TwitchHelper';
 
 import type { TwitchApi, TwitchApiError } from '../api/TwitchApi';
@@ -131,15 +131,9 @@ const filterChannelsByCampaign = (
 
 const cleanupSocketListeners = (socket: TwitchSocket | undefined, channels: readonly Channel[]): Effect.Effect<void, TwitchSocketError> => {
   if (!socket || channels.length === 0) return Effect.void;
-  return Effect.forEach(
-    channels,
-    (c) =>
-      Effect.all(
-        [socket.unlisten(WsTopic.ChannelStream, c.id), socket.unlisten(WsTopic.ChannelMoment, c.id), socket.unlisten(WsTopic.ChannelUpdate, c.id)],
-        { discard: true },
-      ),
-    { discard: true },
-  );
+  return Effect.forEach(channels, (c) => Effect.forEach(CHANNEL_LISTENER_TOPICS, (topic) => socket.unlisten(topic, c.id), { discard: true }), {
+    discard: true,
+  });
 };
 
 const processOnlineChannels = (
@@ -158,6 +152,31 @@ const processOnlineChannels = (
     return filtered;
   });
 
+const buildActiveDrops = (
+  rawDrops: ReadonlyArray<RawDrop>,
+  campaignId: string,
+  config: ClientConfig,
+  rewardsMap: ReadonlyMap<string, Date>,
+  now: number,
+  allowUpcomingIfHasAward: boolean,
+  currentMinutesById?: ReadonlyMap<string, number>,
+): ReadonlyArray<Drop> => {
+  const sorted = [...rawDrops].sort((a, b) => a.requiredMinutesWatched - b.requiredMinutesWatched);
+  const processed: Drop[] = [];
+  for (const d of sorted) {
+    const opt = processDrop(d, campaignId, config, rewardsMap, now, allowUpcomingIfHasAward);
+    if (Option.isNone(opt)) continue;
+    const drop = opt.value;
+    const override = currentMinutesById?.get(drop.id);
+    processed.push(override === undefined ? drop : { ...drop, currentMinutesWatched: override });
+  }
+
+  const len = processed.length;
+  const total = sorted.length;
+  const startIndex = total - len;
+  return processed.map((drop, i) => ({ ...drop, name: truncate(`${startIndex + i + 1}/${total}, ${drop.name}`) }));
+};
+
 const processInventoryDrops = (
   campaigns: ReadonlyArray<{ readonly id: string; readonly timeBasedDrops: ReadonlyArray<RawDrop> }>,
   config: ClientConfig,
@@ -166,18 +185,7 @@ const processInventoryDrops = (
 ): ReadonlyArray<Drop> => {
   const result: Drop[] = [];
   for (const campaign of campaigns) {
-    const drops = [...campaign.timeBasedDrops].sort((a, b) => a.requiredMinutesWatched - b.requiredMinutesWatched);
-    const filtered: Drop[] = [];
-    for (const d of drops) {
-      const opt = processDrop(d, campaign.id, config, rewardsMap, now, true);
-      if (Option.isSome(opt)) filtered.push(opt.value);
-    }
-    const len = filtered.length;
-    const totalDrops = drops.length;
-    const startIndex = totalDrops - len;
-    for (let i = 0; i < len; i++) {
-      result.push({ ...filtered[i], name: truncate(`${startIndex + i + 1}/${totalDrops}, ${filtered[i].name}`) });
-    }
+    result.push(...buildActiveDrops(campaign.timeBasedDrops, campaign.id, config, rewardsMap, now, true));
   }
   return result;
 };
@@ -268,20 +276,29 @@ export const CampaignServiceLayer: Layer.Layer<CampaignServiceTag, never, Twitch
         return changed || currentMap.size !== current.length ? Array.from(currentMap.values()) : current;
       });
 
+    const syncInventory = (
+      inventory: Schema.Schema.Type<typeof InventorySchema>,
+      config: ClientConfig,
+      now: number,
+    ): Effect.Effect<ReadonlyMap<string, Date>> =>
+      Effect.gen(function* () {
+        const rewardsMap = new Map<string, Date>();
+        const userInventory = inventory.currentUser.inventory;
+
+        for (const drop of userInventory.gameEventDrops) {
+          if (now - drop.lastAwardedAt.getTime() < REWARD_EXPIRED_MS) {
+            rewardsMap.set(drop.id, drop.lastAwardedAt);
+          }
+        }
+
+        yield* Ref.set(rewardsRef, rewardsMap);
+        yield* syncProgressRef(processInventoryDrops(userInventory.dropCampaignsInProgress, config, rewardsMap, now), now);
+        return rewardsMap;
+      });
+
     const updateProgress = Effect.gen(function* () {
       const config = yield* configStore.get;
-      const response = yield* api.inventory;
-      const now = Date.now();
-      const rewardsMap = new Map<string, Date>();
-
-      for (const drop of response.currentUser.inventory.gameEventDrops) {
-        if (now - drop.lastAwardedAt.getTime() < REWARD_EXPIRED_MS) {
-          rewardsMap.set(drop.id, drop.lastAwardedAt);
-        }
-      }
-
-      yield* Ref.set(rewardsRef, rewardsMap);
-      yield* syncProgressRef(processInventoryDrops(response.currentUser.inventory.dropCampaignsInProgress, config, rewardsMap, now), now);
+      yield* syncInventory(yield* api.inventory, config, Date.now());
     });
 
     const getDropsForCampaign = (campaignId: string): Effect.Effect<ReadonlyArray<Drop>, TwitchApiError> =>
@@ -320,32 +337,11 @@ export const CampaignServiceLayer: Layer.Layer<CampaignServiceTag, never, Twitch
 
         if (!dropDetail.timeBasedDrops || dropDetail.timeBasedDrops.length === 0) return [];
 
-        const rewardsMap = new Map<string, Date>();
-        for (const drop of invRes.currentUser.inventory.gameEventDrops) {
-          if (now - drop.lastAwardedAt.getTime() < REWARD_EXPIRED_MS) {
-            rewardsMap.set(drop.id, drop.lastAwardedAt);
-          }
-        }
-        yield* Ref.set(rewardsRef, rewardsMap);
-        yield* syncProgressRef(processInventoryDrops(invRes.currentUser.inventory.dropCampaignsInProgress, config, rewardsMap, now), now);
+        const rewardsMap = yield* syncInventory(invRes, config, now);
 
         const progress = yield* Ref.get(progressRef);
-        const progressMap = new Map(progress.map((d) => [d.id, d]));
-        const sortedDrops = [...dropDetail.timeBasedDrops].sort((a, b) => a.requiredMinutesWatched - b.requiredMinutesWatched);
-        const activeDrops: Drop[] = [];
-
-        for (const d of sortedDrops) {
-          const opt = processDrop(d, campaignId, config, rewardsMap, now, false);
-          if (Option.isSome(opt)) {
-            const drop = opt.value;
-            activeDrops.push({ ...drop, currentMinutesWatched: progressMap.get(drop.id)?.currentMinutesWatched ?? drop.currentMinutesWatched });
-          }
-        }
-
-        const len = activeDrops.length;
-        const totalDrops = sortedDrops.length;
-        const startIndex = totalDrops - len;
-        const result = activeDrops.map((drop, i) => ({ ...drop, name: truncate(`${startIndex + i + 1}/${totalDrops}, ${drop.name}`) }));
+        const progressMap = new Map(progress.map((d) => [d.id, d.currentMinutesWatched]));
+        const result = buildActiveDrops(dropDetail.timeBasedDrops, campaignId, config, rewardsMap, now, false, progressMap);
 
         yield* syncProgressRef(result, now);
         return result;

@@ -5,6 +5,8 @@ import { WsTopic } from '../core/Constants';
 
 import type { Channel } from '../core/Schemas';
 
+export const CHANNEL_LISTENER_TOPICS = [WsTopic.ChannelStream, WsTopic.ChannelMoment, WsTopic.ChannelUpdate, WsTopic.ChannelPoint] as const;
+
 export const resetChannel = (channelRef: Ref.Ref<Option.Option<Channel>>): Effect.Effect<void, never, TwitchSocketTag> =>
   Effect.gen(function* () {
     const socket = yield* TwitchSocketTag;
@@ -12,9 +14,8 @@ export const resetChannel = (channelRef: Ref.Ref<Option.Option<Channel>>): Effec
 
     if (Option.isSome(curOpt)) {
       const chan = curOpt.value;
-      const topics = [WsTopic.ChannelStream, WsTopic.ChannelMoment, WsTopic.ChannelUpdate, WsTopic.ChannelPoint] as const;
 
-      yield* Effect.forEach(topics, (topic) => socket.unlisten(topic, chan.id), {
+      yield* Effect.forEach(CHANNEL_LISTENER_TOPICS, (topic) => socket.unlisten(topic, chan.id), {
         concurrency: 'unbounded',
         discard: true,
       }).pipe(Effect.catchAllCause(() => Effect.void));

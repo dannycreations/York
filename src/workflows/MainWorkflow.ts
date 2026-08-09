@@ -7,7 +7,7 @@ import { TwitchSocketTag } from '../api/TwitchSocket';
 import { ConfigStoreTag } from '../core/Config';
 import { WsTopic } from '../core/Constants';
 import { HelixStreamsSchema } from '../core/Schemas';
-import { resetChannel, setChannel } from '../helpers/ChannelHelper';
+import { CHANNEL_LISTENER_TOPICS, resetChannel, setChannel } from '../helpers/ChannelHelper';
 import { getDropStatus, isMinutesWatchedMet } from '../helpers/TwitchHelper';
 import { CampaignServiceState, CampaignServiceTag } from '../services/CampaignService';
 import { DropServiceTag } from '../services/DropService';
@@ -79,8 +79,7 @@ const handleDropProgress = (
     }
 
     const socket = yield* TwitchSocketTag;
-    const topics = [WsTopic.ChannelStream, WsTopic.ChannelMoment, WsTopic.ChannelUpdate, WsTopic.ChannelPoint] as const;
-    yield* Effect.forEach(topics, (topic) => socket.listen(topic, channel.id), {
+    yield* Effect.forEach(CHANNEL_LISTENER_TOPICS, (topic) => socket.listen(topic, channel.id), {
       concurrency: 'unbounded',
       discard: true,
     }).pipe(Effect.ignore);
@@ -139,10 +138,6 @@ const watchSession = (
     }
 
     const watchResult = yield* watchService.watch(updatedCurChan, state.currentChannel);
-
-    if (Date.now() < (yield* Ref.get(state.nextWatch))) {
-      return;
-    }
 
     if (!watchResult.success) {
       yield* resetChannel(state.currentChannel);
@@ -227,7 +222,6 @@ const processCampaignChannels = (
   Effect.gen(function* () {
     const api = yield* TwitchApiTag;
     const pointService = yield* PointServiceTag;
-    const watchService = yield* WatchServiceTag;
     const currentChannelOpt = yield* Ref.get(state.currentChannel);
 
     if (Option.isNone(currentChannelOpt)) {
@@ -244,14 +238,9 @@ const processCampaignChannels = (
     for (const channel of enrichedChannels) {
       const isMet = yield* Ref.get(state.currentDrop).pipe(Effect.map(Option.match({ onNone: () => false, onSome: isMinutesWatchedMet })));
       if (isMet) break;
+      if (!channel.currentSid) continue;
 
       yield* setChannel(state.currentChannel, channel);
-      const chanOpt = yield* watchService.updateChannelInfo(channel, state.localMinutesWatched, state.currentChannel);
-      if (Option.isNone(chanOpt)) continue;
-
-      const chan = chanOpt.value;
-      yield* pointService.claimAndContribute(chan).pipe(Effect.ignore);
-
       yield* watchSession(state, campaign);
 
       const postWatchChan = yield* Ref.get(state.currentChannel);
@@ -260,6 +249,7 @@ const processCampaignChannels = (
         continue;
       }
 
+      yield* pointService.claimAndContribute(channel).pipe(Effect.ignore);
       return;
     }
 
@@ -403,8 +393,6 @@ export const MainWorkflow: Effect.Effect<
   yield* api.init.pipe(Effect.orDie);
   const userId = yield* api.userId.pipe(Effect.orDie);
 
-  yield* api.claimAllDropsFromInventory.pipe(Effect.ignore, Effect.forkScoped);
-
   yield* Effect.acquireRelease(socket.listen(WsTopic.UserDrop, userId).pipe(Effect.orDie), () =>
     socket.unlisten(WsTopic.UserDrop, userId).pipe(Effect.ignore),
   );
@@ -427,5 +415,5 @@ export const MainWorkflow: Effect.Effect<
 
   yield* Effect.all([mainTaskLoop, claimInventoryLoop, UpcomingWorkflow(state), OfflineWorkflow(state)], {
     concurrency: 'unbounded',
-  }).pipe(Effect.onInterrupt(() => resetChannel(state.currentChannel)));
+  }).pipe(Effect.onInterrupt(() => resetChannel(state.currentChannel).pipe(Effect.zipRight(socket.disconnect(true)))));
 });

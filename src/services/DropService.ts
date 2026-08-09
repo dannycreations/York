@@ -44,7 +44,7 @@ export const DropServiceLayer = Layer.effect(
                   const currentDropInitial = yield* Ref.get(currentDropRef);
                   if (Option.isSome(currentDropInitial) && currentDropInitial.value.isClaimed) return 5;
 
-                  if (attempt > 0 || !drop.dropInstanceID) {
+                  if (Option.isNone(currentDropInitial) || !currentDropInitial.value.dropInstanceID) {
                     yield* campaignService.updateProgress.pipe(Effect.ignore);
                     const updatedDrop = (yield* Ref.get(campaignService.progress)).find((p) => p.id === drop.id);
                     if (updatedDrop) {

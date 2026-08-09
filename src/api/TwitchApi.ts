@@ -64,7 +64,6 @@ export interface TwitchApi {
   readonly inventory: Effect.Effect<Schema.Schema.Type<typeof InventorySchema>, TwitchApiError>;
   readonly gameDirectory: (slug: string) => Effect.Effect<Schema.Schema.Type<typeof GameDirectorySchema>, TwitchApiError>;
   readonly channelPoints: (channelLogin: string) => Effect.Effect<Schema.Schema.Type<typeof ChannelPointsSchema>, TwitchApiError>;
-  readonly channelLive: (channelLogin: string) => Effect.Effect<Schema.Schema.Type<typeof ChannelLiveSchema>, TwitchApiError>;
   readonly helixStreams: (userIds: readonly string[]) => Effect.Effect<Schema.Schema.Type<typeof HelixStreamsSchema>, TwitchApiError>;
   readonly channelStreams: (logins: readonly string[]) => Effect.Effect<Schema.Schema.Type<typeof ChannelStreamsSchema>, TwitchApiError>;
   readonly channelDrops: (channelID: string) => Effect.Effect<Schema.Schema.Type<typeof ChannelDropsSchema>, TwitchApiError>;
@@ -193,21 +192,19 @@ export const TwitchApiLayer = (authToken: string, isDebug = false): Layer.Layer<
 
           yield* Effect.logDebug(chalk`API: {bold ${response.statusCode}} ${payload.method ?? 'GET'} ${payload.url}`);
 
-          if (!isDebugOverride) {
-            return response;
-          }
-
-          yield* writeDebugFile(
-            {
-              request: {
-                url: `${response.statusCode} ${payload.method ?? 'GET'} ${payload.url}`,
-                headers: { ...commonHeaders, ...payload.headers },
-                body: payload.body,
+          if (isDebugOverride) {
+            yield* writeDebugFile(
+              {
+                request: {
+                  url: `${response.statusCode} ${payload.method ?? 'GET'} ${payload.url}`,
+                  headers: { ...commonHeaders, ...payload.headers },
+                  body: payload.body,
+                },
+                response: { headers: response.headers, body: response.body },
               },
-              response: { headers: response.headers, body: response.body },
-            },
-            `api-debug-${Date.now()}`,
-          );
+              `api-debug-${Date.now()}`,
+            );
+          }
 
           return response;
         }).pipe(
@@ -600,7 +597,6 @@ export const TwitchApiLayer = (authToken: string, isDebug = false): Layer.Layer<
         inventory,
         gameDirectory,
         channelPoints,
-        channelLive,
         helixStreams,
         channelStreams,
         channelDrops,
