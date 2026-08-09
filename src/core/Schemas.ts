@@ -69,6 +69,7 @@ export const ChannelSchema = Schema.Struct({
   id: Schema.String,
   login: Schema.String,
   gameId: Schema.optional(Schema.String),
+  campaignId: Schema.optional(Schema.String),
   isOnline: Schema.Boolean,
   currentSid: Schema.optional(Schema.String),
   currentGameId: Schema.optional(Schema.String),

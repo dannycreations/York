@@ -27,19 +27,19 @@ const processOfflineCampaign = (campaign: Campaign, state: MainState) =>
       return;
     }
 
-    const drops = yield* campaignService
-      .getDropsForCampaign(campaign.id)
-      .pipe(Effect.catchAll((e) => Effect.logWarning(chalk`{yellow Offline check error (drops): ${e.message}}`).pipe(Effect.as([]))));
-
-    if (drops.length === 0) {
-      return;
-    }
-
     const channels = yield* campaignService
       .getChannelsForCampaign(campaign)
       .pipe(Effect.catchAll((e) => Effect.logWarning(chalk`{yellow Offline check error (channels): ${e.message}}`).pipe(Effect.as([]))));
 
     if (channels.length === 0) {
+      return;
+    }
+
+    const drops = yield* campaignService
+      .getDropsForCampaign(campaign.id)
+      .pipe(Effect.catchAll((e) => Effect.logWarning(chalk`{yellow Offline check error (drops): ${e.message}}`).pipe(Effect.as([]))));
+
+    if (drops.length === 0) {
       return;
     }
 

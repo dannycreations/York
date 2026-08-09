@@ -1,12 +1,11 @@
 import { mkdir } from 'node:fs/promises';
 import { chalk } from '@vegapunk/utilities';
-import { Data, Effect, Option, Ref, Schedule, Schema, Scope } from 'effect';
+import { Data, Effect, Option, Ref, Schedule, Scope } from 'effect';
 
 import { TwitchApiTag } from '../api/TwitchApi';
 import { TwitchSocketTag } from '../api/TwitchSocket';
 import { ConfigStoreTag } from '../core/Config';
 import { WsTopic } from '../core/Constants';
-import { HelixStreamsSchema } from '../core/Schemas';
 import { CHANNEL_LISTENER_TOPICS, resetChannel, setChannel } from '../helpers/ChannelHelper';
 import { getDropStatus, isMinutesWatchedMet } from '../helpers/TwitchHelper';
 import { CampaignServiceState, CampaignServiceTag } from '../services/CampaignService';
@@ -17,7 +16,7 @@ import { OfflineWorkflow } from './OfflineWorkflow';
 import { SocketWorkflow } from './SocketWorkflow';
 import { UpcomingWorkflow } from './UpcomingWorkflow';
 
-import type { TwitchApi, TwitchApiError } from '../api/TwitchApi';
+import type { TwitchApiError } from '../api/TwitchApi';
 import type { TwitchSocketError } from '../api/TwitchSocket';
 import type { Campaign, Channel, Drop } from '../core/Schemas';
 
@@ -187,28 +186,6 @@ const initializeCampaigns = (state: MainState): Effect.Effect<void, never, Campa
     yield* Ref.set(state.isClaiming, false);
   });
 
-const enrichChannelsWithStreamInfo = (api: TwitchApi, channels: readonly Channel[]): Effect.Effect<ReadonlyArray<Channel>, never> =>
-  Effect.gen(function* () {
-    if (channels.length === 0) {
-      return [];
-    }
-
-    const streams = yield* api
-      .helixStreams(channels.map((c) => c.id))
-      .pipe(Effect.orElseSucceed(() => ({ data: [] }) as Schema.Schema.Type<typeof HelixStreamsSchema>));
-
-    const streamById = new Map(streams.data.map((s) => [s.user_id, s]));
-
-    return channels.map((channel) => {
-      const live = streamById.get(channel.id);
-      if (!live) {
-        return channel;
-      }
-
-      return { ...channel, currentSid: live.id, currentGameId: live.game_id, currentGameName: live.game_name };
-    });
-  });
-
 const processCampaignChannels = (
   state: MainState,
   campaign: Campaign,
@@ -220,7 +197,6 @@ const processCampaignChannels = (
   ConfigStoreTag | TwitchApiTag | TwitchSocketTag | CampaignServiceTag | PointServiceTag | WatchServiceTag | DropServiceTag
 > =>
   Effect.gen(function* () {
-    const api = yield* TwitchApiTag;
     const pointService = yield* PointServiceTag;
     const currentChannelOpt = yield* Ref.get(state.currentChannel);
 
@@ -233,14 +209,20 @@ const processCampaignChannels = (
       onSome: (cur) => (channels.some((c) => c.id === cur.id) ? [cur, ...channels.filter((c) => c.id !== cur.id)] : channels),
     });
 
-    const enrichedChannels = yield* enrichChannelsWithStreamInfo(api, targetChannels);
-
-    for (const channel of enrichedChannels) {
+    for (const channel of targetChannels) {
       const isMet = yield* Ref.get(state.currentDrop).pipe(Effect.map(Option.match({ onNone: () => false, onSome: isMinutesWatchedMet })));
       if (isMet) break;
       if (!channel.currentSid) continue;
 
+      const activeChannelOpt = yield* Ref.get(state.currentChannel);
+      const isSameChannel = Option.isSome(activeChannelOpt) && activeChannelOpt.value.id === channel.id;
+
       yield* setChannel(state.currentChannel, channel);
+
+      if (!isSameChannel) {
+        yield* Ref.set(state.nextPointClaim, 0);
+      }
+
       yield* watchSession(state, campaign);
 
       const postWatchChan = yield* Ref.get(state.currentChannel);
@@ -249,7 +231,14 @@ const processCampaignChannels = (
         continue;
       }
 
-      yield* pointService.claimAndContribute(channel).pipe(Effect.ignore);
+      const nowMs = Date.now();
+      const nextPointClaim = yield* Ref.get(state.nextPointClaim);
+
+      if (nowMs >= nextPointClaim) {
+        yield* Ref.set(state.nextPointClaim, nowMs + 300_000);
+        yield* pointService.claimAndContribute(channel).pipe(Effect.ignore);
+      }
+
       return;
     }
 
@@ -297,7 +286,7 @@ const mainLoop = (
     const { isExpired } = getDropStatus(campaign.startAt, campaign.endAt, Date.now());
     if (isExpired) {
       yield* Effect.logInfo(chalk`${campaign.name} | {red Campaigns expired}`);
-      yield* campaignService.updateCampaigns;
+      yield* campaignService.refreshCampaigns;
       return;
     }
 
@@ -322,7 +311,7 @@ const mainLoop = (
       return;
     }
 
-    const channels = yield* campaignService.getChannelsForCampaign(campaign);
+    const channels = yield* resolveCampaignChannels(state, campaign);
     if (channels.length === 0) {
       yield* Effect.logInfo(chalk`${campaign.name} | {red Campaigns offline}`);
       yield* campaignService.setOffline(campaign.id, true);
@@ -331,6 +320,24 @@ const mainLoop = (
     }
 
     yield* processCampaignChannels(state, campaign, drops, channels);
+  });
+
+const isChannelReusable = (channel: Channel, campaign: Campaign): boolean =>
+  channel.isOnline && !!channel.currentSid && channel.campaignId === campaign.id;
+
+const resolveCampaignChannels = (
+  state: MainState,
+  campaign: Campaign,
+): Effect.Effect<ReadonlyArray<Channel>, TwitchApiError | TwitchSocketError, CampaignServiceTag> =>
+  Effect.gen(function* () {
+    const currentChannelOpt = yield* Ref.get(state.currentChannel);
+
+    if (Option.isSome(currentChannelOpt) && isChannelReusable(currentChannelOpt.value, campaign)) {
+      return [currentChannelOpt.value];
+    }
+
+    const campaignService = yield* CampaignServiceTag;
+    return yield* campaignService.getChannelsForCampaign(campaign);
   });
 
 const selectCampaign = (state: MainState, activeList: readonly Campaign[]) =>
@@ -377,6 +384,7 @@ export const MainWorkflow: Effect.Effect<
 > = Effect.gen(function* () {
   const api = yield* TwitchApiTag;
   const socket = yield* TwitchSocketTag;
+  const campaignService = yield* CampaignServiceTag;
 
   yield* ensureSettingsDir.pipe(Effect.ignore);
 
@@ -408,6 +416,7 @@ export const MainWorkflow: Effect.Effect<
   );
 
   const claimInventoryLoop = api.claimAllDropsFromInventory.pipe(
+    Effect.flatMap((claimed) => (claimed > 0 ? campaignService.updateProgress : Effect.void)),
     Effect.ignore,
     Effect.zipRight(Effect.sleep('30 minutes')),
     Effect.repeat(Schedule.forever),

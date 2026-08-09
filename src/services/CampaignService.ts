@@ -8,21 +8,14 @@ import { ConfigStoreTag } from '../core/Config';
 import { CampaignDetailsSchema, ChannelDropsSchema, InventorySchema } from '../core/Schemas';
 import { CHANNEL_LISTENER_TOPICS } from '../helpers/ChannelHelper';
 import { getDropStatus, isMinutesWatchedMet } from '../helpers/TwitchHelper';
+import { makeTtlCache } from '../structures/CacheClient';
 
-import type { TwitchApi, TwitchApiError } from '../api/TwitchApi';
+import type { TwitchApiError } from '../api/TwitchApi';
 import type { TwitchSocket, TwitchSocketError } from '../api/TwitchSocket';
 import type { ClientConfig } from '../core/Config';
 import type { Campaign, Channel, Drop, Reward } from '../core/Schemas';
 
-export type CampaignServiceState = Data.TaggedEnum<{
-  Initial: {};
-  PriorityOnly: {};
-  All: {};
-}>;
-
-export const CampaignServiceState = Data.taggedEnum<CampaignServiceState>();
-
-const REWARD_EXPIRED_MS = 2_592_000_000;
+type CampaignDetail = Schema.Schema.Type<typeof CampaignDetailsSchema>['user']['dropCampaign'];
 
 interface RawDrop {
   readonly id: string;
@@ -46,6 +39,14 @@ interface RawDrop {
       }
     | undefined;
 }
+
+export type CampaignServiceState = Data.TaggedEnum<{
+  Initial: {};
+  PriorityOnly: {};
+  All: {};
+}>;
+
+export const CampaignServiceState = Data.taggedEnum<CampaignServiceState>();
 
 const processDrop = (
   drop: RawDrop,
@@ -100,6 +101,7 @@ export interface CampaignService {
   readonly rewards: Ref.Ref<ReadonlyMap<string, Date>>;
   readonly state: Ref.Ref<CampaignServiceState>;
   readonly updateCampaigns: Effect.Effect<void, TwitchApiError>;
+  readonly refreshCampaigns: Effect.Effect<void, TwitchApiError>;
   readonly updateProgress: Effect.Effect<void, TwitchApiError>;
   readonly getSortedActive: Effect.Effect<ReadonlyArray<Campaign>>;
   readonly getSortedUpcoming: Effect.Effect<ReadonlyArray<Campaign>>;
@@ -113,44 +115,12 @@ export interface CampaignService {
 
 export class CampaignServiceTag extends Context.Tag('@services/CampaignService')<CampaignServiceTag, CampaignService>() {}
 
-const filterChannelsByCampaign = (
-  api: TwitchApi,
-  channels: readonly Channel[],
-  campaignId: string,
-): Effect.Effect<ReadonlyArray<Channel>, TwitchApiError> => {
-  if (channels.length === 0) return Effect.succeed([]);
-  return api
-    .graphql(
-      channels.map((c) => GqlQueries.channelDrops(c.id)),
-      ChannelDropsSchema,
-    )
-    .pipe(
-      Effect.map((responses) => channels.filter((_, i) => responses[i].channel.viewerDropCampaigns?.some((vc) => vc.id === campaignId) ?? false)),
-    );
-};
-
 const cleanupSocketListeners = (socket: TwitchSocket | undefined, channels: readonly Channel[]): Effect.Effect<void, TwitchSocketError> => {
   if (!socket || channels.length === 0) return Effect.void;
   return Effect.forEach(channels, (c) => Effect.forEach(CHANNEL_LISTENER_TOPICS, (topic) => socket.unlisten(topic, c.id), { discard: true }), {
     discard: true,
   });
 };
-
-const processOnlineChannels = (
-  api: TwitchApi,
-  socket: TwitchSocket | undefined,
-  campaignId: string,
-  channels: readonly Channel[],
-): Effect.Effect<ReadonlyArray<Channel>, TwitchApiError | TwitchSocketError> =>
-  Effect.gen(function* () {
-    const filtered = yield* filterChannelsByCampaign(api, channels, campaignId);
-    const filteredIds = new Set(filtered.map((f) => f.id));
-    yield* cleanupSocketListeners(
-      socket,
-      channels.filter((oc) => !filteredIds.has(oc.id)),
-    );
-    return filtered;
-  });
 
 const buildActiveDrops = (
   rawDrops: ReadonlyArray<RawDrop>,
@@ -202,7 +172,11 @@ export const CampaignServiceLayer: Layer.Layer<CampaignServiceTag, never, Twitch
     const rewardsRef = yield* Ref.make<ReadonlyMap<string, Date>>(new Map());
     const stateRef = yield* Ref.make<CampaignServiceState>(CampaignServiceState.Initial());
 
-    const updateCampaigns = Effect.gen(function* () {
+    const campaignDetailsCache = yield* makeTtlCache<string, CampaignDetail>(300_000, 256);
+    const candidateChannelsCache = yield* makeTtlCache<string, ReadonlyArray<Channel>>(60_000, 128);
+    const dropCampaignIdsCache = yield* makeTtlCache<string, ReadonlySet<string>>(60_000, 512);
+
+    const fetchCampaigns = Effect.gen(function* () {
       const [response, config] = yield* Effect.all([api.dropsDashboard, configStore.get]);
       const newPriorityGames: string[] = [];
 
@@ -247,6 +221,10 @@ export const CampaignServiceLayer: Layer.Layer<CampaignServiceTag, never, Twitch
       });
     });
 
+    const [cachedFetchCampaigns, invalidateFetchCampaigns] = yield* Effect.cachedInvalidateWithTTL(fetchCampaigns, '10 minutes');
+    const updateCampaigns = cachedFetchCampaigns.pipe(Effect.tapErrorCause(() => invalidateFetchCampaigns));
+    const refreshCampaigns = invalidateFetchCampaigns.pipe(Effect.zipRight(updateCampaigns));
+
     const syncProgressRef = (newDrops: ReadonlyArray<Drop>, now: number) =>
       Ref.update(progressRef, (current) => {
         const currentMap = new Map(current.map((d) => [d.id, d]));
@@ -286,7 +264,7 @@ export const CampaignServiceLayer: Layer.Layer<CampaignServiceTag, never, Twitch
         const userInventory = inventory.currentUser.inventory;
 
         for (const drop of userInventory.gameEventDrops) {
-          if (now - drop.lastAwardedAt.getTime() < REWARD_EXPIRED_MS) {
+          if (now - drop.lastAwardedAt.getTime() < 2_592_000_000) {
             rewardsMap.set(drop.id, drop.lastAwardedAt);
           }
         }
@@ -299,19 +277,42 @@ export const CampaignServiceLayer: Layer.Layer<CampaignServiceTag, never, Twitch
     const updateProgress = Effect.gen(function* () {
       const config = yield* configStore.get;
       yield* syncInventory(yield* api.inventory, config, Date.now());
+      yield* campaignDetailsCache.invalidateAll;
     });
 
-    const getDropsForCampaign = (campaignId: string): Effect.Effect<ReadonlyArray<Drop>, TwitchApiError> =>
+    const loadCampaignDetail = (
+      campaignId: string,
+      config: ClientConfig,
+      now: number,
+    ): Effect.Effect<{ readonly detail: CampaignDetail | undefined; readonly rewards: ReadonlyMap<string, Date> }, TwitchApiError> =>
       Effect.gen(function* () {
-        const config = yield* configStore.get;
-        const now = Date.now();
+        const cached = yield* campaignDetailsCache.get(campaignId);
+
+        if (Option.isSome(cached)) {
+          return { detail: cached.value, rewards: yield* Ref.get(rewardsRef) };
+        }
 
         const [detailRes, invRes] = (yield* api.graphqlBatch(
           [GqlQueries.campaignDetails(campaignId), GqlQueries.inventory],
           [CampaignDetailsSchema, InventorySchema],
         )) as [Schema.Schema.Type<typeof CampaignDetailsSchema>, Schema.Schema.Type<typeof InventorySchema>];
 
-        const dropDetail = detailRes.user?.dropCampaign;
+        const rewards = yield* syncInventory(invRes, config, now);
+        const detail = detailRes.user?.dropCampaign;
+
+        if (detail) {
+          yield* campaignDetailsCache.set(campaignId, detail);
+        }
+
+        return { detail, rewards };
+      });
+
+    const getDropsForCampaign = (campaignId: string): Effect.Effect<ReadonlyArray<Drop>, TwitchApiError> =>
+      Effect.gen(function* () {
+        const config = yield* configStore.get;
+        const now = Date.now();
+
+        const { detail: dropDetail, rewards: rewardsMap } = yield* loadCampaignDetail(campaignId, config, now);
 
         if (!dropDetail) {
           yield* Ref.update(campaignsRef, (map) => {
@@ -336,8 +337,6 @@ export const CampaignServiceLayer: Layer.Layer<CampaignServiceTag, never, Twitch
         });
 
         if (!dropDetail.timeBasedDrops || dropDetail.timeBasedDrops.length === 0) return [];
-
-        const rewardsMap = yield* syncInventory(invRes, config, now);
 
         const progress = yield* Ref.get(progressRef);
         const progressMap = new Map(progress.map((d) => [d.id, d.currentMinutesWatched]));
@@ -395,12 +394,83 @@ export const CampaignServiceLayer: Layer.Layer<CampaignServiceTag, never, Twitch
         return next;
       });
 
+    const resolveDropCampaignIds = (channelIds: readonly string[]): Effect.Effect<ReadonlyMap<string, ReadonlySet<string>>, TwitchApiError> =>
+      Effect.gen(function* () {
+        const { hits, misses } = yield* dropCampaignIdsCache.partition(channelIds);
+
+        if (misses.length === 0) return hits;
+
+        const responses = yield* api.graphql(
+          misses.map((id) => GqlQueries.channelDrops(id)),
+          ChannelDropsSchema,
+        );
+
+        const entries = misses.map(
+          (id, index) =>
+            [id, new Set((responses[index].channel.viewerDropCampaigns ?? []).map((vc) => vc.id))] as readonly [string, ReadonlySet<string>],
+        );
+
+        yield* dropCampaignIdsCache.setAll(entries);
+        return new Map<string, ReadonlySet<string>>([...hits, ...entries]);
+      });
+
+    const resolveCandidateChannels = (campaign: Campaign): Effect.Effect<ReadonlyArray<Channel>, TwitchApiError> =>
+      Effect.gen(function* () {
+        const game = campaign.game;
+        if (game === null) return [];
+
+        const allowChannels = campaign.allowChannels.slice(0, 30);
+        const cacheKey = `${game.id}|${game.slug ?? ''}|${allowChannels.join(',')}`;
+
+        const cached = yield* candidateChannelsCache.get(cacheKey);
+        if (Option.isSome(cached)) return cached.value;
+
+        const toChannel = (id: string, login: string, sid: string, currentGameId: string, currentGameName: string): Channel => ({
+          id,
+          login,
+          gameId: game.id,
+          isOnline: true,
+          currentSid: sid,
+          currentGameId,
+          currentGameName,
+        });
+
+        const candidates: Channel[] = [];
+
+        if (allowChannels.length > 0) {
+          const res = yield* api.channelStreams(allowChannels);
+          for (const u of res.users) {
+            if (u.stream) candidates.push(toChannel(u.id, u.login, u.stream.id, game.id, game.displayName));
+          }
+        } else {
+          const res = yield* api.gameDirectory(game.slug || '');
+          const broadcasters = (res.game?.streams.edges ?? []).map((e) => e.node.broadcaster).filter((b): b is NonNullable<typeof b> => b != null);
+
+          if (broadcasters.length > 0) {
+            const streams = yield* api.helixStreams(broadcasters.map((b) => b.id)).pipe(Effect.option);
+            if (Option.isNone(streams)) return [];
+
+            const streamById = new Map(streams.value.data.map((s) => [s.user_id, s]));
+
+            for (const b of broadcasters) {
+              const live = streamById.get(b.id);
+              if (!live) continue;
+              candidates.push(toChannel(b.id, b.login, live.id, live.game_id, live.game_name));
+            }
+          }
+        }
+
+        yield* candidateChannelsCache.set(cacheKey, candidates);
+        return candidates;
+      });
+
     return {
       campaigns: campaignsRef,
       progress: progressRef,
       rewards: rewardsRef,
       state: stateRef,
       updateCampaigns,
+      refreshCampaigns,
       updateProgress,
       getSortedActive,
       getSortedUpcoming: Effect.gen(function* () {
@@ -415,28 +485,30 @@ export const CampaignServiceLayer: Layer.Layer<CampaignServiceTag, never, Twitch
       getDropsForCampaign,
       getChannelsForCampaign: (campaign) =>
         Effect.gen(function* () {
-          if (campaign.game === null) return [];
-          const onlineChannels: Channel[] = [];
-          if (campaign.allowChannels.length > 0) {
-            const res = yield* api.channelStreams(campaign.allowChannels.slice(0, 30));
-            for (const u of res.users) {
-              if (u.stream) onlineChannels.push({ id: u.id, login: u.login, gameId: campaign.game!.id, isOnline: true });
-            }
-          } else {
-            const res = yield* api.gameDirectory(campaign.game.slug || '');
-            for (const e of res.game?.streams.edges ?? []) {
-              if (e.node.broadcaster)
-                onlineChannels.push({ id: e.node.broadcaster.id, login: e.node.broadcaster.login, gameId: campaign.game!.id, isOnline: true });
-            }
-          }
-          if (onlineChannels.length === 0) return [];
-          return yield* processOnlineChannels(api, socket, campaign.id, onlineChannels);
+          const candidates = yield* resolveCandidateChannels(campaign);
+          if (candidates.length === 0) return [];
+
+          const dropCampaignIds = yield* resolveDropCampaignIds(candidates.map((c) => c.id));
+          const filtered = candidates
+            .filter((c) => dropCampaignIds.get(c.id)?.has(campaign.id) ?? false)
+            .map((c) => ({ ...c, campaignId: campaign.id }));
+          const filteredIds = new Set(filtered.map((f) => f.id));
+
+          yield* cleanupSocketListeners(
+            socket,
+            candidates.filter((oc) => !filteredIds.has(oc.id)),
+          );
+
+          return filtered;
         }),
       addRewards: (rewards) =>
-        Ref.update(rewardsRef, (current) => {
-          const next = new Map(current);
-          for (const r of rewards) next.set(r.id, r.lastAwardedAt);
-          return next;
+        Effect.gen(function* () {
+          yield* Ref.update(rewardsRef, (current) => {
+            const next = new Map(current);
+            for (const r of rewards) next.set(r.id, r.lastAwardedAt);
+            return next;
+          });
+          yield* campaignDetailsCache.invalidateAll;
         }),
     } satisfies CampaignService;
   }),

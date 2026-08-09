@@ -70,7 +70,7 @@ export interface TwitchApi {
   readonly claimPoints: (channelID: string, claimID: string) => Effect.Effect<Schema.Schema.Type<typeof ClaimPointsSchema>, TwitchApiError>;
   readonly claimMoments: (momentID: string) => Effect.Effect<Schema.Schema.Type<typeof ClaimMomentsSchema>, TwitchApiError>;
   readonly claimDrops: (dropInstanceID: string) => Effect.Effect<Schema.Schema.Type<typeof ClaimDropsSchema>, TwitchApiError>;
-  readonly claimAllDropsFromInventory: Effect.Effect<void, TwitchApiError>;
+  readonly claimAllDropsFromInventory: Effect.Effect<number, TwitchApiError>;
   readonly contributeCommunityGoal: (
     channelID: string,
     goalID: string,
@@ -378,7 +378,7 @@ export const TwitchApiLayer = (authToken: string, isDebug = false): Layer.Layer<
         return text.substring(start, end).trim();
       };
 
-      const getHlsUrl = (login: string): Effect.Effect<string, TwitchApiError> =>
+      const getHls = (login: string): Effect.Effect<{ readonly url: string; readonly body: string }, TwitchApiError> =>
         Effect.gen(function* () {
           const playback = yield* playbackToken(login);
           const token = playback.streamPlaybackAccessToken;
@@ -394,17 +394,18 @@ export const TwitchApiLayer = (authToken: string, isDebug = false): Layer.Layer<
             return yield* new TwitchApiError({ message: 'HLS URL not found' });
           }
 
-          return url;
+          return { url, body: hls.body as string };
         }).pipe(
           Effect.catchAll((e) =>
             e instanceof TwitchApiError ? Effect.fail(e) : Effect.fail(new TwitchApiError({ message: 'Failed to get HLS URL', cause: e })),
           ),
         );
 
-      const checkStream = (hlsUrl: string): Effect.Effect<boolean, TwitchApiError> =>
+      const isStreamLive = (hlsUrl: string, playlistBody?: string): Effect.Effect<boolean, TwitchApiError> =>
         Effect.gen(function* () {
-          const hls = yield* request({ url: hlsUrl, headers: { accept: 'application/x-mpegURL' } });
-          const chunkUrl = findLastHttpUrl(hls.body as string);
+          const body = playlistBody ?? (yield* request({ url: hlsUrl, headers: { accept: 'application/x-mpegURL' } })).body;
+
+          const chunkUrl = findLastHttpUrl(body as string);
           if (!chunkUrl) {
             return false;
           }
@@ -455,28 +456,27 @@ export const TwitchApiLayer = (authToken: string, isDebug = false): Layer.Layer<
           }
 
           const streamResult = yield* Effect.gen(function* () {
-            const hlsUrl = channel.hlsUrl || (yield* getHlsUrl(channel.login));
-            const isSuccess = yield* checkStream(hlsUrl);
+            const hls = channel.hlsUrl ? { url: channel.hlsUrl, body: undefined } : yield* getHls(channel.login);
+            const isSuccess = yield* isStreamLive(hls.url, hls.body);
 
             if (isSuccess) {
               const success = yield* sendMinuteWatched(channel);
-              return { success, hlsUrl };
+              return { success, hlsUrl: hls.url };
             }
 
             const live = yield* channelLive(channel.login);
             if (!live.user?.stream?.id) {
-              return { success: false, hlsUrl };
+              return { success: false, hlsUrl: hls.url };
             }
 
-            const freshHlsUrl = yield* getHlsUrl(channel.login);
-            const isFreshSuccess = yield* checkStream(freshHlsUrl);
+            const isRetrySuccess = yield* isStreamLive(hls.url);
 
-            if (!isFreshSuccess) {
-              return { success: false, hlsUrl: freshHlsUrl };
+            if (!isRetrySuccess) {
+              return { success: false, hlsUrl: hls.url };
             }
 
             const success = yield* sendMinuteWatched(channel);
-            return { success, hlsUrl: freshHlsUrl };
+            return { success, hlsUrl: hls.url };
           }).pipe(Effect.orElseSucceed(() => ({ success: false, hlsUrl: channel.hlsUrl })));
 
           return streamResult;
@@ -545,10 +545,11 @@ export const TwitchApiLayer = (authToken: string, isDebug = false): Layer.Layer<
       const claimDrops = (dropInstanceID: string): Effect.Effect<Schema.Schema.Type<typeof ClaimDropsSchema>, TwitchApiError> =>
         mapFirst(graphql(GqlQueries.claimDrops(dropInstanceID), ClaimDropsSchema));
 
-      const claimAllDropsFromInventory: Effect.Effect<void, TwitchApiError> = inventory.pipe(
+      const claimAllDropsFromInventory: Effect.Effect<number, TwitchApiError> = inventory.pipe(
         Effect.flatMap((inv) =>
           Effect.gen(function* () {
             const campaigns = inv.currentUser.inventory.dropCampaignsInProgress;
+            const pending: Array<{ readonly name: string; readonly dropInstanceID: string }> = [];
 
             for (const campaign of campaigns) {
               for (const drop of campaign.timeBasedDrops) {
@@ -559,12 +560,34 @@ export const TwitchApiLayer = (authToken: string, isDebug = false): Layer.Layer<
                   continue;
                 }
 
-                const claimRes = yield* claimDrops(dropInstanceID!).pipe(Effect.option, Effect.orDie);
-                if (Option.isSome(claimRes) && claimRes.value.claimDropRewards) {
-                  yield* Effect.logInfo(chalk`{green ${drop.name}} | {yellow Drops claimed}`);
-                }
+                pending.push({ name: drop.name, dropInstanceID: dropInstanceID! });
               }
             }
+
+            if (pending.length === 0) {
+              return 0;
+            }
+
+            const claimRes = yield* graphql(
+              pending.map((p) => GqlQueries.claimDrops(p.dropInstanceID)),
+              ClaimDropsSchema,
+            ).pipe(Effect.option);
+
+            if (Option.isNone(claimRes)) {
+              return 0;
+            }
+
+            let claimed = 0;
+            for (const [index, res] of claimRes.value.entries()) {
+              if (!res.claimDropRewards) {
+                continue;
+              }
+
+              claimed += 1;
+              yield* Effect.logInfo(chalk`{green ${pending[index].name}} | {yellow Drops claimed}`);
+            }
+
+            return claimed;
           }),
         ),
       );
