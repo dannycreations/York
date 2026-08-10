@@ -2,7 +2,7 @@ import { Socket } from '@effect/platform';
 import { NodeSocket } from '@effect/platform-node';
 import { Cause, Context, Data, Deferred, Duration, Effect, Exit, Layer, Option, PubSub, Ref, Schedule, Scope, Stream } from 'effect';
 
-import { HttpClientTag } from './HttpClient';
+import { HttpClientTag } from './HttpClient.js';
 
 export type SocketEvent = Data.TaggedEnum<{
   Open: {};

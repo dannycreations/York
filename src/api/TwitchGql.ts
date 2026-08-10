@@ -1,13 +1,9 @@
-import { Schema } from 'effect';
-
-export const GraphqlRequestSchema = Schema.Struct({
-  operationName: Schema.String,
-  variables: Schema.Record({ key: Schema.String, value: Schema.Unknown }),
-  query: Schema.optional(Schema.String),
-  hash: Schema.optional(Schema.String),
-});
-
-export type GraphqlRequest = Schema.Schema.Type<typeof GraphqlRequestSchema>;
+export interface GraphqlRequest {
+  readonly operationName: string;
+  readonly variables: Readonly<Record<string, unknown>>;
+  readonly query?: string | undefined;
+  readonly hash?: string | undefined;
+}
 
 export const GqlQueries = {
   dropsDashboard: {
@@ -46,11 +42,6 @@ export const GqlQueries = {
     hash: 'd86775d0ef16a63a33ad52e80eaff963b2d5b72fada7c991504a57496e1d8e4b',
     variables: { fetchRewardCampaigns: true },
   } satisfies GraphqlRequest,
-  channelLive: (channelLogin: string): GraphqlRequest => ({
-    operationName: 'UseLive',
-    hash: '639d5f11bfb8bf3053b424d9ef650d04c4ebb7d94711d644afb08fe9a0fad5d9',
-    variables: { channelLogin },
-  }),
   channelStreams: (logins: readonly string[]): GraphqlRequest => ({
     operationName: 'FFZ_StreamFetch',
     hash: 'e3dbb5d8509ff2ef9d6518bf6749d2112bf6fc3ee2886248579bd7db0feb6504',

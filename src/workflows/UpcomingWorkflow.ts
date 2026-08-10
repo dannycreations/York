@@ -1,12 +1,12 @@
 import { chalk } from '@vegapunk/utilities';
 import { Effect, Option, Ref, Schedule } from 'effect';
 
-import { calculatePriority } from '../helpers/TwitchHelper';
-import { CampaignServiceState, CampaignServiceTag } from '../services/CampaignService';
+import { calculatePriority } from '../helpers/TwitchHelper.js';
+import { CampaignServiceTag } from '../services/CampaignService.js';
 
-import type { Campaign } from '../core/Schemas';
-import type { CampaignService } from '../services/CampaignService';
-import type { MainState } from './MainWorkflow';
+import type { Campaign } from '../core/Schemas.js';
+import type { MainState } from '../core/State.js';
+import type { CampaignService } from '../services/CampaignService.js';
 
 const processUpcomingCampaign = (
   next: Campaign,
@@ -45,7 +45,7 @@ const processUpcomingCampaign = (
     }
 
     if (isMainCall) {
-      yield* Ref.set(campaignService.state, CampaignServiceState.All());
+      yield* campaignService.setMode('All');
     }
 
     yield* Effect.logInfo(chalk`{bold.yellow ${next.name}} | {bold.yellow {strikethrough Upcoming}}`);
@@ -72,9 +72,9 @@ export const UpcomingWorkflow = (state: MainState) =>
       const now = Date.now();
       const nextRefresh = yield* Ref.get(nextRefreshRef);
 
-      const campaignState = yield* Ref.get(campaignService.state);
+      const campaignMode = yield* campaignService.getMode;
       const currentCampaign = yield* Ref.get(state.currentCampaign);
-      const isMainCall = campaignState._tag === 'Initial' && Option.isNone(currentCampaign);
+      const isMainCall = campaignMode === 'Initial' && Option.isNone(currentCampaign);
 
       if (isMainCall || now >= nextRefresh) {
         yield* campaignService.updateCampaigns.pipe(Effect.catchAll((e) => Effect.logWarning(chalk`{yellow Upcoming check error: ${e.message}}`)));

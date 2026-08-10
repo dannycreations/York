@@ -2,12 +2,12 @@ import { chalk, randomString } from '@vegapunk/utilities';
 import { isObjectLike } from '@vegapunk/utilities/common';
 import { Context, Data, Effect, identity, Layer, Option, Ref, Schema, Stream } from 'effect';
 
-import { Twitch } from '../core/Constants';
-import { SocketMessageSchema } from '../core/Schemas';
-import { HttpClientTag } from '../structures/HttpClient';
-import { makeSocketClient } from '../structures/SocketClient';
+import { Twitch } from '../core/Constants.js';
+import { SocketMessageSchema } from '../core/Schemas.js';
+import { HttpClientTag } from '../structures/HttpClient.js';
+import { makeSocketClient } from '../structures/SocketClient.js';
 
-import type { SocketMessage } from '../core/Schemas';
+import type { SocketMessage } from '../core/Schemas.js';
 
 export class TwitchSocketError extends Data.TaggedError('TwitchSocketError')<{
   readonly message: string;
@@ -15,10 +15,10 @@ export class TwitchSocketError extends Data.TaggedError('TwitchSocketError')<{
 }> {}
 
 export interface TwitchSocket {
-  readonly listen: (topic: string, id: string) => Effect.Effect<void, TwitchSocketError>;
-  readonly unlisten: (topic: string, id: string) => Effect.Effect<void, TwitchSocketError>;
+  readonly listen: (topics: ReadonlyArray<string>, id: string) => Effect.Effect<void, TwitchSocketError>;
+  readonly unlisten: (topics: ReadonlyArray<string>, id: string) => Effect.Effect<void, TwitchSocketError>;
   readonly messages: Stream.Stream<SocketMessage, never, never>;
-  readonly disconnect: (graceful?: boolean) => Effect.Effect<void>;
+  readonly disconnect: Effect.Effect<void>;
 }
 
 export class TwitchSocketTag extends Context.Tag('@services/TwitchSocket')<TwitchSocketTag, TwitchSocket>() {}
@@ -39,67 +39,60 @@ export const TwitchSocketLayer = (authToken: string): Layer.Layer<TwitchSocketTa
 
       const subscribedTopics = yield* Ref.make<ReadonlySet<string>>(new Set());
 
-      const performListen = (topicKey: string): Effect.Effect<void, TwitchSocketError> =>
+      const performTopics = (type: 'LISTEN' | 'UNLISTEN', topicKeys: ReadonlyArray<string>): Effect.Effect<void, TwitchSocketError> =>
         client
           .send({
-            type: 'LISTEN',
+            type,
             nonce: randomString(30),
             data: {
-              topics: [topicKey],
+              topics: topicKeys,
               auth_token: authToken,
             },
           })
-          .pipe(Effect.mapError((e) => new TwitchSocketError({ message: `TwitchSocket: Failed to listen to ${topicKey}`, cause: e })));
+          .pipe(
+            Effect.tap(() => Effect.logDebug(`TwitchSocket: ${type} ${topicKeys.join(', ')}`)),
+            Effect.mapError((e) => new TwitchSocketError({ message: `TwitchSocket: Failed to ${type} ${topicKeys.join(', ')}`, cause: e })),
+          );
 
-      const performUnlisten = (topicKey: string): Effect.Effect<void, TwitchSocketError> =>
-        client
-          .send({
-            type: 'UNLISTEN',
-            nonce: randomString(30),
-            data: {
-              topics: [topicKey],
-              auth_token: authToken,
-            },
-          })
-          .pipe(Effect.mapError((e) => new TwitchSocketError({ message: `TwitchSocket: Failed to unlisten from ${topicKey}`, cause: e })));
+      const toTopicKeys = (topics: ReadonlyArray<string>, id: string): ReadonlyArray<string> => [...new Set(topics.map((topic) => `${topic}.${id}`))];
 
-      const listen = (topic: string, id: string): Effect.Effect<void, TwitchSocketError> =>
+      const listen = (topics: ReadonlyArray<string>, id: string): Effect.Effect<void, TwitchSocketError> =>
         Ref.modify(subscribedTopics, (s) => {
-          const topicKey = `${topic}.${id}`;
+          const pending = toTopicKeys(topics, id).filter((topicKey) => !s.has(topicKey));
 
-          if (s.has(topicKey)) {
+          if (pending.length === 0) {
             return [Effect.void, s];
           }
 
-          const listenEffect = performListen(topicKey).pipe(
-            Effect.tap(() => Effect.logDebug(`TwitchSocket: Subscribed ${topicKey}`)),
+          const listenEffect = performTopics('LISTEN', pending).pipe(
             Effect.catchAll((e) =>
               Ref.update(subscribedTopics, (set) => {
                 const next = new Set(set);
-                next.delete(topicKey);
+                for (const topicKey of pending) {
+                  next.delete(topicKey);
+                }
                 return next;
               }).pipe(Effect.zipRight(Effect.fail(e))),
             ),
           );
 
-          return [listenEffect, new Set([...s, topicKey])];
+          return [listenEffect, new Set([...s, ...pending])];
         }).pipe(Effect.flatten);
 
-      const unlisten = (topic: string, id: string): Effect.Effect<void, TwitchSocketError> =>
+      const unlisten = (topics: ReadonlyArray<string>, id: string): Effect.Effect<void, TwitchSocketError> =>
         Ref.modify(subscribedTopics, (s) => {
-          const topicKey = `${topic}.${id}`;
-          const isSubscribed = s.has(topicKey);
+          const pending = toTopicKeys(topics, id).filter((topicKey) => s.has(topicKey));
 
-          if (!isSubscribed) {
+          if (pending.length === 0) {
             return [Effect.void, s];
           }
 
           const next = new Set(s);
-          next.delete(topicKey);
+          for (const topicKey of pending) {
+            next.delete(topicKey);
+          }
 
-          const unlistenEffect = performUnlisten(topicKey).pipe(Effect.tap(() => Effect.logDebug(`TwitchSocket: Unsubscribed ${topicKey}`)));
-
-          return [unlistenEffect, next];
+          return [performTopics('UNLISTEN', pending), next];
         }).pipe(Effect.flatten);
 
       const parseMessage = (data: string): Effect.Effect<Option.Option<SocketMessage>> =>
@@ -160,14 +153,13 @@ export const TwitchSocketLayer = (authToken: string): Layer.Layer<TwitchSocketTa
         Stream.tap(() =>
           Effect.gen(function* () {
             const topics = yield* Ref.get(subscribedTopics);
-            const hasNoTopics = topics.size === 0;
 
-            if (hasNoTopics) {
+            if (topics.size === 0) {
               return;
             }
 
             yield* Effect.logInfo(`TwitchSocket: Reconnected, resubscribing to ${topics.size} topics`);
-            yield* Effect.forEach(topics, (topicKey) => performListen(topicKey), { discard: true });
+            yield* performTopics('LISTEN', [...topics]).pipe(Effect.ignore);
           }),
         ),
         Stream.runDrain,
@@ -178,7 +170,7 @@ export const TwitchSocketLayer = (authToken: string): Layer.Layer<TwitchSocketTa
         listen,
         unlisten,
         messages,
-        disconnect: (graceful) => client.disconnect(graceful),
+        disconnect: client.disconnect(),
       } satisfies TwitchSocket;
     }),
   );

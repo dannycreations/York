@@ -2,35 +2,26 @@ import 'dotenv/config';
 
 import { Config, Effect, Layer } from 'effect';
 
-import { TwitchApiLayer } from './api/TwitchApi';
-import { TwitchSocketLayer } from './api/TwitchSocket';
-import { ConfigStoreLayer } from './core/Config';
-import { CampaignServiceLayer } from './services/CampaignService';
-import { DropServiceLayer } from './services/DropService';
-import { PointServiceLayer } from './services/PointService';
-import { WatchServiceLayer } from './services/WatchService';
-import { HttpClientLayer } from './structures/HttpClient';
-import { LoggerClientLayer } from './structures/LoggerClient';
-import { cycleUntilMidnight, runMainCycle } from './structures/RuntimeClient';
-import { MainWorkflow } from './workflows/MainWorkflow';
+import { TwitchApiLayer } from './api/TwitchApi.js';
+import { TwitchSocketLayer } from './api/TwitchSocket.js';
+import { ConfigStoreLayer } from './core/Config.js';
+import { DebugLayer } from './core/Debug.js';
+import { CampaignServiceLayer } from './services/CampaignService.js';
+import { DropServiceLayer } from './services/DropService.js';
+import { PointServiceLayer } from './services/PointService.js';
+import { HttpClientLayer } from './structures/HttpClient.js';
+import { LoggerClientLayer } from './structures/LoggerClient.js';
+import { cycleUntilMidnight, runMainCycle } from './structures/RuntimeClient.js';
+import { MainWorkflow } from './workflows/MainWorkflow.js';
 
 const logger = LoggerClientLayer();
 
 const makeMainLayer = (authToken: string, isDebug: boolean) => {
-  const core = Layer.mergeAll(ConfigStoreLayer, HttpClientLayer, logger);
+  const core = Layer.mergeAll(ConfigStoreLayer, HttpClientLayer, DebugLayer(isDebug), logger);
+  const infrastructure = Layer.mergeAll(TwitchApiLayer(authToken), TwitchSocketLayer(authToken)).pipe(Layer.provideMerge(core));
+  const campaign = CampaignServiceLayer.pipe(Layer.provideMerge(infrastructure));
 
-  const api = TwitchApiLayer(authToken, isDebug).pipe(Layer.provide(core));
-  const socket = TwitchSocketLayer(authToken).pipe(Layer.provide(core));
-  const infrastructure = Layer.mergeAll(api, socket);
-
-  const campaign = CampaignServiceLayer.pipe(Layer.provide(infrastructure), Layer.provide(core));
-
-  const points = PointServiceLayer.pipe(Layer.provide(infrastructure), Layer.provide(core));
-  const drops = DropServiceLayer.pipe(Layer.provide(campaign), Layer.provide(infrastructure), Layer.provide(core));
-  const watch = WatchServiceLayer.pipe(Layer.provide(infrastructure), Layer.provide(core));
-  const domain = Layer.mergeAll(points, drops, watch);
-
-  return Layer.mergeAll(domain, campaign, infrastructure, core);
+  return Layer.mergeAll(PointServiceLayer, DropServiceLayer).pipe(Layer.provideMerge(campaign));
 };
 
 const program = Effect.gen(function* () {

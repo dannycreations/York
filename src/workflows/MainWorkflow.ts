@@ -1,44 +1,30 @@
-import { mkdir } from 'node:fs/promises';
 import { chalk } from '@vegapunk/utilities';
-import { Data, Effect, Option, Ref, Schedule, Scope } from 'effect';
+import { Effect, Option, Ref, Schedule, Scope } from 'effect';
 
-import { TwitchApiTag } from '../api/TwitchApi';
-import { TwitchSocketTag } from '../api/TwitchSocket';
-import { ConfigStoreTag } from '../core/Config';
-import { WsTopic } from '../core/Constants';
-import { CHANNEL_LISTENER_TOPICS, resetChannel, setChannel } from '../helpers/ChannelHelper';
-import { getDropStatus, isMinutesWatchedMet } from '../helpers/TwitchHelper';
-import { CampaignServiceState, CampaignServiceTag } from '../services/CampaignService';
-import { DropServiceTag } from '../services/DropService';
-import { PointServiceTag } from '../services/PointService';
-import { WatchServiceTag } from '../services/WatchService';
-import { OfflineWorkflow } from './OfflineWorkflow';
-import { SocketWorkflow } from './SocketWorkflow';
-import { UpcomingWorkflow } from './UpcomingWorkflow';
+import { TwitchApiTag } from '../api/TwitchApi.js';
+import { TwitchSocketTag } from '../api/TwitchSocket.js';
+import { ConfigStoreTag } from '../core/Config.js';
+import { WsTopic } from '../core/Constants.js';
+import { makeMainState } from '../core/State.js';
+import { CHANNEL_LISTENER_TOPICS, resetChannel, setChannel } from '../helpers/ChannelHelper.js';
+import { isMinutesWatchedMet } from '../helpers/TwitchHelper.js';
+import { CampaignServiceTag } from '../services/CampaignService.js';
+import { DropServiceTag } from '../services/DropService.js';
+import { PointServiceTag } from '../services/PointService.js';
+import { OfflineWorkflow } from './OfflineWorkflow.js';
+import { SocketWorkflow } from './SocketWorkflow.js';
+import { UpcomingWorkflow } from './UpcomingWorkflow.js';
 
-import type { TwitchApiError } from '../api/TwitchApi';
-import type { TwitchSocketError } from '../api/TwitchSocket';
-import type { Campaign, Channel, Drop } from '../core/Schemas';
+import type { TwitchApiError } from '../api/TwitchApi.js';
+import type { DebugTag } from '../core/Debug.js';
+import type { Campaign, Channel, Drop } from '../core/Schemas.js';
+import type { MainState } from '../core/State.js';
 
-export class MainWorkflowError extends Data.TaggedError('MainWorkflowError')<{
-  readonly message: string;
-  readonly cause?: unknown;
-}> {}
+type WorkflowContext = ConfigStoreTag | DebugTag | TwitchApiTag | TwitchSocketTag | CampaignServiceTag | PointServiceTag | DropServiceTag;
 
-export interface MainState {
-  readonly currentCampaign: Ref.Ref<Option.Option<Campaign>>;
-  readonly currentChannel: Ref.Ref<Option.Option<Channel>>;
-  readonly currentDrop: Ref.Ref<Option.Option<Drop>>;
-  readonly localMinutesWatched: Ref.Ref<number>;
-  readonly nextPointClaim: Ref.Ref<number>;
-  readonly nextWatch: Ref.Ref<number>;
-  readonly isClaiming: Ref.Ref<boolean>;
-}
-
-const shouldSwitchCampaign = (state: MainState, campaign: Campaign, activeCampaigns: readonly Campaign[]): Effect.Effect<boolean, never, never> =>
+const shouldSwitchCampaign = (state: MainState, campaign: Campaign, higherPriority: Campaign): Effect.Effect<boolean> =>
   Effect.gen(function* () {
-    const higherPriority = activeCampaigns[0];
-    if (!higherPriority || higherPriority.id === campaign.id) {
+    if (higherPriority.id === campaign.id) {
       return false;
     }
 
@@ -57,11 +43,7 @@ const handleDropProgress = (
   campaign: Campaign,
   channel: Channel,
   drop: Drop,
-): Effect.Effect<
-  void,
-  TwitchApiError | TwitchSocketError | MainWorkflowError,
-  TwitchApiTag | TwitchSocketTag | CampaignServiceTag | DropServiceTag
-> =>
+): Effect.Effect<void, TwitchApiError, TwitchApiTag | TwitchSocketTag | CampaignServiceTag | DropServiceTag> =>
   Effect.gen(function* () {
     const dropService = yield* DropServiceTag;
     const currentMinutesWatched = drop.currentMinutesWatched + 1;
@@ -72,31 +54,25 @@ const handleDropProgress = (
 
     if (isMinutesWatchedMet(updatedDrop)) {
       yield* Effect.logInfo(chalk`{green ${drop.name}} | {green Completed!} | {green ${currentMinutesWatched}/${drop.requiredMinutesWatched}}`);
-      yield* dropService.claimDropSequence(campaign, updatedDrop, state.isClaiming, state.currentDrop);
+      yield* dropService.claimDropSequence(campaign, updatedDrop, state);
       yield* resetChannel(state.currentChannel);
       return;
     }
 
     const socket = yield* TwitchSocketTag;
-    yield* Effect.forEach(CHANNEL_LISTENER_TOPICS, (topic) => socket.listen(topic, channel.id), {
-      concurrency: 'unbounded',
-      discard: true,
-    }).pipe(Effect.ignore);
+    yield* socket.listen(CHANNEL_LISTENER_TOPICS, channel.id).pipe(Effect.ignore);
 
     const localMin = yield* Ref.get(state.localMinutesWatched);
     if (localMin < 20) return;
 
-    yield* dropService.syncDropProgress(updatedDrop, state.localMinutesWatched, state.currentDrop, state.currentChannel);
+    yield* dropService.syncDropProgress(updatedDrop, state);
   });
 
 const watchSession = (
   state: MainState,
   campaign: Campaign,
-): Effect.Effect<
-  void,
-  TwitchApiError | TwitchSocketError | MainWorkflowError,
-  ConfigStoreTag | TwitchApiTag | TwitchSocketTag | CampaignServiceTag | DropServiceTag | WatchServiceTag
-> =>
+  activeCampaigns: readonly Campaign[],
+): Effect.Effect<void, TwitchApiError, WorkflowContext> =>
   Effect.gen(function* () {
     const isClaiming = yield* Ref.get(state.isClaiming);
     if (isClaiming) {
@@ -104,12 +80,10 @@ const watchSession = (
       return;
     }
 
-    const campaignService = yield* CampaignServiceTag;
-    const watchService = yield* WatchServiceTag;
-    const activeCampaigns = yield* campaignService.getSortedActive;
+    const api = yield* TwitchApiTag;
     const higherPriorityCampaign = activeCampaigns[0];
 
-    if (higherPriorityCampaign && (yield* shouldSwitchCampaign(state, campaign, activeCampaigns))) {
+    if (higherPriorityCampaign && (yield* shouldSwitchCampaign(state, campaign, higherPriorityCampaign))) {
       yield* Effect.logInfo(chalk`{yellow Switching to higher priority campaign: ${higherPriorityCampaign.name}}`);
       yield* resetChannel(state.currentChannel);
       return;
@@ -136,7 +110,14 @@ const watchSession = (
       return;
     }
 
-    const watchResult = yield* watchService.watch(updatedCurChan, state.currentChannel);
+    const watchResult = yield* api.watch(updatedCurChan);
+
+    if (watchResult.hlsUrl !== updatedCurChan.hlsUrl) {
+      yield* Ref.update(
+        state.currentChannel,
+        Option.map((c) => (c.id === updatedCurChan.id ? { ...c, hlsUrl: watchResult.hlsUrl } : c)),
+      );
+    }
 
     if (!watchResult.success) {
       yield* resetChannel(state.currentChannel);
@@ -157,8 +138,8 @@ const initializeCampaigns = (state: MainState): Effect.Effect<void, never, Campa
     const campaignService = yield* CampaignServiceTag;
     const configStore = yield* ConfigStoreTag;
 
-    const campaignState = yield* Ref.get(campaignService.state);
-    if (campaignState._tag !== 'Initial') {
+    const mode = yield* campaignService.getMode;
+    if (mode !== 'Initial') {
       return;
     }
 
@@ -170,19 +151,13 @@ const initializeCampaigns = (state: MainState): Effect.Effect<void, never, Campa
     const priorityList = campaigns.filter((c) => c.game !== null && config.priorityList.has(c.game.displayName));
     const priorityConnectedList = campaigns.filter((c) => c.game !== null && config.priorityConnectedList.has(c.game.displayName));
 
-    let activeList = campaigns;
-    let priorityMessage = 'Non-';
-
-    if (priorityList.length > 0 || priorityConnectedList.length > 0) {
-      activeList = [...priorityList, ...priorityConnectedList];
-      priorityMessage = '';
-    }
+    const hasPriority = priorityList.length > 0 || priorityConnectedList.length > 0;
+    const activeList = hasPriority ? [...priorityList, ...priorityConnectedList] : campaigns;
+    const priorityMessage = hasPriority ? '' : 'Non-';
 
     yield* Effect.logInfo(chalk`{bold.yellow Checking ${activeList.length} ${priorityMessage}Priority game!}`);
 
-    const nextState = priorityList.length > 0 || priorityConnectedList.length > 0 ? CampaignServiceState.PriorityOnly() : CampaignServiceState.All();
-
-    yield* Ref.set(campaignService.state, nextState);
+    yield* campaignService.setMode(hasPriority ? 'PriorityOnly' : 'All');
     yield* Ref.set(state.isClaiming, false);
   });
 
@@ -191,11 +166,8 @@ const processCampaignChannels = (
   campaign: Campaign,
   drops: readonly Drop[],
   channels: readonly Channel[],
-): Effect.Effect<
-  void,
-  TwitchApiError | TwitchSocketError | MainWorkflowError,
-  ConfigStoreTag | TwitchApiTag | TwitchSocketTag | CampaignServiceTag | PointServiceTag | WatchServiceTag | DropServiceTag
-> =>
+  activeCampaigns: readonly Campaign[],
+): Effect.Effect<void, TwitchApiError, WorkflowContext> =>
   Effect.gen(function* () {
     const pointService = yield* PointServiceTag;
     const currentChannelOpt = yield* Ref.get(state.currentChannel);
@@ -223,7 +195,7 @@ const processCampaignChannels = (
         yield* Ref.set(state.nextPointClaim, 0);
       }
 
-      yield* watchSession(state, campaign);
+      yield* watchSession(state, campaign, activeCampaigns);
 
       const postWatchChan = yield* Ref.get(state.currentChannel);
       if (Option.isNone(postWatchChan)) {
@@ -245,13 +217,7 @@ const processCampaignChannels = (
     yield* resetChannel(state.currentChannel);
   });
 
-const mainLoop = (
-  state: MainState,
-): Effect.Effect<
-  void,
-  TwitchApiError | TwitchSocketError | MainWorkflowError,
-  ConfigStoreTag | TwitchApiTag | TwitchSocketTag | CampaignServiceTag | PointServiceTag | WatchServiceTag | DropServiceTag
-> =>
+const mainLoop = (state: MainState): Effect.Effect<void, TwitchApiError, WorkflowContext> =>
   Effect.gen(function* () {
     const campaignService = yield* CampaignServiceTag;
     const dropService = yield* DropServiceTag;
@@ -259,34 +225,26 @@ const mainLoop = (
 
     const activeList = yield* campaignService.getSortedActive;
     if (activeList.length === 0) {
-      yield* Effect.gen(function* () {
-        const currentState = yield* Ref.get(campaignService.state);
-        yield* Ref.set(campaignService.state, CampaignServiceState.Initial());
+      const mode = yield* campaignService.getMode;
+      yield* campaignService.setMode('Initial');
 
-        if (currentState._tag !== 'PriorityOnly') {
-          yield* Effect.logInfo(chalk`{yellow No active campaigns. Checking upcoming...}`);
-          yield* Effect.logInfo('');
-          yield* Effect.sleep('10 minutes');
-        }
-      });
+      if (mode !== 'PriorityOnly') {
+        yield* Effect.logInfo(chalk`{yellow No active campaigns. Checking upcoming...}`);
+        yield* Effect.logInfo('');
+        yield* Effect.sleep('10 minutes');
+      }
       return;
     }
 
-    const campaignInitial = yield* selectCampaign(state, activeList);
-    const drops = yield* campaignService.getDropsForCampaign(campaignInitial.id);
+    const campaignInitial = activeList[0];
+    yield* Ref.set(state.currentCampaign, Option.some(campaignInitial));
 
-    const campaign = (yield* Ref.get(campaignService.campaigns)).get(campaignInitial.id) ?? campaignInitial;
+    const drops = yield* campaignService.getDropsForCampaign(campaignInitial.id);
+    const campaign = Option.getOrElse(yield* campaignService.getCampaign(campaignInitial.id), () => campaignInitial);
 
     if (drops.length === 0) {
       yield* Effect.logInfo(chalk`${campaign.name} | {red No active drops}`);
       yield* campaignService.setOffline(campaign.id, true);
-      return;
-    }
-
-    const { isExpired } = getDropStatus(campaign.startAt, campaign.endAt, Date.now());
-    if (isExpired) {
-      yield* Effect.logInfo(chalk`${campaign.name} | {red Campaigns expired}`);
-      yield* campaignService.refreshCampaigns;
       return;
     }
 
@@ -307,7 +265,7 @@ const mainLoop = (
         return;
       }
 
-      yield* dropService.claimDropSequence(campaign, drop, state.isClaiming, state.currentDrop);
+      yield* dropService.claimDropSequence(campaign, drop, state);
       return;
     }
 
@@ -319,16 +277,13 @@ const mainLoop = (
       return;
     }
 
-    yield* processCampaignChannels(state, campaign, drops, channels);
+    yield* processCampaignChannels(state, campaign, drops, channels, activeList);
   });
 
 const isChannelReusable = (channel: Channel, campaign: Campaign): boolean =>
   channel.isOnline && !!channel.currentSid && channel.campaignId === campaign.id;
 
-const resolveCampaignChannels = (
-  state: MainState,
-  campaign: Campaign,
-): Effect.Effect<ReadonlyArray<Channel>, TwitchApiError | TwitchSocketError, CampaignServiceTag> =>
+const resolveCampaignChannels = (state: MainState, campaign: Campaign): Effect.Effect<ReadonlyArray<Channel>, TwitchApiError, CampaignServiceTag> =>
   Effect.gen(function* () {
     const currentChannelOpt = yield* Ref.get(state.currentChannel);
 
@@ -338,19 +293,6 @@ const resolveCampaignChannels = (
 
     const campaignService = yield* CampaignServiceTag;
     return yield* campaignService.getChannelsForCampaign(campaign);
-  });
-
-const selectCampaign = (state: MainState, activeList: readonly Campaign[]) =>
-  Effect.gen(function* () {
-    const campaignService = yield* CampaignServiceTag;
-
-    const firstCampaign = activeList[0];
-
-    const campaign = (yield* Ref.get(campaignService.campaigns)).get(firstCampaign.id) ?? firstCampaign;
-
-    yield* Ref.set(state.currentCampaign, Option.some(campaign));
-
-    return campaign;
   });
 
 const selectDrop = (state: MainState, drops: readonly Drop[]) =>
@@ -369,44 +311,18 @@ const selectDrop = (state: MainState, drops: readonly Drop[]) =>
     return drop;
   });
 
-const ensureSettingsDir = Effect.gen(function* () {
-  const settingsDir = 'sessions';
-  yield* Effect.tryPromise({
-    try: () => mkdir(settingsDir, { recursive: true }),
-    catch: (e) => new MainWorkflowError({ message: 'Failed to create sessions directory', cause: e }),
-  }).pipe(Effect.catchAll(() => Effect.void));
-});
-
-export const MainWorkflow: Effect.Effect<
-  void,
-  never,
-  CampaignServiceTag | TwitchApiTag | ConfigStoreTag | TwitchSocketTag | Scope.Scope | PointServiceTag | WatchServiceTag | DropServiceTag
-> = Effect.gen(function* () {
+export const MainWorkflow: Effect.Effect<void, never, WorkflowContext | Scope.Scope> = Effect.gen(function* () {
   const api = yield* TwitchApiTag;
   const socket = yield* TwitchSocketTag;
   const campaignService = yield* CampaignServiceTag;
 
-  yield* ensureSettingsDir.pipe(Effect.ignore);
-
-  const state: MainState = {
-    currentCampaign: yield* Ref.make<Option.Option<Campaign>>(Option.none()),
-    currentChannel: yield* Ref.make<Option.Option<Channel>>(Option.none()),
-    currentDrop: yield* Ref.make<Option.Option<Drop>>(Option.none()),
-    localMinutesWatched: yield* Ref.make(0),
-    nextPointClaim: yield* Ref.make(0),
-    nextWatch: yield* Ref.make(0),
-    isClaiming: yield* Ref.make(false),
-  };
+  const state = yield* makeMainState;
 
   yield* api.init.pipe(Effect.orDie);
   const userId = yield* api.userId.pipe(Effect.orDie);
 
-  yield* Effect.acquireRelease(socket.listen(WsTopic.UserDrop, userId).pipe(Effect.orDie), () =>
-    socket.unlisten(WsTopic.UserDrop, userId).pipe(Effect.ignore),
-  );
-  yield* Effect.acquireRelease(socket.listen(WsTopic.UserPoint, userId).pipe(Effect.orDie), () =>
-    socket.unlisten(WsTopic.UserPoint, userId).pipe(Effect.ignore),
-  );
+  const userTopics = [WsTopic.UserDrop, WsTopic.UserPoint];
+  yield* Effect.acquireRelease(socket.listen(userTopics, userId).pipe(Effect.orDie), () => socket.unlisten(userTopics, userId).pipe(Effect.ignore));
 
   yield* SocketWorkflow(state).pipe(Effect.orDie);
 
@@ -415,8 +331,7 @@ export const MainWorkflow: Effect.Effect<
     Effect.repeat(Schedule.forever),
   );
 
-  const claimInventoryLoop = api.claimAllDropsFromInventory.pipe(
-    Effect.flatMap((claimed) => (claimed > 0 ? campaignService.updateProgress : Effect.void)),
+  const claimInventoryLoop = campaignService.claimInventoryDrops.pipe(
     Effect.ignore,
     Effect.zipRight(Effect.sleep('30 minutes')),
     Effect.repeat(Schedule.forever),
@@ -424,5 +339,5 @@ export const MainWorkflow: Effect.Effect<
 
   yield* Effect.all([mainTaskLoop, claimInventoryLoop, UpcomingWorkflow(state), OfflineWorkflow(state)], {
     concurrency: 'unbounded',
-  }).pipe(Effect.onInterrupt(() => resetChannel(state.currentChannel).pipe(Effect.zipRight(socket.disconnect(true)))));
+  }).pipe(Effect.onInterrupt(() => resetChannel(state.currentChannel).pipe(Effect.zipRight(socket.disconnect))));
 });

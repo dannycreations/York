@@ -1,86 +1,55 @@
-import { mkdir, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
 import { chalk } from '@vegapunk/utilities';
-import { isObjectLike } from '@vegapunk/utilities/common';
-import { Context, Data, Deferred, Effect, Layer, Option, Ref, Schedule, Schema } from 'effect';
+import { Context, Data, Deferred, Effect, Layer, Ref, Schedule, Schema } from 'effect';
 import UserAgent from 'user-agents';
 
-import { Twitch } from '../core/Constants';
+import { Twitch } from '../core/Constants.js';
+import { DebugTag } from '../core/Debug.js';
 import {
-  CampaignDetailsSchema,
-  ChannelDropsSchema,
-  ChannelLiveSchema,
-  ChannelPointsSchema,
-  ChannelStreamsSchema,
   ClaimDropsSchema,
   ClaimMomentsSchema,
   ClaimPointsSchema,
-  ContributeCommunityGoalSchema,
-  GameDirectorySchema,
   HelixStreamsSchema,
   InventorySchema,
   PlaybackTokenSchema,
   ViewerDropsDashboardSchema,
-} from '../core/Schemas';
-import { HttpClientError, HttpClientTag } from '../structures/HttpClient';
-import { GqlQueries } from './TwitchGql';
+} from '../core/Schemas.js';
+import { HttpClientError, HttpClientTag } from '../structures/HttpClient.js';
+import { GqlQueries } from './TwitchGql.js';
 
 import type { ReadonlyRecord } from 'effect/Record';
-import type { Channel, GqlResponse } from '../core/Schemas';
-import type { DefaultOptions } from '../structures/HttpClient';
-import type { GraphqlRequest } from './TwitchGql';
+import type { Channel, GqlResponse } from '../core/Schemas.js';
+import type { DefaultOptions } from '../structures/HttpClient.js';
+import type { GraphqlRequest } from './TwitchGql.js';
 
 export class TwitchApiError extends Data.TaggedError('TwitchApiError')<{
   readonly message: string;
+  readonly retryable?: boolean;
   readonly cause?: unknown;
 }> {}
+
+type AnySchema = Schema.Schema<any, any, never>;
+
+type SchemaTypes<T extends ReadonlyArray<AnySchema>> = { -readonly [K in keyof T]: Schema.Schema.Type<T[K]> };
+
+type SchemaType<S extends AnySchema> = Schema.Schema.Type<S>;
 
 export interface TwitchApi {
   readonly init: Effect.Effect<void, TwitchApiError>;
   readonly userId: Effect.Effect<string, TwitchApiError>;
-  readonly writeDebugFile: (data: string | object, name?: string, force?: boolean) => Effect.Effect<void>;
-  readonly graphql: <A, I, R>(
-    requests: GraphqlRequest | ReadonlyArray<GraphqlRequest>,
-    schema: Schema.Schema<A, I, R>,
-    waitForUserId?: boolean,
-  ) => Effect.Effect<ReadonlyArray<A>, TwitchApiError, R>;
-  readonly graphqlBatch: (
+  readonly graphql: <A, I>(
     requests: ReadonlyArray<GraphqlRequest>,
-    schemas: ReadonlyArray<AnySchema>,
-    waitForUserId?: boolean,
-  ) => Effect.Effect<ReadonlyArray<unknown>, TwitchApiError>;
-  readonly request: <T = string>(
-    options: string | DefaultOptions,
-    isDebugOverride?: boolean,
-  ) => Effect.Effect<
-    {
-      body: T;
-      statusCode: number;
-      headers: Record<string, string | string[] | undefined>;
-    },
-    TwitchApiError
-  >;
-  readonly dropsDashboard: Effect.Effect<Schema.Schema.Type<typeof ViewerDropsDashboardSchema>, TwitchApiError>;
-  readonly inventory: Effect.Effect<Schema.Schema.Type<typeof InventorySchema>, TwitchApiError>;
-  readonly gameDirectory: (slug: string) => Effect.Effect<Schema.Schema.Type<typeof GameDirectorySchema>, TwitchApiError>;
-  readonly channelPoints: (channelLogin: string) => Effect.Effect<Schema.Schema.Type<typeof ChannelPointsSchema>, TwitchApiError>;
-  readonly helixStreams: (userIds: readonly string[]) => Effect.Effect<Schema.Schema.Type<typeof HelixStreamsSchema>, TwitchApiError>;
-  readonly channelStreams: (logins: readonly string[]) => Effect.Effect<Schema.Schema.Type<typeof ChannelStreamsSchema>, TwitchApiError>;
-  readonly channelDrops: (channelID: string) => Effect.Effect<Schema.Schema.Type<typeof ChannelDropsSchema>, TwitchApiError>;
-  readonly claimPoints: (channelID: string, claimID: string) => Effect.Effect<Schema.Schema.Type<typeof ClaimPointsSchema>, TwitchApiError>;
-  readonly claimMoments: (momentID: string) => Effect.Effect<Schema.Schema.Type<typeof ClaimMomentsSchema>, TwitchApiError>;
-  readonly claimDrops: (dropInstanceID: string) => Effect.Effect<Schema.Schema.Type<typeof ClaimDropsSchema>, TwitchApiError>;
-  readonly claimAllDropsFromInventory: Effect.Effect<number, TwitchApiError>;
-  readonly contributeCommunityGoal: (
-    channelID: string,
-    goalID: string,
-    amount: number,
-  ) => Effect.Effect<Schema.Schema.Type<typeof ContributeCommunityGoalSchema>, TwitchApiError>;
-  readonly campaignDetails: (
-    dropID: string,
-    channelLogin?: string,
-  ) => Effect.Effect<Schema.Schema.Type<typeof CampaignDetailsSchema>, TwitchApiError>;
-  readonly playbackToken: (login: string) => Effect.Effect<Schema.Schema.Type<typeof PlaybackTokenSchema>, TwitchApiError>;
+    schema: Schema.Schema<A, I, never>,
+  ) => Effect.Effect<ReadonlyArray<A>, TwitchApiError>;
+  readonly graphqlBatch: <const S extends ReadonlyArray<AnySchema>>(
+    requests: ReadonlyArray<GraphqlRequest>,
+    schemas: S,
+  ) => Effect.Effect<SchemaTypes<S>, TwitchApiError>;
+  readonly dropsDashboard: Effect.Effect<SchemaType<typeof ViewerDropsDashboardSchema>, TwitchApiError>;
+  readonly inventory: Effect.Effect<SchemaType<typeof InventorySchema>, TwitchApiError>;
+  readonly helixStreams: (userIds: readonly string[]) => Effect.Effect<SchemaType<typeof HelixStreamsSchema>, TwitchApiError>;
+  readonly claimPoints: (channelID: string, claimID: string) => Effect.Effect<SchemaType<typeof ClaimPointsSchema>, TwitchApiError>;
+  readonly claimMoments: (momentID: string) => Effect.Effect<SchemaType<typeof ClaimMomentsSchema>, TwitchApiError>;
+  readonly claimDrops: (dropInstanceID: string) => Effect.Effect<SchemaType<typeof ClaimDropsSchema>, TwitchApiError>;
   readonly watch: (channel: Channel) => Effect.Effect<{ readonly success: boolean; readonly hlsUrl?: string }, TwitchApiError>;
 }
 
@@ -108,32 +77,25 @@ const parseUniqueCookies = (setCookie: readonly string[]): Readonly<Record<strin
   return result;
 };
 
-type AnySchema = Schema.Schema<any, any, never>;
-
 const RETRYABLE_GQL_ERRORS = new Set(['service unavailable', 'service timeout', 'context deadline exceeded']);
 
-const handleGraphqlErrors = (errors: ReadonlyArray<{ readonly message: string }>, operationName?: string): Effect.Effect<never, TwitchApiError> => {
-  const opPrefix = operationName ? `${operationName} ` : '';
-  const firstErrorMessage = errors[0]?.message ?? 'Unknown error';
-  const hasRetryable = errors.some((e) => RETRYABLE_GQL_ERRORS.has(e.message.toLowerCase()));
+const toGraphqlError = (errors: ReadonlyArray<{ readonly message: string }>, operationName?: string): TwitchApiError => {
+  const opPrefix = operationName ? `[${operationName}] ` : '';
+  const isRetryable = errors.some((e) => RETRYABLE_GQL_ERRORS.has(e.message.toLowerCase()));
 
-  if (hasRetryable) {
-    return Effect.fail(new TwitchApiError({ message: `${opPrefix}Retryable GraphQL Error`, cause: errors }));
+  if (isRetryable) {
+    return new TwitchApiError({ message: `${opPrefix}Retryable GraphQL Error`, retryable: true, cause: errors });
   }
 
-  return Effect.fail(
-    new TwitchApiError({
-      message: `${opPrefix}GraphQL Error (${firstErrorMessage})`,
-      cause: errors,
-    }),
-  );
+  return new TwitchApiError({ message: `${opPrefix}GraphQL Error (${errors[0]?.message ?? 'Unknown error'})`, cause: errors });
 };
 
-export const TwitchApiLayer = (authToken: string, isDebug = false): Layer.Layer<TwitchApiTag, never, HttpClientTag> =>
+export const TwitchApiLayer = (authToken: string): Layer.Layer<TwitchApiTag, never, HttpClientTag | DebugTag> =>
   Layer.effect(
     TwitchApiTag,
     Effect.gen(function* () {
       const http = yield* HttpClientTag;
+      const debug = yield* DebugTag;
       const userIdDeferred = yield* Deferred.make<string>();
       const userAgent = new UserAgent({ deviceCategory: 'mobile' }).toString();
       const headersRef = yield* Ref.make<Record<string, string>>({
@@ -144,27 +106,8 @@ export const TwitchApiLayer = (authToken: string, isDebug = false): Layer.Layer<
 
       const getUserId = Deferred.await(userIdDeferred);
 
-      const writeDebugFile = (data: string | object, name?: string, force: boolean = false): Effect.Effect<void> => {
-        if (!isDebug && !force) {
-          return Effect.void;
-        }
-
-        const content = isObjectLike(data) ? JSON.stringify(data, null, 2) : data;
-        const debugDir = join(process.cwd(), 'debug');
-
-        return Effect.tryPromise({
-          try: async () => {
-            const fileName = `${name ?? Date.now()}.json`;
-            await mkdir(debugDir, { recursive: true });
-            await writeFile(join(debugDir, fileName), content);
-          },
-          catch: (e) => new TwitchApiError({ message: 'Failed to write debug file', cause: e }),
-        }).pipe(Effect.ignore);
-      };
-
       const request = <T>(
         options: string | DefaultOptions,
-        isDebugOverride?: boolean,
       ): Effect.Effect<
         { readonly body: T; readonly statusCode: number; readonly headers: ReadonlyRecord<string, string | string[] | undefined> },
         TwitchApiError
@@ -186,29 +129,17 @@ export const TwitchApiLayer = (authToken: string, isDebug = false): Layer.Layer<
             return yield* Effect.die(new TwitchApiError({ message: 'Unauthorized: Invalid OAuth token detected during request' }));
           }
 
-          if (!isDebug && !isDebugOverride) {
-            return response;
-          }
-
-          yield* Effect.logDebug(chalk`API: {bold ${response.statusCode}} ${payload.method ?? 'GET'} ${payload.url}`);
-
-          if (isDebugOverride) {
-            yield* writeDebugFile(
-              {
-                request: {
-                  url: `${response.statusCode} ${payload.method ?? 'GET'} ${payload.url}`,
-                  headers: { ...commonHeaders, ...payload.headers },
-                  body: payload.body,
-                },
-                response: { headers: response.headers, body: response.body },
-              },
-              `api-debug-${Date.now()}`,
-            );
+          if (debug.isEnabled) {
+            yield* Effect.logDebug(chalk`API: {bold ${response.statusCode}} ${payload.method ?? 'GET'} ${payload.url}`);
           }
 
           return response;
         }).pipe(
-          Effect.mapError((e) => (e instanceof HttpClientError ? new TwitchApiError(e) : new TwitchApiError({ message: String(e), cause: e }))),
+          Effect.mapError((e) =>
+            e instanceof HttpClientError
+              ? new TwitchApiError({ message: e.message, cause: e })
+              : new TwitchApiError({ message: String(e), cause: e }),
+          ),
         );
 
       const unique = Effect.gen(function* () {
@@ -242,38 +173,28 @@ export const TwitchApiLayer = (authToken: string, isDebug = false): Layer.Layer<
           ),
         );
 
-        if (response.statusCode === 401) {
-          return yield* Effect.die(new TwitchApiError({ message: 'Unauthorized: Invalid OAuth token detected during validation' }));
-        }
-
         yield* Deferred.succeed(userIdDeferred, response.body.user_id);
-        return response.body.user_id;
       });
 
       const init = Effect.all([unique, validate], { concurrency: 'unbounded' });
 
-      const executeGql = <Schemas extends ReadonlyArray<AnySchema>>(
+      const executeGql = (
         requestsArray: ReadonlyArray<GraphqlRequest>,
-        schemas: Schemas,
-        waitForUserId: boolean,
+        schemas: ReadonlyArray<AnySchema>,
       ): Effect.Effect<ReadonlyArray<unknown>, TwitchApiError> =>
         Effect.gen(function* () {
-          const userId = waitForUserId ? yield* getUserId : '';
+          const userId = yield* getUserId;
 
           const payload = requestsArray.map((r) => {
             const isDetails = r.operationName === 'DropCampaignDetails';
             const hasNoLogin = !r.variables.channelLogin;
-            const variables = isDetails && hasNoLogin && userId ? { ...r.variables, channelLogin: userId } : r.variables;
-
-            if (!r.hash) {
-              return { operationName: r.operationName, variables, query: r.query, extensions: undefined };
-            }
+            const variables = isDetails && hasNoLogin ? { ...r.variables, channelLogin: userId } : r.variables;
 
             return {
               operationName: r.operationName,
               variables,
               query: r.query,
-              extensions: { persistedQuery: { version: 1, sha256Hash: r.hash } },
+              extensions: r.hash ? { persistedQuery: { version: 1, sha256Hash: r.hash } } : undefined,
             };
           });
 
@@ -291,30 +212,17 @@ export const TwitchApiLayer = (authToken: string, isDebug = false): Layer.Layer<
               const opName = op?.operationName;
 
               if (res.errors && res.errors.length > 0) {
-                return handleGraphqlErrors(res.errors, opName).pipe(
+                return Effect.fail(toGraphqlError(res.errors, opName)).pipe(
                   Effect.tapError(() =>
-                    writeDebugFile(
-                      {
-                        operation: opName,
-                        variables: op?.variables,
-                        response: res,
-                      },
-                      `gql-error-${opName}-${Date.now()}`,
-                      true,
-                    ),
+                    debug.write({ operation: opName, variables: op?.variables, response: res }, `gql-error-${opName}-${Date.now()}`, true),
                   ),
                 );
               }
 
               return Schema.decodeUnknown(schemas[index])(res.data).pipe(
                 Effect.tapError((e) =>
-                  writeDebugFile(
-                    {
-                      operation: opName,
-                      variables: op?.variables,
-                      response: res,
-                      error: e,
-                    },
+                  debug.write(
+                    { operation: opName, variables: op?.variables, response: res, error: e },
                     `gql-validation-error-${opName}-${Date.now()}`,
                     true,
                   ),
@@ -332,29 +240,27 @@ export const TwitchApiLayer = (authToken: string, isDebug = false): Layer.Layer<
           );
         }).pipe(
           Effect.retry({
-            while: (e) => e.message.includes('Retryable GraphQL Error'),
+            while: (e) => e.retryable === true,
             schedule: Schedule.exponential('1 seconds').pipe(Schedule.compose(Schedule.recurs(5))),
           }),
         );
 
-      const graphql = <A, I, R>(
-        requests: GraphqlRequest | ReadonlyArray<GraphqlRequest>,
-        schema: Schema.Schema<A, I, R>,
-        waitForUserId = true,
-      ): Effect.Effect<ReadonlyArray<A>, TwitchApiError, R> => {
-        const requestsArray = Array.isArray(requests) ? requests : [requests];
-        return executeGql(
-          requestsArray,
-          requestsArray.map(() => schema as AnySchema),
-          waitForUserId,
-        ) as unknown as Effect.Effect<ReadonlyArray<A>, TwitchApiError, R>;
-      };
-
-      const graphqlBatch = (
+      const graphql = <A, I>(
         requests: ReadonlyArray<GraphqlRequest>,
-        schemas: ReadonlyArray<AnySchema>,
-        waitForUserId = true,
-      ): Effect.Effect<ReadonlyArray<unknown>, TwitchApiError> => executeGql(requests, schemas, waitForUserId);
+        schema: Schema.Schema<A, I, never>,
+      ): Effect.Effect<ReadonlyArray<A>, TwitchApiError> =>
+        executeGql(
+          requests,
+          requests.map(() => schema as AnySchema),
+        ) as Effect.Effect<ReadonlyArray<A>, TwitchApiError>;
+
+      const graphqlBatch = <const S extends ReadonlyArray<AnySchema>>(
+        requests: ReadonlyArray<GraphqlRequest>,
+        schemas: S,
+      ): Effect.Effect<SchemaTypes<S>, TwitchApiError> => executeGql(requests, schemas) as Effect.Effect<SchemaTypes<S>, TwitchApiError>;
+
+      const gqlOne = <S extends AnySchema>(gqlRequest: GraphqlRequest, schema: S): Effect.Effect<SchemaType<S>, TwitchApiError> =>
+        executeGql([gqlRequest], [schema]).pipe(Effect.map((res) => res[0] as SchemaType<S>));
 
       const findLastHttpUrl = (text: string): string | undefined => {
         const lastIndex = text.lastIndexOf('\nhttp');
@@ -378,41 +284,38 @@ export const TwitchApiLayer = (authToken: string, isDebug = false): Layer.Layer<
         return text.substring(start, end).trim();
       };
 
-      const getHls = (login: string): Effect.Effect<{ readonly url: string; readonly body: string }, TwitchApiError> =>
+      // The master playlist lists variant playlists; the last entry is the
+      // cheapest (audio only) rendition, which is all a watch heartbeat needs.
+      const getHlsUrl = (login: string): Effect.Effect<string, TwitchApiError> =>
         Effect.gen(function* () {
           const playback = yield* playbackToken(login);
           const token = playback.streamPlaybackAccessToken;
 
-          const hls = yield* request({
+          const master = yield* request<string>({
             url: `https://usher.ttvnw.net/api/channel/hls/${login}.m3u8`,
             searchParams: { sig: token.signature, token: token.value },
             headers: { accept: 'application/x-mpegURL' },
           });
 
-          const url = findLastHttpUrl(hls.body as string);
+          const url = findLastHttpUrl(typeof master.body === 'string' ? master.body : '');
           if (!url) {
             return yield* new TwitchApiError({ message: 'HLS URL not found' });
           }
 
-          return { url, body: hls.body as string };
-        }).pipe(
-          Effect.catchAll((e) =>
-            e instanceof TwitchApiError ? Effect.fail(e) : Effect.fail(new TwitchApiError({ message: 'Failed to get HLS URL', cause: e })),
-          ),
+          return url;
+        });
+
+      // Fetching the variant playlist proves liveness on its own: Twitch serves
+      // 404 once a stream is gone and marks a finished one with EXT-X-ENDLIST,
+      // so no follow-up segment probe is needed.
+      const isStreamLive = (playlistUrl: string): Effect.Effect<boolean, TwitchApiError> =>
+        request<string>({ url: playlistUrl, headers: { accept: 'application/x-mpegURL' } }).pipe(
+          Effect.map((res) => {
+            const body = typeof res.body === 'string' ? res.body : '';
+            return res.statusCode === 200 && body.length > 0 && !body.includes('#EXT-X-ENDLIST');
+          }),
+          Effect.orElseSucceed(() => false),
         );
-
-      const isStreamLive = (hlsUrl: string, playlistBody?: string): Effect.Effect<boolean, TwitchApiError> =>
-        Effect.gen(function* () {
-          const body = playlistBody ?? (yield* request({ url: hlsUrl, headers: { accept: 'application/x-mpegURL' } })).body;
-
-          const chunkUrl = findLastHttpUrl(body as string);
-          if (!chunkUrl) {
-            return false;
-          }
-
-          const res = yield* request({ method: 'HEAD', url: chunkUrl });
-          return res.statusCode === 200;
-        }).pipe(Effect.orElseSucceed(() => false));
 
       const sendMinuteWatched = (channel: Channel): Effect.Effect<boolean, TwitchApiError> =>
         Effect.gen(function* () {
@@ -447,73 +350,48 @@ export const TwitchApiLayer = (authToken: string, isDebug = false): Layer.Layer<
           return response.statusCode === 204;
         }).pipe(Effect.orElseSucceed(() => false));
 
-      const watch = (channel: Channel): Effect.Effect<{ readonly success: boolean; readonly hlsUrl?: string }, TwitchApiError> =>
-        Effect.gen(function* () {
-          const hasNoSid = !channel.currentSid;
+      const watch = (channel: Channel): Effect.Effect<{ readonly success: boolean; readonly hlsUrl?: string }, TwitchApiError> => {
+        if (!channel.currentSid) {
+          return Effect.succeed({ success: false });
+        }
 
-          if (hasNoSid) {
-            return { success: false };
+        return Effect.gen(function* () {
+          let hlsUrl = channel.hlsUrl ?? (yield* getHlsUrl(channel.login));
+
+          if (yield* isStreamLive(hlsUrl)) {
+            return { success: yield* sendMinuteWatched(channel), hlsUrl };
           }
 
-          const streamResult = yield* Effect.gen(function* () {
-            const hls = channel.hlsUrl ? { url: channel.hlsUrl, body: undefined } : yield* getHls(channel.login);
-            const isSuccess = yield* isStreamLive(hls.url, hls.body);
+          // A cached playlist can go stale while the stream is still up, so
+          // resolve a fresh one once before concluding the channel is offline.
+          if (channel.hlsUrl) {
+            hlsUrl = yield* getHlsUrl(channel.login);
 
-            if (isSuccess) {
-              const success = yield* sendMinuteWatched(channel);
-              return { success, hlsUrl: hls.url };
+            if (yield* isStreamLive(hlsUrl)) {
+              return { success: yield* sendMinuteWatched(channel), hlsUrl };
             }
+          }
 
-            const live = yield* channelLive(channel.login);
-            if (!live.user?.stream?.id) {
-              return { success: false, hlsUrl: hls.url };
-            }
+          return { success: false, hlsUrl };
+        }).pipe(Effect.orElseSucceed(() => ({ success: false, hlsUrl: channel.hlsUrl })));
+      };
 
-            const isRetrySuccess = yield* isStreamLive(hls.url);
+      const dropsDashboard = gqlOne(GqlQueries.dropsDashboard, ViewerDropsDashboardSchema);
 
-            if (!isRetrySuccess) {
-              return { success: false, hlsUrl: hls.url };
-            }
+      const inventory = gqlOne(GqlQueries.inventory, InventorySchema);
 
-            const success = yield* sendMinuteWatched(channel);
-            return { success, hlsUrl: hls.url };
-          }).pipe(Effect.orElseSucceed(() => ({ success: false, hlsUrl: channel.hlsUrl })));
+      const claimPoints = (channelID: string, claimID: string) => gqlOne(GqlQueries.claimPoints(channelID, claimID), ClaimPointsSchema);
 
-          return streamResult;
-        });
+      const claimMoments = (momentID: string) => gqlOne(GqlQueries.claimMoments(momentID), ClaimMomentsSchema);
 
-      const mapFirst = <A, E, R>(effect: Effect.Effect<ReadonlyArray<A>, E, R>) => effect.pipe(Effect.map((res) => res[0]));
+      const claimDrops = (dropInstanceID: string) => gqlOne(GqlQueries.claimDrops(dropInstanceID), ClaimDropsSchema);
 
-      const dropsDashboard = mapFirst(graphql(GqlQueries.dropsDashboard, ViewerDropsDashboardSchema));
+      const playbackToken = (login: string) => gqlOne(GqlQueries.playbackToken(login), PlaybackTokenSchema);
 
-      const inventory = mapFirst(graphql(GqlQueries.inventory, InventorySchema)).pipe(
-        Effect.catchAll((e) =>
-          Effect.logWarning(chalk`{yellow ${e.message}. Using empty inventory.}`).pipe(
-            Effect.as({
-              currentUser: {
-                inventory: {
-                  gameEventDrops: [],
-                  dropCampaignsInProgress: [],
-                },
-              },
-            } as Schema.Schema.Type<typeof InventorySchema>),
-          ),
-        ),
-      );
-
-      const gameDirectory = (slug: string): Effect.Effect<Schema.Schema.Type<typeof GameDirectorySchema>, TwitchApiError> =>
-        mapFirst(graphql(GqlQueries.gameDirectory(slug), GameDirectorySchema));
-
-      const channelPoints = (channelLogin: string): Effect.Effect<Schema.Schema.Type<typeof ChannelPointsSchema>, TwitchApiError> =>
-        mapFirst(graphql(GqlQueries.channelPoints(channelLogin), ChannelPointsSchema));
-
-      const channelLive = (channelLogin: string): Effect.Effect<Schema.Schema.Type<typeof ChannelLiveSchema>, TwitchApiError> =>
-        mapFirst(graphql(GqlQueries.channelLive(channelLogin), ChannelLiveSchema));
-
-      const helixStreams = (userIds: readonly string[]): Effect.Effect<Schema.Schema.Type<typeof HelixStreamsSchema>, TwitchApiError> =>
+      const helixStreams = (userIds: readonly string[]): Effect.Effect<SchemaType<typeof HelixStreamsSchema>, TwitchApiError> =>
         Effect.gen(function* () {
           if (userIds.length === 0) {
-            return { data: [] } as Schema.Schema.Type<typeof HelixStreamsSchema>;
+            return { data: [] };
           }
 
           const res = yield* request<Schema.Schema.Encoded<typeof HelixStreamsSchema>>({
@@ -523,113 +401,23 @@ export const TwitchApiLayer = (authToken: string, isDebug = false): Layer.Layer<
             responseType: 'json',
           });
 
-          const decoded = yield* Schema.decodeUnknown(HelixStreamsSchema)(res.body).pipe(
+          return yield* Schema.decodeUnknown(HelixStreamsSchema)(res.body).pipe(
             Effect.mapError((e) => new TwitchApiError({ message: `Helix validation failed: ${e}`, cause: e })),
           );
-
-          return decoded;
         });
 
-      const channelStreams = (logins: readonly string[]): Effect.Effect<Schema.Schema.Type<typeof ChannelStreamsSchema>, TwitchApiError> =>
-        mapFirst(graphql(GqlQueries.channelStreams(logins), ChannelStreamsSchema));
-
-      const channelDrops = (channelID: string): Effect.Effect<Schema.Schema.Type<typeof ChannelDropsSchema>, TwitchApiError> =>
-        mapFirst(graphql(GqlQueries.channelDrops(channelID), ChannelDropsSchema));
-
-      const claimPoints = (channelID: string, claimID: string): Effect.Effect<Schema.Schema.Type<typeof ClaimPointsSchema>, TwitchApiError> =>
-        mapFirst(graphql(GqlQueries.claimPoints(channelID, claimID), ClaimPointsSchema));
-
-      const claimMoments = (momentID: string): Effect.Effect<Schema.Schema.Type<typeof ClaimMomentsSchema>, TwitchApiError> =>
-        mapFirst(graphql(GqlQueries.claimMoments(momentID), ClaimMomentsSchema));
-
-      const claimDrops = (dropInstanceID: string): Effect.Effect<Schema.Schema.Type<typeof ClaimDropsSchema>, TwitchApiError> =>
-        mapFirst(graphql(GqlQueries.claimDrops(dropInstanceID), ClaimDropsSchema));
-
-      const claimAllDropsFromInventory: Effect.Effect<number, TwitchApiError> = inventory.pipe(
-        Effect.flatMap((inv) =>
-          Effect.gen(function* () {
-            const campaigns = inv.currentUser.inventory.dropCampaignsInProgress;
-            const pending: Array<{ readonly name: string; readonly dropInstanceID: string }> = [];
-
-            for (const campaign of campaigns) {
-              for (const drop of campaign.timeBasedDrops) {
-                const dropInstanceID = drop.self?.dropInstanceID;
-                const isClaimable = !!drop.self && !drop.self.isClaimed && !!dropInstanceID;
-
-                if (!isClaimable) {
-                  continue;
-                }
-
-                pending.push({ name: drop.name, dropInstanceID: dropInstanceID! });
-              }
-            }
-
-            if (pending.length === 0) {
-              return 0;
-            }
-
-            const claimRes = yield* graphql(
-              pending.map((p) => GqlQueries.claimDrops(p.dropInstanceID)),
-              ClaimDropsSchema,
-            ).pipe(Effect.option);
-
-            if (Option.isNone(claimRes)) {
-              return 0;
-            }
-
-            let claimed = 0;
-            for (const [index, res] of claimRes.value.entries()) {
-              if (!res.claimDropRewards) {
-                continue;
-              }
-
-              claimed += 1;
-              yield* Effect.logInfo(chalk`{green ${pending[index].name}} | {yellow Drops claimed}`);
-            }
-
-            return claimed;
-          }),
-        ),
-      );
-
-      const contributeCommunityGoal = (
-        channelID: string,
-        goalID: string,
-        amount: number,
-      ): Effect.Effect<Schema.Schema.Type<typeof ContributeCommunityGoalSchema>, TwitchApiError> =>
-        mapFirst(graphql(GqlQueries.contributeCommunityGoal(channelID, goalID, amount), ContributeCommunityGoalSchema));
-
-      const campaignDetails = (
-        dropID: string,
-        channelLogin?: string,
-      ): Effect.Effect<Schema.Schema.Type<typeof CampaignDetailsSchema>, TwitchApiError> =>
-        mapFirst(graphql(GqlQueries.campaignDetails(dropID, channelLogin), CampaignDetailsSchema));
-
-      const playbackToken = (login: string): Effect.Effect<Schema.Schema.Type<typeof PlaybackTokenSchema>, TwitchApiError> =>
-        mapFirst(graphql(GqlQueries.playbackToken(login), PlaybackTokenSchema));
-
       return {
-        init,
+        init: Effect.asVoid(init),
         userId: getUserId,
-        writeDebugFile,
         graphql,
         graphqlBatch,
-        request,
         watch,
         dropsDashboard,
         inventory,
-        gameDirectory,
-        channelPoints,
         helixStreams,
-        channelStreams,
-        channelDrops,
         claimPoints,
         claimMoments,
         claimDrops,
-        claimAllDropsFromInventory,
-        contributeCommunityGoal,
-        campaignDetails,
-        playbackToken,
-      };
+      } satisfies TwitchApi;
     }),
   );

@@ -1,8 +1,8 @@
 import { Option } from 'effect';
 
-export const GRACE_PERIOD_MINUTES = 10;
+const GRACE_PERIOD_MINUTES = 10;
 
-export interface DropStatusInfo {
+interface DropStatusInfo {
   readonly isUpcoming: boolean;
   readonly isExpired: boolean;
 }
@@ -15,25 +15,20 @@ export const getDropStatus = (startAt: Date, endAt: Date, nowMs: number, minutes
 
   const isMinutesExpired = typeof minutesLeft === 'number' && endAtMs < nowMs + (minutesLeft + GRACE_PERIOD_MINUTES) * 60_000;
 
-  const isExpired = isTimeExpired || isMinutesExpired;
-  const isUpcoming = nowMs < startAtMs && nowMs < endAtMs;
-
   return {
-    isUpcoming,
-    isExpired,
+    isUpcoming: nowMs < startAtMs && nowMs < endAtMs,
+    isExpired: isTimeExpired || isMinutesExpired,
   };
 };
 
 export const isMinutesWatchedMet = (drop: { readonly currentMinutesWatched: number; readonly requiredMinutesWatched: number }): boolean =>
   drop.currentMinutesWatched >= drop.requiredMinutesWatched;
 
-export interface PriorityTarget {
-  readonly game: { readonly id: string } | null;
-  readonly endAt: Date;
-}
-
 export const calculatePriority = (
-  target: PriorityTarget,
+  target: {
+    readonly game: { readonly id: string } | null;
+    readonly endAt: Date;
+  },
   currentCampaign: Option.Option<{ readonly priority: number; readonly game: { readonly id: string } | null }>,
   currentDrop: Option.Option<{ readonly endAt: Date }>,
 ): number => {

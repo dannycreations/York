@@ -1,8 +1,8 @@
-import { Context, Data, Layer, Schema, Scope } from 'effect';
+import { Context, Layer, Schema, Scope } from 'effect';
 
-import { StoreClientLayer } from '../structures/StoreClient';
+import { StoreClientLayer } from '../structures/StoreClient.js';
 
-import type { StoreClient } from '../structures/StoreClient';
+import type { StoreClient } from '../structures/StoreClient.js';
 
 export const ClientConfigSchema = Schema.Struct({
   isClaimDrops: Schema.Boolean,
@@ -17,7 +17,7 @@ export const ClientConfigSchema = Schema.Struct({
 
 export type ClientConfig = Schema.Schema.Type<typeof ClientConfigSchema>;
 
-export const INITIAL_CONFIG: ClientConfig = Data.struct({
+const INITIAL_CONFIG: ClientConfig = {
   isClaimDrops: false,
   isClaimPoints: false,
   isClaimMoments: false,
@@ -26,7 +26,7 @@ export const INITIAL_CONFIG: ClientConfig = Data.struct({
   priorityList: new Set<string>(),
   priorityConnectedList: new Set<string>(),
   exclusionList: new Set<string>(),
-});
+};
 
 export class ConfigStoreTag extends Context.Tag('@core/ConfigStore')<ConfigStoreTag, StoreClient<ClientConfig>>() {}
 
