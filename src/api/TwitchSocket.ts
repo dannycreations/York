@@ -23,6 +23,14 @@ export interface TwitchSocket {
 
 export class TwitchSocketTag extends Context.Tag('@services/TwitchSocket')<TwitchSocketTag, TwitchSocket>() {}
 
+const safeJsonParse = <T>(text: string): T | undefined => {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return undefined;
+  }
+};
+
 export const TwitchSocketLayer = (authToken: string): Layer.Layer<TwitchSocketTag, TwitchSocketError, HttpClientTag> =>
   Layer.scoped(
     TwitchSocketTag,
@@ -97,10 +105,7 @@ export const TwitchSocketLayer = (authToken: string): Layer.Layer<TwitchSocketTa
 
       const parseMessage = (data: string): Effect.Effect<Option.Option<SocketMessage>> =>
         Effect.gen(function* () {
-          const raw = yield* Effect.try({
-            try: () => JSON.parse(data),
-            catch: () => undefined,
-          }).pipe(Effect.orDie);
+          const raw = safeJsonParse(data);
 
           if (
             !isObjectLike<{
@@ -117,10 +122,7 @@ export const TwitchSocketLayer = (authToken: string): Layer.Layer<TwitchSocketTa
           const { topic, message } = raw.data;
           const [topicType, topicId] = topic.split('.');
 
-          const value = yield* Effect.try({
-            try: () => JSON.parse(message),
-            catch: () => undefined,
-          }).pipe(Effect.orDie);
+          const value = safeJsonParse(message);
 
           if (!isObjectLike<{ readonly topic_id: unknown }>(value)) {
             return Option.none();

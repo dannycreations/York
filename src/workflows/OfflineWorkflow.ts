@@ -1,7 +1,7 @@
 import { chalk } from '@vegapunk/utilities';
 import { Array, Effect, Option, Order, pipe, Ref, Schedule } from 'effect';
 
-import { ConfigStoreTag } from '../core/Config.js';
+import { ConfigStoreTag, gamePriorityRank } from '../core/Config.js';
 import { calculatePriority, getDropStatus } from '../helpers/TwitchHelper.js';
 import { CampaignServiceTag } from '../services/CampaignService.js';
 
@@ -56,7 +56,7 @@ export const OfflineWorkflow = (state: MainState) =>
         pending,
         pipe(
           Order.number,
-          Order.mapInput((c: Campaign) => (c.game !== null && config.priorityList.has(c.game.displayName) ? 1 : 0)),
+          Order.mapInput((c: Campaign) => gamePriorityRank(config, c.game?.displayName)),
           Order.reverse,
         ),
       );

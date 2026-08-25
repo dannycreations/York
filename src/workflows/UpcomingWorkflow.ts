@@ -6,20 +6,16 @@ import { CampaignServiceTag } from '../services/CampaignService.js';
 
 import type { Campaign } from '../core/Schemas.js';
 import type { MainState } from '../core/State.js';
-import type { CampaignService } from '../services/CampaignService.js';
 
-const processUpcomingCampaign = (
-  next: Campaign,
-  upcomingCount: number,
-  state: MainState,
-  campaignService: CampaignService,
-  isMainCall: boolean,
-  isMainCallSleep: Ref.Ref<boolean>,
-) =>
+const REFRESH_INTERVAL_MS = 7_200_000;
+
+const processUpcomingCampaign = (next: Campaign, upcomingCount: number, state: MainState, isMainCall: boolean, isMainCallSleep: Ref.Ref<boolean>) =>
   Effect.gen(function* () {
     if (next.game === null) {
       return;
     }
+
+    const campaignService = yield* CampaignServiceTag;
 
     const waitMs = next.startAt.getTime() - Date.now();
     if (waitMs > 0) {
@@ -62,8 +58,7 @@ const processUpcomingCampaign = (
 export const UpcomingWorkflow = (state: MainState) =>
   Effect.gen(function* () {
     const campaignService = yield* CampaignServiceTag;
-    const sleepTime = 7_200_000;
-    const nextRefreshRef = yield* Ref.make(Date.now() + sleepTime);
+    const nextRefreshRef = yield* Ref.make(Date.now() + REFRESH_INTERVAL_MS);
     const isMainCallSleep = yield* Ref.make(false);
 
     yield* Effect.sleep('120 seconds');
@@ -78,19 +73,19 @@ export const UpcomingWorkflow = (state: MainState) =>
 
       if (isMainCall || now >= nextRefresh) {
         yield* campaignService.updateCampaigns.pipe(Effect.catchAll((e) => Effect.logWarning(chalk`{yellow Upcoming check error: ${e.message}}`)));
-        yield* Ref.set(nextRefreshRef, Date.now() + sleepTime);
+        yield* Ref.set(nextRefreshRef, Date.now() + REFRESH_INTERVAL_MS);
       }
 
       const upcoming = yield* campaignService.getSortedUpcoming;
       if (upcoming.length === 0) {
         if (isMainCall) {
           yield* Effect.logInfo(chalk`{bold.yellow No upcoming campaigns}`);
-          yield* Effect.logInfo(chalk`{bold.yellow Sleeping until ${new Date(now + sleepTime).toLocaleString()}}`);
+          yield* Effect.logInfo(chalk`{bold.yellow Sleeping until ${new Date(now + REFRESH_INTERVAL_MS).toLocaleString()}}`);
         }
         return;
       }
 
-      yield* processUpcomingCampaign(upcoming[0], upcoming.length, state, campaignService, isMainCall, isMainCallSleep);
+      yield* processUpcomingCampaign(upcoming[0], upcoming.length, state, isMainCall, isMainCallSleep);
     });
 
     yield* Effect.repeat(loop, Schedule.spaced('120 seconds'));

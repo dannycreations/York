@@ -3,7 +3,7 @@ import { Effect, Option, Ref, Schedule, Scope } from 'effect';
 
 import { TwitchApiTag } from '../api/TwitchApi.js';
 import { TwitchSocketTag } from '../api/TwitchSocket.js';
-import { ConfigStoreTag } from '../core/Config.js';
+import { ConfigStoreTag, gamePriorityRank } from '../core/Config.js';
 import { WsTopic } from '../core/Constants.js';
 import { makeMainState } from '../core/State.js';
 import { CHANNEL_LISTENER_TOPICS, resetChannel, setChannel } from '../helpers/ChannelHelper.js';
@@ -148,11 +148,12 @@ const initializeCampaigns = (state: MainState): Effect.Effect<void, never, Campa
     const config = yield* configStore.get;
     const campaigns = yield* campaignService.getSortedActive;
 
-    const priorityList = campaigns.filter((c) => c.game !== null && config.priorityList.has(c.game.displayName));
-    const priorityConnectedList = campaigns.filter((c) => c.game !== null && config.priorityConnectedList.has(c.game.displayName));
+    const prioritized = campaigns
+      .filter((c) => gamePriorityRank(config, c.game?.displayName) > 0)
+      .sort((a, b) => gamePriorityRank(config, b.game?.displayName) - gamePriorityRank(config, a.game?.displayName));
 
-    const hasPriority = priorityList.length > 0 || priorityConnectedList.length > 0;
-    const activeList = hasPriority ? [...priorityList, ...priorityConnectedList] : campaigns;
+    const hasPriority = prioritized.length > 0;
+    const activeList = hasPriority ? prioritized : campaigns;
     const priorityMessage = hasPriority ? '' : 'Non-';
 
     yield* Effect.logInfo(chalk`{bold.yellow Checking ${activeList.length} ${priorityMessage}Priority game!}`);
@@ -217,6 +218,37 @@ const processCampaignChannels = (
     yield* resetChannel(state.currentChannel);
   });
 
+const isChannelReusable = (channel: Channel, campaign: Campaign): boolean =>
+  channel.isOnline && !!channel.currentSid && channel.campaignId === campaign.id;
+
+const resolveCampaignChannels = (state: MainState, campaign: Campaign): Effect.Effect<ReadonlyArray<Channel>, TwitchApiError, CampaignServiceTag> =>
+  Effect.gen(function* () {
+    const currentChannelOpt = yield* Ref.get(state.currentChannel);
+
+    if (Option.isSome(currentChannelOpt) && isChannelReusable(currentChannelOpt.value, campaign)) {
+      return [currentChannelOpt.value];
+    }
+
+    const campaignService = yield* CampaignServiceTag;
+    return yield* campaignService.getChannelsForCampaign(campaign);
+  });
+
+const selectDrop = (state: MainState, drops: readonly Drop[]) =>
+  Effect.gen(function* () {
+    const oldDropOpt = yield* Ref.get(state.currentDrop);
+    const firstDrop = drops[0];
+    const drop = Option.match(oldDropOpt, {
+      onNone: () => firstDrop,
+      onSome: (old) =>
+        old.id === firstDrop.id
+          ? { ...firstDrop, currentMinutesWatched: Math.max(firstDrop.currentMinutesWatched, old.currentMinutesWatched) }
+          : firstDrop,
+    });
+
+    yield* Ref.set(state.currentDrop, Option.some(drop));
+    return drop;
+  });
+
 const mainLoop = (state: MainState): Effect.Effect<void, TwitchApiError, WorkflowContext> =>
   Effect.gen(function* () {
     const campaignService = yield* CampaignServiceTag;
@@ -278,37 +310,6 @@ const mainLoop = (state: MainState): Effect.Effect<void, TwitchApiError, Workflo
     }
 
     yield* processCampaignChannels(state, campaign, drops, channels, activeList);
-  });
-
-const isChannelReusable = (channel: Channel, campaign: Campaign): boolean =>
-  channel.isOnline && !!channel.currentSid && channel.campaignId === campaign.id;
-
-const resolveCampaignChannels = (state: MainState, campaign: Campaign): Effect.Effect<ReadonlyArray<Channel>, TwitchApiError, CampaignServiceTag> =>
-  Effect.gen(function* () {
-    const currentChannelOpt = yield* Ref.get(state.currentChannel);
-
-    if (Option.isSome(currentChannelOpt) && isChannelReusable(currentChannelOpt.value, campaign)) {
-      return [currentChannelOpt.value];
-    }
-
-    const campaignService = yield* CampaignServiceTag;
-    return yield* campaignService.getChannelsForCampaign(campaign);
-  });
-
-const selectDrop = (state: MainState, drops: readonly Drop[]) =>
-  Effect.gen(function* () {
-    const oldDropOpt = yield* Ref.get(state.currentDrop);
-    const firstDrop = drops[0];
-    const drop = Option.match(oldDropOpt, {
-      onNone: () => firstDrop,
-      onSome: (old) =>
-        old.id === firstDrop.id
-          ? { ...firstDrop, currentMinutesWatched: Math.max(firstDrop.currentMinutesWatched, old.currentMinutesWatched) }
-          : firstDrop,
-    });
-
-    yield* Ref.set(state.currentDrop, Option.some(drop));
-    return drop;
   });
 
 export const MainWorkflow: Effect.Effect<void, never, WorkflowContext | Scope.Scope> = Effect.gen(function* () {

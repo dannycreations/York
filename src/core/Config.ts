@@ -28,6 +28,13 @@ const INITIAL_CONFIG: ClientConfig = {
   exclusionList: new Set<string>(),
 };
 
+export const gamePriorityRank = (config: ClientConfig, gameName: string | undefined): number => {
+  if (!gameName) return 0;
+  if (config.priorityList.has(gameName)) return 2;
+  if (config.priorityConnectedList.has(gameName)) return 1;
+  return 0;
+};
+
 export class ConfigStoreTag extends Context.Tag('@core/ConfigStore')<ConfigStoreTag, StoreClient<ClientConfig>>() {}
 
 export const ConfigStoreLayer: Layer.Layer<ConfigStoreTag, never, Scope.Scope> = StoreClientLayer(

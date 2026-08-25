@@ -4,7 +4,7 @@ import { Context, Effect, Layer, Option, Ref, Schema } from 'effect';
 
 import { TwitchApiTag } from '../api/TwitchApi.js';
 import { GqlQueries } from '../api/TwitchGql.js';
-import { ConfigStoreTag } from '../core/Config.js';
+import { ConfigStoreTag, gamePriorityRank } from '../core/Config.js';
 import {
   CampaignDetailsSchema,
   ChannelDropsSchema,
@@ -430,9 +430,7 @@ export const CampaignServiceLayer: Layer.Layer<CampaignServiceTag, never, Twitch
 
       let targets = campaigns;
       if (mode === 'PriorityOnly') {
-        targets = campaigns.filter(
-          (c) => c.game !== null && (config.priorityList.has(c.game.displayName) || config.priorityConnectedList.has(c.game.displayName)),
-        );
+        targets = campaigns.filter((c) => gamePriorityRank(config, c.game?.displayName) > 0);
       }
 
       const result: Campaign[] = [];
@@ -443,19 +441,12 @@ export const CampaignServiceLayer: Layer.Layer<CampaignServiceTag, never, Twitch
         result.push(c);
       }
 
-      return result.sort((a, b) => {
-        if (a.game !== null && b.game !== null) {
-          const aP = config.priorityList.has(a.game.displayName);
-          const bP = config.priorityList.has(b.game.displayName);
-          if (aP && !bP) return -1;
-          if (!aP && bP) return 1;
-          const aPC = config.priorityConnectedList.has(a.game.displayName);
-          const bPC = config.priorityConnectedList.has(b.game.displayName);
-          if (aPC && !bPC) return -1;
-          if (!aPC && bPC) return 1;
-        }
-        return b.priority - a.priority || a.endAt.getTime() - b.endAt.getTime();
-      });
+      return result.sort(
+        (a, b) =>
+          gamePriorityRank(config, b.game?.displayName) - gamePriorityRank(config, a.game?.displayName) ||
+          b.priority - a.priority ||
+          a.endAt.getTime() - b.endAt.getTime(),
+      );
     });
 
     const setCampaignField = (id: string, update: (c: Campaign) => Campaign): Effect.Effect<void> =>
