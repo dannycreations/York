@@ -139,7 +139,7 @@ export const TwitchSocketLayer = (authToken: string): Layer.Layer<TwitchSocketTa
           yield* Effect.logDebug(chalk`TwitchSocket: Emitted ${topicType}.${topicId}`, payload);
 
           return yield* Schema.decodeUnknown(SocketMessageSchema)(payload).pipe(
-            Effect.map(Option.some),
+            Effect.asSome,
             Effect.orElseSucceed(() => Option.none()),
           );
         });

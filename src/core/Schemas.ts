@@ -170,11 +170,13 @@ export const ChannelPointsSchema = Schema.Struct({
 
 export const ChannelStreamsSchema = Schema.Struct({
   users: Schema.Array(
-    Schema.Struct({
-      id: Schema.String,
-      login: Schema.String,
-      stream: Schema.NullOr(Schema.Struct({ id: Schema.String })),
-    }),
+    Schema.NullOr(
+      Schema.Struct({
+        id: Schema.String,
+        login: Schema.String,
+        stream: Schema.NullOr(Schema.Struct({ id: Schema.String })),
+      }),
+    ),
   ),
 });
 

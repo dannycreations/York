@@ -528,7 +528,7 @@ export const CampaignServiceLayer: Layer.Layer<CampaignServiceTag, never, Twitch
 
             if ('users' in response) {
               for (const user of response.users) {
-                if (user.stream) resolved[index].push(toChannel(job.game, user.id, user.login, user.stream.id, job.game.id, job.game.displayName));
+                if (user?.stream) resolved[index].push(toChannel(job.game, user.id, user.login, user.stream.id, job.game.id, job.game.displayName));
               }
               continue;
             }
