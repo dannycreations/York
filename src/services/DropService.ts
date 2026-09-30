@@ -32,10 +32,12 @@ export const DropServiceLayer = Layer.effect(
     // because the drop was claimed or because it can no longer be claimed.
     const attemptClaim = (campaign: Campaign, drop: Drop, attempt: number, state: MainState): Effect.Effect<boolean> =>
       Effect.gen(function* () {
-        const currentDropInitial = yield* Ref.get(state.currentDrop);
-        if (Option.isSome(currentDropInitial) && currentDropInitial.value.isClaimed) return true;
+        const trackedOpt = yield* Ref.get(state.currentDrop);
+        if (Option.isSome(trackedOpt) && trackedOpt.value.isClaimed) return true;
 
-        if (Option.isNone(currentDropInitial) || !currentDropInitial.value.dropInstanceID) {
+        // A claim ID only appears on the drop once Twitch has registered the
+        // award, so a drop that still lacks one needs a progress refresh.
+        if (Option.isNone(trackedOpt) || !trackedOpt.value.dropInstanceID) {
           yield* campaignService.updateProgress.pipe(Effect.ignore);
           const updatedDrop = yield* campaignService.findProgress(drop.id);
 
@@ -52,32 +54,29 @@ export const DropServiceLayer = Layer.effect(
           }
         }
 
-        const curDropOpt = yield* Ref.get(state.currentDrop);
-        if (Option.isSome(curDropOpt)) {
-          if (curDropOpt.value.isClaimed) return true;
+        const currentOpt = yield* Ref.get(state.currentDrop);
+        if (Option.isNone(currentOpt)) return true;
+        const current = currentOpt.value;
 
-          if (curDropOpt.value.dropInstanceID) {
-            const claimRes = yield* api.claimDrops(curDropOpt.value.dropInstanceID).pipe(Effect.option);
-            if (Option.isSome(claimRes) && claimRes.value.claimDropRewards) {
-              yield* Effect.logInfo(chalk`{green ${drop.name}} | {yellow Drops claimed}`);
-              yield* campaignService.addRewards(drop.benefits.map((id) => ({ id, lastAwardedAt: new Date() })));
-              yield* Ref.update(
-                state.currentDrop,
-                Option.map((d) => ({ ...d, isClaimed: true })),
-              );
-              return true;
-            }
+        if (current.isClaimed) return true;
+
+        if (current.dropInstanceID) {
+          const claimRes = yield* api.claimDrops(current.dropInstanceID).pipe(Effect.option);
+          if (Option.isSome(claimRes) && claimRes.value.claimDropRewards) {
+            yield* Effect.logInfo(chalk`{green ${drop.name}} | {yellow Drops claimed}`);
+            yield* campaignService.addRewards(drop.benefits.map((id) => ({ id, lastAwardedAt: new Date() })));
+            yield* Ref.update(
+              state.currentDrop,
+              Option.map((d) => ({ ...d, isClaimed: true })),
+            );
+            return true;
           }
         }
 
-        const dropCheckOpt = yield* Ref.get(state.currentDrop);
-        if (Option.isNone(dropCheckOpt)) return true;
-        const dropCheck = dropCheckOpt.value;
-
-        if (dropCheck.currentMinutesWatched < dropCheck.requiredMinutesWatched) {
-          const isBroken = dropCheck.requiredMinutesWatched - dropCheck.currentMinutesWatched >= 20;
+        if (current.currentMinutesWatched < current.requiredMinutesWatched) {
+          const isBroken = current.requiredMinutesWatched - current.currentMinutesWatched >= 20;
           yield* Effect.logInfo(chalk`{green ${drop.name}} | {red ${isBroken ? 'Possible broken drops' : 'Minutes not met'}}`);
-          if (isBroken) yield* campaignService.setBroken(dropCheck.campaignId, true);
+          if (isBroken) yield* campaignService.setBroken(current.campaignId, true);
           yield* Ref.set(state.currentDrop, Option.none());
           return true;
         }

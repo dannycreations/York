@@ -14,7 +14,7 @@
     "format": "prettier --write .",
     "clean": "rimraf -g \"*.tsbuildinfo\" \"dist\"",
     "clean:node": "rimraf -g \"*-lock*\" \"node_modules\"",
-    "update": "npm-check-updates -u -x got,@types/node",
+    "update": "npm-check-updates -u -x got,@types/node,pnpm",
     "prepare": "husky && effect-tsgo patch"
   },
   "dependencies": {
@@ -41,5 +41,5 @@
     "tsx": "^4.23.15",
     "typescript": "^7.0.2"
   },
-  "packageManager": "pnpm@12.8.1"
+  "packageManager": "pnpm@11.28.2"
 }

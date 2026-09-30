@@ -1,5 +1,3 @@
-import type { ValueOf } from '@vegapunk/utilities';
-
 export const WsTopic = {
   UserDrop: 'user-drop-events',
   UserPoint: 'community-points-user-v1',
@@ -8,8 +6,6 @@ export const WsTopic = {
   ChannelUpdate: 'broadcast-settings-update',
   ChannelPoint: 'community-points-channel-v1',
 } as const;
-
-export type WsTopic = ValueOf<typeof WsTopic>;
 
 export const Twitch = {
   WebUrl: 'https://www.twitch.tv',

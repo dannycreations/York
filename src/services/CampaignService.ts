@@ -21,6 +21,7 @@ import type { ClientConfig } from '../core/Config.js';
 import type { Campaign, Channel, Drop, Game, Reward, TimeBasedDrop } from '../core/Schemas.js';
 
 const GQL_BATCH_SIZE = 20;
+const ALLOW_CHANNEL_LIMIT = 30;
 const INVENTORY_FRESH_MS = 60_000;
 const REWARD_RETENTION_MS = 2_592_000_000;
 
@@ -47,6 +48,14 @@ const chunked = <A>(items: ReadonlyArray<A>, size: number): ReadonlyArray<Readon
 };
 
 const candidateKey = (game: Game, allowChannels: ReadonlyArray<string>): string => `${game.id}|${game.slug ?? ''}|${allowChannels.join(',')}`;
+
+const toCandidateJob = (campaign: Campaign): CandidateJob | undefined => {
+  const game = campaign.game;
+  if (game === null) return undefined;
+
+  const allowChannels = campaign.allowChannels.slice(0, ALLOW_CHANNEL_LIMIT);
+  return { key: candidateKey(game, allowChannels), game, allowChannels };
+};
 
 export type CampaignMode = 'Initial' | 'PriorityOnly' | 'All';
 
@@ -499,16 +508,12 @@ export const CampaignServiceLayer: Layer.Layer<CampaignServiceTag, never, Twitch
         const seen = new Set<string>();
 
         for (const campaign of campaigns) {
-          const game = campaign.game;
-          if (game === null) continue;
+          const job = toCandidateJob(campaign);
+          if (!job || seen.has(job.key)) continue;
+          seen.add(job.key);
 
-          const allowChannels = campaign.allowChannels.slice(0, 30);
-          const key = candidateKey(game, allowChannels);
-          if (seen.has(key)) continue;
-          seen.add(key);
-
-          const cached = yield* candidateChannelsCache.get(key);
-          if (Option.isNone(cached)) jobs.push({ key, game, allowChannels });
+          const cached = yield* candidateChannelsCache.get(job.key);
+          if (Option.isNone(cached)) jobs.push(job);
         }
 
         for (const chunk of chunked(jobs, GQL_BATCH_SIZE)) {
@@ -569,12 +574,12 @@ export const CampaignServiceLayer: Layer.Layer<CampaignServiceTag, never, Twitch
 
     const getChannelsForCampaign = (campaign: Campaign): Effect.Effect<ReadonlyArray<Channel>, TwitchApiError> =>
       Effect.gen(function* () {
-        const game = campaign.game;
-        if (game === null) return [];
+        const job = toCandidateJob(campaign);
+        if (!job) return [];
 
         yield* ensureCandidateChannels([campaign]);
 
-        const cached = yield* candidateChannelsCache.get(candidateKey(game, campaign.allowChannels.slice(0, 30)));
+        const cached = yield* candidateChannelsCache.get(job.key);
         const candidates = Option.getOrElse(cached, (): ReadonlyArray<Channel> => []);
         if (candidates.length === 0) return [];
 
@@ -590,9 +595,10 @@ export const CampaignServiceLayer: Layer.Layer<CampaignServiceTag, never, Twitch
 
         const channelIds = new Set<string>();
         for (const campaign of campaigns) {
-          if (campaign.game === null) continue;
+          const job = toCandidateJob(campaign);
+          if (!job) continue;
 
-          const cached = yield* candidateChannelsCache.get(candidateKey(campaign.game, campaign.allowChannels.slice(0, 30)));
+          const cached = yield* candidateChannelsCache.get(job.key);
           if (Option.isNone(cached)) continue;
 
           for (const channel of cached.value) channelIds.add(channel.id);

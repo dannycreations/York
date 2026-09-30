@@ -13,7 +13,7 @@ import {
   PlaybackTokenSchema,
   ViewerDropsDashboardSchema,
 } from '../core/Schemas.js';
-import { HttpClientError, HttpClientTag } from '../structures/HttpClient.js';
+import { HttpClientTag } from '../structures/HttpClient.js';
 import { GqlQueries } from './TwitchGql.js';
 
 import type { ReadonlyRecord } from 'effect/Record';
@@ -134,13 +134,7 @@ export const TwitchApiLayer = (authToken: string): Layer.Layer<TwitchApiTag, nev
           }
 
           return response;
-        }).pipe(
-          Effect.mapError((e) =>
-            e instanceof HttpClientError
-              ? new TwitchApiError({ message: e.message, cause: e })
-              : new TwitchApiError({ message: String(e), cause: e }),
-          ),
-        );
+        }).pipe(Effect.mapError((e) => new TwitchApiError({ message: e.message, cause: e })));
 
       const unique = Effect.gen(function* () {
         const response = yield* request<string>({
