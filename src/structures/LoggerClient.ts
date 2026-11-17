@@ -1,6 +1,6 @@
 import { join } from 'node:path';
 import { isErrorLike } from '@vegapunk/utilities/result';
-import { Cause, Layer, Logger, LogLevel, References, Schema } from 'effect';
+import { Cause, Layer, Logger, LogLevel, References } from 'effect';
 import pino from 'pino';
 import pinoPretty from 'pino-pretty';
 
@@ -28,16 +28,14 @@ export const EFFECT_LEVEL_MAP: ReadonlyRecord<LogLevel.LogLevel, pino.LevelWithS
   None: 'silent',
 };
 
-export const LoggerOptions = Schema.Struct({
-  dir: Schema.optional(Schema.String),
-  level: Schema.optional(Schema.String as unknown as Schema.Schema<Level>),
-  trace: Schema.optional(Schema.Boolean),
-  pretty: Schema.optional(Schema.Boolean),
-  exception: Schema.optional(Schema.Boolean),
-  rejection: Schema.optional(Schema.Boolean),
-});
-
-export type LoggerOptions = Schema.Schema.Type<typeof LoggerOptions>;
+export interface LoggerOptions {
+  readonly dir?: string;
+  readonly level?: Level;
+  readonly trace?: boolean;
+  readonly pretty?: boolean;
+  readonly exception?: boolean;
+  readonly rejection?: boolean;
+}
 
 export const makeLoggerClient = (options: LoggerOptions = {}): pino.Logger => {
   const {

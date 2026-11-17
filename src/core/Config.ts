@@ -11,7 +11,7 @@ const StringSet = Schema.Array(Schema.String).pipe(
   }),
 );
 
-export const ClientConfigSchema = Schema.Struct({
+const ClientConfigSchema = Schema.Struct({
   isClaimDrops: Schema.Boolean,
   isClaimPoints: Schema.Boolean,
   isClaimMoments: Schema.Boolean,

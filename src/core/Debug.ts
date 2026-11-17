@@ -22,8 +22,9 @@ export const DebugLayer = (isEnabled: boolean): Layer.Layer<DebugTag> =>
 
       return Effect.tryPromise(async () => {
         const debugDir = join(process.cwd(), 'debug');
+        const fileName = name ? `${name}.json` : `${Date.now()}.json`;
         await mkdir(debugDir, { recursive: true });
-        await writeFile(join(debugDir, `${name ?? Date.now()}.json`), content);
+        await writeFile(join(debugDir, fileName), content);
       }).pipe(Effect.ignore);
     },
   });

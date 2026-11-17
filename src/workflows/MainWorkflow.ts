@@ -4,7 +4,7 @@ import { Effect, Option, Ref, Schedule, Scope } from 'effect';
 import { TwitchApiTag } from '../api/TwitchApi.js';
 import { TwitchSocketTag } from '../api/TwitchSocket.js';
 import { ConfigStoreTag, gamePriorityRank } from '../core/Config.js';
-import { WsTopic } from '../core/Constants.js';
+import { WATCH_SYNC_THRESHOLD_MINUTES, WsTopic } from '../core/Constants.js';
 import { makeMainState } from '../core/State.js';
 import { CHANNEL_LISTENER_TOPICS, resetChannel, setChannel } from '../helpers/ChannelHelper.js';
 import { isMinutesWatchedMet } from '../helpers/TwitchHelper.js';
@@ -63,7 +63,7 @@ const handleDropProgress = (
     yield* socket.listen(CHANNEL_LISTENER_TOPICS, channel.id).pipe(Effect.ignore);
 
     const localMin = yield* Ref.get(state.localMinutesWatched);
-    if (localMin < 20) return;
+    if (localMin < WATCH_SYNC_THRESHOLD_MINUTES) return;
 
     yield* dropService.syncDropProgress(updatedDrop, state);
   });
@@ -148,9 +148,7 @@ const initializeCampaigns = (state: MainState): Effect.Effect<void, never, Campa
     const config = yield* configStore.get;
     const campaigns = yield* campaignService.getSortedActive;
 
-    const prioritized = campaigns
-      .filter((c) => gamePriorityRank(config, c.game?.displayName) > 0)
-      .sort((a, b) => gamePriorityRank(config, b.game?.displayName) - gamePriorityRank(config, a.game?.displayName));
+    const prioritized = campaigns.filter((c) => gamePriorityRank(config, c.game?.displayName) > 0);
 
     const hasPriority = prioritized.length > 0;
     const activeList = hasPriority ? prioritized : campaigns;

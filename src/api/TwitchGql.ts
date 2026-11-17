@@ -1,7 +1,6 @@
 export interface GraphqlRequest {
   readonly operationName: string;
   readonly variables: Readonly<Record<string, unknown>>;
-  readonly query?: string | undefined;
   readonly hash?: string | undefined;
 }
 

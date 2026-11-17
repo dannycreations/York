@@ -23,7 +23,7 @@ import type { Campaign, Channel, Drop, Game, Reward, TimeBasedDrop } from '../co
 const GQL_BATCH_SIZE = 20;
 const ALLOW_CHANNEL_LIMIT = 30;
 const INVENTORY_FRESH_MS = 60_000;
-const REWARD_RETENTION_MS = 2_592_000_000;
+const REWARD_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 
 type CampaignDetail = Schema.Schema.Type<typeof CampaignDetailsSchema>['user']['dropCampaign'];
 
@@ -95,10 +95,8 @@ const processDrop = (
     name: truncate((drop.benefitEdges[0]?.benefit.name || drop.name).trim()),
     benefits,
     campaignId,
-    startAt,
     endAt,
     requiredMinutesWatched,
-    requiredSubs,
     isClaimed,
     hasPreconditionsMet: drop.self?.hasPreconditionsMet ?? true,
     currentMinutesWatched,
@@ -155,19 +153,6 @@ const buildActiveDrops = (
   return processed.map((drop, i) => ({ ...drop, name: truncate(`${startIndex + i + 1}/${total}, ${drop.name}`) }));
 };
 
-const processInventoryDrops = (
-  campaigns: ReadonlyArray<{ readonly id: string; readonly timeBasedDrops: ReadonlyArray<TimeBasedDrop> }>,
-  config: ClientConfig,
-  rewardsMap: ReadonlyMap<string, Date>,
-  now: number,
-): ReadonlyArray<Drop> => {
-  const result: Drop[] = [];
-  for (const campaign of campaigns) {
-    result.push(...buildActiveDrops(campaign.timeBasedDrops, campaign.id, config, rewardsMap, now, true));
-  }
-  return result;
-};
-
 export const CampaignServiceLayer: Layer.Layer<CampaignServiceTag, never, TwitchApiTag | ConfigStoreTag> = Layer.effect(
   CampaignServiceTag,
   Effect.gen(function* () {
@@ -220,7 +205,6 @@ export const CampaignServiceLayer: Layer.Layer<CampaignServiceTag, never, Twitch
             game: existing?.game || data.game,
             startAt: data.startAt,
             endAt: data.endAt,
-            isAccountConnected: data.self.isAccountConnected,
             priority: existing?.priority ?? 0,
             isBroken: existing?.isBroken ?? false,
             isOffline: existing?.isOffline ?? false,
@@ -272,7 +256,7 @@ export const CampaignServiceLayer: Layer.Layer<CampaignServiceTag, never, Twitch
         return next;
       });
 
-    const syncInventory = (inventory: Inventory, config: ClientConfig, now: number): Effect.Effect<ReadonlyMap<string, Date>> =>
+    const syncInventory = (inventory: Inventory, config: ClientConfig, now: number): Effect.Effect<void> =>
       Effect.gen(function* () {
         const rewardsMap = new Map<string, Date>();
         const userInventory = inventory.currentUser.inventory;
@@ -283,10 +267,13 @@ export const CampaignServiceLayer: Layer.Layer<CampaignServiceTag, never, Twitch
           }
         }
 
+        const drops = userInventory.dropCampaignsInProgress.flatMap((campaign) =>
+          buildActiveDrops(campaign.timeBasedDrops, campaign.id, config, rewardsMap, now, true),
+        );
+
         yield* Ref.set(rewardsRef, rewardsMap);
         yield* Ref.set(inventorySyncedAtRef, now);
-        yield* syncProgressRef(processInventoryDrops(userInventory.dropCampaignsInProgress, config, rewardsMap, now), now);
-        return rewardsMap;
+        yield* syncProgressRef(drops, now);
       });
 
     const fetchAndSyncInventory = Effect.gen(function* () {
@@ -305,7 +292,7 @@ export const CampaignServiceLayer: Layer.Layer<CampaignServiceTag, never, Twitch
     // Campaign details describe the immutable shape of a campaign's drops; live
     // progress and rewards are layered on at read time, so a progress refresh
     // must not invalidate the detail cache.
-    const updateProgress = Effect.asVoid(syncInventoryIfStale(Date.now()));
+    const updateProgress = Effect.suspend(() => syncInventoryIfStale(Date.now()));
 
     const claimInventoryDrops = Effect.gen(function* () {
       yield* syncInventoryIfStale(Date.now());

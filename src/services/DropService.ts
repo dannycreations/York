@@ -3,6 +3,7 @@ import { Context, Effect, Layer, Option, Ref } from 'effect';
 
 import { TwitchApiTag } from '../api/TwitchApi.js';
 import { TwitchSocketTag } from '../api/TwitchSocket.js';
+import { WATCH_SYNC_THRESHOLD_MINUTES } from '../core/Constants.js';
 import { resetChannel } from '../helpers/ChannelHelper.js';
 import { CampaignServiceTag } from './CampaignService.js';
 
@@ -74,7 +75,7 @@ export const DropServiceLayer = Layer.effect(
         }
 
         if (current.currentMinutesWatched < current.requiredMinutesWatched) {
-          const isBroken = current.requiredMinutesWatched - current.currentMinutesWatched >= 20;
+          const isBroken = current.requiredMinutesWatched - current.currentMinutesWatched >= WATCH_SYNC_THRESHOLD_MINUTES;
           yield* Effect.logInfo(chalk`{green ${drop.name}} | {red ${isBroken ? 'Possible broken drops' : 'Minutes not met'}}`);
           if (isBroken) yield* campaignService.setBroken(current.campaignId, true);
           yield* Ref.set(state.currentDrop, Option.none());
@@ -121,7 +122,7 @@ export const DropServiceLayer = Layer.effect(
           if (Option.isNone(freshDrop)) return;
 
           const desync = drop.currentMinutesWatched - freshDrop.value.currentMinutesWatched;
-          if (desync >= 20) {
+          if (desync >= WATCH_SYNC_THRESHOLD_MINUTES) {
             yield* dropChannel(state);
           }
 

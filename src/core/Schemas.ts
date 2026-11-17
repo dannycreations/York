@@ -35,10 +35,8 @@ export interface Drop {
   readonly name: string;
   readonly benefits: ReadonlyArray<string>;
   readonly campaignId: string;
-  readonly startAt: Date;
   readonly endAt: Date;
   readonly requiredMinutesWatched: number;
-  readonly requiredSubs: number;
   readonly isClaimed: boolean;
   readonly hasPreconditionsMet: boolean;
   readonly currentMinutesWatched: number;
@@ -51,7 +49,6 @@ export interface Campaign {
   readonly game: Game | null;
   readonly startAt: Date;
   readonly endAt: Date;
-  readonly isAccountConnected: boolean;
   readonly priority: number;
   readonly isBroken: boolean;
   readonly isOffline: boolean;

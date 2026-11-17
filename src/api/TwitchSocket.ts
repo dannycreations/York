@@ -124,16 +124,14 @@ export const TwitchSocketLayer = (authToken: string): Layer.Layer<TwitchSocketTa
 
           const value = safeJsonParse(message);
 
-          if (!isObjectLike<{ readonly topic_id: unknown }>(value)) {
+          if (!isObjectLike(value)) {
             return Option.none();
           }
-
-          const topic_id = typeof value.topic_id === 'string' ? value.topic_id : topicId;
 
           const payload = {
             topicType,
             topicId,
-            payload: { ...value, topic_id },
+            payload: value,
           };
 
           yield* Effect.logDebug(chalk`TwitchSocket: Emitted ${topicType}.${topicId}`, payload);

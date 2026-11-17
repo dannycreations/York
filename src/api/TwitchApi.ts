@@ -187,7 +187,6 @@ export const TwitchApiLayer = (authToken: string): Layer.Layer<TwitchApiTag, nev
             return {
               operationName: r.operationName,
               variables,
-              query: r.query,
               extensions: r.hash ? { persistedQuery: { version: 1, sha256Hash: r.hash } } : undefined,
             };
           });
@@ -199,39 +198,35 @@ export const TwitchApiLayer = (authToken: string): Layer.Layer<TwitchApiTag, nev
             responseType: 'json',
           });
 
-          return yield* Effect.forEach(
-            response.body,
-            (res, index) => {
-              const op = requestsArray[index];
-              const opName = op?.operationName;
+          return yield* Effect.forEach(response.body, (res, index) => {
+            const op = requestsArray[index];
+            const opName = op?.operationName;
 
-              if (res.errors && res.errors.length > 0) {
-                return Effect.fail(toGraphqlError(res.errors, opName)).pipe(
-                  Effect.tapError(() =>
-                    debug.write({ operation: opName, variables: op?.variables, response: res }, `gql-error-${opName}-${Date.now()}`, true),
-                  ),
-                );
-              }
-
-              return Schema.decodeUnknownEffect(schemas[index])(res.data).pipe(
-                Effect.tapError((e) =>
-                  debug.write(
-                    { operation: opName, variables: op?.variables, response: res, error: e },
-                    `gql-validation-error-${opName}-${Date.now()}`,
-                    true,
-                  ),
-                ),
-                Effect.mapError(
-                  (e) =>
-                    new TwitchApiError({
-                      message: opName ? `[${opName}] GraphQL Validation Error` : 'GraphQL Validation Error',
-                      cause: e,
-                    }),
+            if (res.errors && res.errors.length > 0) {
+              return Effect.fail(toGraphqlError(res.errors, opName)).pipe(
+                Effect.tapError(() =>
+                  debug.write({ operation: opName, variables: op?.variables, response: res }, `gql-error-${opName}-${Date.now()}`, true),
                 ),
               );
-            },
-            { concurrency: 'unbounded' },
-          );
+            }
+
+            return Schema.decodeUnknownEffect(schemas[index])(res.data).pipe(
+              Effect.tapError((e) =>
+                debug.write(
+                  { operation: opName, variables: op?.variables, response: res, error: e },
+                  `gql-validation-error-${opName}-${Date.now()}`,
+                  true,
+                ),
+              ),
+              Effect.mapError(
+                (e) =>
+                  new TwitchApiError({
+                    message: opName ? `[${opName}] GraphQL Validation Error` : 'GraphQL Validation Error',
+                    cause: e,
+                  }),
+              ),
+            );
+          });
         }).pipe(
           Effect.retry({
             while: (e) => e.retryable === true,

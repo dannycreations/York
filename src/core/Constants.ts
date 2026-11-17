@@ -1,3 +1,5 @@
+export const WATCH_SYNC_THRESHOLD_MINUTES = 20;
+
 export const WsTopic = {
   UserDrop: 'user-drop-events',
   UserPoint: 'community-points-user-v1',
