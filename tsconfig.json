@@ -5,9 +5,9 @@
     "plugins": [
       {
         "name": "@effect/language-service",
-        "allowedUnstableApis": ["effect/socket", "@effect/platform-node"],
         "diagnosticSeverity": {
-          "lazyEffect": "off"
+          "lazyEffect": "off",
+          "unstableApiUsage": "off"
         }
       }
     ],

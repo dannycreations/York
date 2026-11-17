@@ -5,16 +5,19 @@ import { isObjectLike } from '@vegapunk/utilities/common';
 import { Cause, Data, Effect, Exit, Fiber, Layer, Ref } from 'effect';
 
 export interface RuntimeBridge {
-  readonly runFork: <A, E>(effect: Effect.Effect<A, E, never>) => Fiber.Fiber<A, E>;
-  readonly runSync: <A, E>(effect: Effect.Effect<A, E, never>) => A;
-  readonly runPromise: <A, E>(effect: Effect.Effect<A, E, never>) => Promise<A>;
+  readonly runFork: <A, E, R>(effect: Effect.Effect<A, E, R>) => Fiber.Fiber<A, E>;
+  readonly runSync: <A, E, R>(effect: Effect.Effect<A, E, R>) => A;
+  readonly runPromise: <A, E, R>(effect: Effect.Effect<A, E, R>) => Promise<A>;
 }
 
-export const makeRuntimeBridge = Effect.succeed({
-  runFork: Effect.runFork,
-  runSync: Effect.runSync,
-  runPromise: Effect.runPromise,
-} satisfies RuntimeBridge);
+export const makeRuntimeBridge = Effect.gen(function* () {
+  const services = yield* Effect.context<unknown>();
+  return {
+    runFork: Effect.runForkWith(services),
+    runSync: Effect.runSyncWith(services),
+    runPromise: Effect.runPromiseWith(services),
+  } satisfies RuntimeBridge;
+});
 
 class RuntimeRestartSignal extends Data.TaggedError('RuntimeRestartSignal') {}
 class RuntimeShutdownSignal extends Data.TaggedError('RuntimeShutdownSignal') {}
@@ -53,7 +56,7 @@ export const runMainCycle = <A, E, R>(program: Effect.Effect<A, E, R>, options: 
     const childMain = Effect.gen(function* () {
       const { runFork, runPromise } = yield* makeRuntimeBridge;
 
-      const fiber = runFork(Effect.scoped(program) as Effect.Effect<A, E, never>);
+      const fiber = runFork(Effect.scoped(program));
 
       let cleaningUp = false;
       const cleanUp = () => {
