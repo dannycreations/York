@@ -29,13 +29,9 @@ export interface RuntimeCycleOptions {
   readonly logger?: Layer.Layer<never, never>;
 }
 
-export const restartMainCycle = (): Effect.Effect<never, RuntimeRestartSignal> => {
-  return Effect.fail(new RuntimeRestartSignal());
-};
+export const restartMainCycle = Effect.fail(new RuntimeRestartSignal());
 
-export const shutdownMainCycle = (): Effect.Effect<never, RuntimeShutdownSignal> => {
-  return Effect.fail(new RuntimeShutdownSignal());
-};
+export const shutdownMainCycle = Effect.fail(new RuntimeShutdownSignal());
 
 export const cycleUntilMidnight = Effect.gen(function* () {
   const msUntilMidnight = yield* Effect.sync(() => {
@@ -46,7 +42,7 @@ export const cycleUntilMidnight = Effect.gen(function* () {
 
   yield* Effect.sleep(`${msUntilMidnight} millis`);
   yield* Effect.logInfo(chalk`{bold.yellow It's midnight time. Restarting system...}`);
-  return yield* restartMainCycle();
+  return yield* restartMainCycle;
 });
 
 export const runMainCycle = <A, E, R>(program: Effect.Effect<A, E, R>, options: RuntimeCycleOptions = {}): void => {

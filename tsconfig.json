@@ -6,7 +6,6 @@
       {
         "name": "@effect/language-service",
         "diagnosticSeverity": {
-          "lazyEffect": "off",
           "unstableApiUsage": "off"
         }
       }
