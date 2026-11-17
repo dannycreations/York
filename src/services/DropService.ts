@@ -17,7 +17,7 @@ export interface DropService {
   readonly syncDropProgress: (drop: Drop, state: MainState) => Effect.Effect<void, TwitchApiError>;
 }
 
-export class DropServiceTag extends Context.Tag('@services/DropService')<DropServiceTag, DropService>() {}
+export class DropServiceTag extends Context.Service<DropServiceTag, DropService>()('@services/DropService') {}
 
 export const DropServiceLayer = Layer.effect(
   DropServiceTag,
@@ -100,13 +100,15 @@ export const DropServiceLayer = Layer.effect(
         Effect.acquireUseRelease(
           Ref.set(state.isClaiming, true),
           () =>
-            Effect.iterate(
-              { attempt: 0, isDone: false },
-              {
-                while: (s) => !s.isDone && s.attempt < MAX_CLAIM_ATTEMPTS,
-                body: (s) => attemptClaim(campaign, drop, s.attempt, state).pipe(Effect.map((isDone) => ({ attempt: s.attempt + 1, isDone }))),
-              },
-            ),
+            Effect.gen(function* () {
+              let attempt = 0;
+              let isDone = false;
+
+              while (!isDone && attempt < MAX_CLAIM_ATTEMPTS) {
+                isDone = yield* attemptClaim(campaign, drop, attempt, state);
+                attempt += 1;
+              }
+            }),
           () => Ref.set(state.isClaiming, false),
         ).pipe(Effect.asVoid),
 

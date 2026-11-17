@@ -25,8 +25,8 @@ const makeMainLayer = (authToken: string, isDebug: boolean) => {
 };
 
 const program = Effect.gen(function* () {
-  const authToken = yield* Config.string('AUTH_TOKEN');
-  const isDebug = yield* Config.boolean('IS_DEBUG').pipe(Config.withDefault(false));
+  const authToken = yield* Config.String('AUTH_TOKEN');
+  const isDebug = yield* Config.Boolean('IS_DEBUG').pipe(Config.withDefault(false));
 
   const mainLayer = makeMainLayer(authToken, isDebug);
 

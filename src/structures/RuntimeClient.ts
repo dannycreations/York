@@ -2,22 +2,19 @@ import { ChildProcess, fork } from 'node:child_process';
 import process from 'node:process';
 import { chalk } from '@vegapunk/utilities';
 import { isObjectLike } from '@vegapunk/utilities/common';
-import { Cause, Data, Effect, Exit, Fiber, Layer, Ref, Runtime } from 'effect';
+import { Cause, Data, Effect, Exit, Fiber, Layer, Ref } from 'effect';
 
 export interface RuntimeBridge {
-  readonly runFork: <A, E, R>(effect: Effect.Effect<A, E, R>) => Fiber.RuntimeFiber<A, E>;
-  readonly runSync: <A, E, R>(effect: Effect.Effect<A, E, R>) => A;
-  readonly runPromise: <A, E, R>(effect: Effect.Effect<A, E, R>) => Promise<A>;
+  readonly runFork: <A, E>(effect: Effect.Effect<A, E, never>) => Fiber.Fiber<A, E>;
+  readonly runSync: <A, E>(effect: Effect.Effect<A, E, never>) => A;
+  readonly runPromise: <A, E>(effect: Effect.Effect<A, E, never>) => Promise<A>;
 }
 
-export const makeRuntimeBridge = Effect.gen(function* () {
-  const runtime = yield* Effect.runtime<unknown>();
-  return {
-    runFork: Runtime.runFork(runtime),
-    runSync: Runtime.runSync(runtime),
-    runPromise: Runtime.runPromise(runtime),
-  } as RuntimeBridge;
-});
+export const makeRuntimeBridge = Effect.succeed({
+  runFork: Effect.runFork,
+  runSync: Effect.runSync,
+  runPromise: Effect.runPromise,
+} satisfies RuntimeBridge);
 
 class RuntimeRestartSignal extends Data.TaggedError('RuntimeRestartSignal') {}
 class RuntimeShutdownSignal extends Data.TaggedError('RuntimeShutdownSignal') {}
@@ -56,7 +53,7 @@ export const runMainCycle = <A, E, R>(program: Effect.Effect<A, E, R>, options: 
     const childMain = Effect.gen(function* () {
       const { runFork, runPromise } = yield* makeRuntimeBridge;
 
-      const fiber = runFork(Effect.scoped(program));
+      const fiber = runFork(Effect.scoped(program) as Effect.Effect<A, E, never>);
 
       let cleaningUp = false;
       const cleanUp = () => {
@@ -87,7 +84,7 @@ export const runMainCycle = <A, E, R>(program: Effect.Effect<A, E, R>, options: 
       }
 
       const cause = exitValue.cause;
-      const failures = Cause.failures(cause);
+      const failures = cause.reasons.filter(Cause.isFailReason).map((reason) => reason.error);
 
       let signalRestart = false;
       let signalShutdown = false;
@@ -123,7 +120,7 @@ export const runMainCycle = <A, E, R>(program: Effect.Effect<A, E, R>, options: 
   }
 
   const runChildProcess = (currentChildRef: { current: ChildProcess | null }) => {
-    return Effect.async<{ code: number | null; signal: NodeJS.Signals | null; action: 'restart' | 'shutdown' | null }, never, never>((resume) => {
+    return Effect.callback<{ code: number | null; signal: NodeJS.Signals | null; action: 'restart' | 'shutdown' | null }>((resume) => {
       const cleanUp = () => {
         if (currentChildRef.current) {
           try {

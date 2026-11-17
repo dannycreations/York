@@ -8,7 +8,7 @@ export interface DebugClient {
   readonly write: (data: string | object, name?: string, force?: boolean) => Effect.Effect<void>;
 }
 
-export class DebugTag extends Context.Tag('@core/Debug')<DebugTag, DebugClient>() {}
+export class DebugTag extends Context.Service<DebugTag, DebugClient>()('@core/Debug') {}
 
 export const DebugLayer = (isEnabled: boolean): Layer.Layer<DebugTag> =>
   Layer.succeed(DebugTag, {

@@ -76,7 +76,7 @@ const handleUserPoint: MessageHandler = (msg, state) =>
     yield* Ref.set(state.nextPointClaim, Date.now() + POINT_CLAIM_COOLDOWN_MS);
     yield* api
       .claimPoints(channel.id, msg.payload.data.claim.id)
-      .pipe(Effect.zipRight(Effect.logInfo(chalk`{green ${channel.login}} | {yellow Points claimed}`)), Effect.ignore);
+      .pipe(Effect.andThen(Effect.logInfo(chalk`{green ${channel.login}} | {yellow Points claimed}`)), Effect.ignore);
   });
 
 const handleChannelStream: MessageHandler = (msg, state) =>

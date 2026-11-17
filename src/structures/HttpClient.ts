@@ -1,7 +1,7 @@
 import { lookup } from 'node:dns/promises';
 import { createRequire } from 'node:module';
 import { isErrorLike } from '@vegapunk/utilities/result';
-import { Context, Data, Effect, Layer, Schedule } from 'effect';
+import { Cause, Context, Data, Effect, Layer, Schedule } from 'effect';
 import UserAgent from 'user-agents';
 
 import type { CancelableRequest, Got, Options, Response } from 'got';
@@ -46,13 +46,13 @@ export interface HttpClient {
   readonly waitForConnection: (total?: number) => Effect.Effect<void>;
 }
 
-export class HttpClientTag extends Context.Tag('@structures/HttpClient')<HttpClientTag, HttpClient>() {}
+export class HttpClientTag extends Context.Service<HttpClientTag, HttpClient>()('@structures/HttpClient') {}
 
 const TIMEOUT_REGEX = /timeout|timed out/i;
 
 export const isTimeoutError = (error: unknown): boolean =>
   isErrorLike<{ readonly _tag: string; readonly code?: string; readonly message?: string }>(error) &&
-  (error._tag === 'TimeoutException' || error.code === 'ETIMEDOUT' || (typeof error.message === 'string' && TIMEOUT_REGEX.test(error.message)));
+  (error._tag === 'TimeoutError' || error.code === 'ETIMEDOUT' || (typeof error.message === 'string' && TIMEOUT_REGEX.test(error.message)));
 
 export const isNetworkError = (error: unknown): boolean => {
   if (!isErrorLike<{ readonly status?: number; readonly code?: string }>(error)) {
@@ -84,7 +84,7 @@ const makeHttpClient = Effect.gen(function* () {
       const retryCount = isString ? 3 : (payload.retry ?? 3);
       const { initial = 10_000, transmission = 30_000, total = 60_000 } = payload.timeout || {};
 
-      const response = yield* Effect.async<Response<T>, HttpClientError>((resume) => {
+      const response = yield* Effect.callback<Response<T>, HttpClientError>((resume) => {
         const promise = gotInstance({
           ...payload,
           headers,
@@ -122,14 +122,7 @@ const makeHttpClient = Effect.gen(function* () {
         });
       }).pipe(
         Effect.timeout(`${total * 2} millis`),
-        Effect.catchTag('TimeoutException', () =>
-          Effect.fail(
-            new HttpClientError({
-              message: 'Request timed out',
-              code: 'ETIMEDOUT',
-            }),
-          ),
-        ),
+        Effect.mapError((error) => (Cause.isTimeoutError(error) ? new HttpClientError({ message: 'Request timed out', code: 'ETIMEDOUT' }) : error)),
         Effect.retry({
           while: isNetworkError,
           schedule: retryCount < 0 ? Schedule.forever : Schedule.recurs(retryCount),
@@ -154,7 +147,7 @@ const makeHttpClient = Effect.gen(function* () {
       yield* Effect.firstSuccessOf([checkGoogle, checkApple]).pipe(
         Effect.sandbox,
         Effect.retry(Schedule.spaced(`${retryMs} millis`)),
-        Effect.catchAll(() => Effect.void),
+        Effect.catch(() => Effect.void),
       );
     });
 

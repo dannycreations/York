@@ -1,6 +1,6 @@
 import { chalk, randomString } from '@vegapunk/utilities';
 import { isObjectLike } from '@vegapunk/utilities/common';
-import { Context, Data, Effect, identity, Layer, Option, Ref, Schema, Stream } from 'effect';
+import { Context, Data, Effect, Filter, identity, Layer, Option, Ref, Schema, Stream } from 'effect';
 
 import { Twitch } from '../core/Constants.js';
 import { SocketMessageSchema } from '../core/Schemas.js';
@@ -21,7 +21,7 @@ export interface TwitchSocket {
   readonly disconnect: Effect.Effect<void>;
 }
 
-export class TwitchSocketTag extends Context.Tag('@services/TwitchSocket')<TwitchSocketTag, TwitchSocket>() {}
+export class TwitchSocketTag extends Context.Service<TwitchSocketTag, TwitchSocket>()('@services/TwitchSocket') {}
 
 const safeJsonParse = <T>(text: string): T | undefined => {
   try {
@@ -32,7 +32,7 @@ const safeJsonParse = <T>(text: string): T | undefined => {
 };
 
 export const TwitchSocketLayer = (authToken: string): Layer.Layer<TwitchSocketTag, TwitchSocketError, HttpClientTag> =>
-  Layer.scoped(
+  Layer.effect(
     TwitchSocketTag,
     Effect.gen(function* () {
       const client = yield* makeSocketClient({
@@ -73,14 +73,14 @@ export const TwitchSocketLayer = (authToken: string): Layer.Layer<TwitchSocketTa
           }
 
           const listenEffect = performTopics('LISTEN', pending).pipe(
-            Effect.catchAll((e) =>
+            Effect.tapError(() =>
               Ref.update(subscribedTopics, (set) => {
                 const next = new Set(set);
                 for (const topicKey of pending) {
                   next.delete(topicKey);
                 }
                 return next;
-              }).pipe(Effect.zipRight(Effect.fail(e))),
+              }),
             ),
           );
 
@@ -138,16 +138,16 @@ export const TwitchSocketLayer = (authToken: string): Layer.Layer<TwitchSocketTa
 
           yield* Effect.logDebug(chalk`TwitchSocket: Emitted ${topicType}.${topicId}`, payload);
 
-          return yield* Schema.decodeUnknown(SocketMessageSchema)(payload).pipe(
+          return yield* Schema.decodeUnknownEffect(SocketMessageSchema)(payload).pipe(
             Effect.asSome,
             Effect.orElseSucceed(() => Option.none()),
           );
         });
 
       const messages: Stream.Stream<SocketMessage, never, never> = client.events.pipe(
-        Stream.filterMap((event) => (event._tag === 'Message' ? Option.some(event.data) : Option.none())),
+        Stream.filterMap(Filter.fromPredicateOption((event) => (event._tag === 'Message' ? Option.some(event.data) : Option.none()))),
         Stream.mapEffect(parseMessage),
-        Stream.filterMap(identity),
+        Stream.filterMap(Filter.fromPredicateOption(identity)),
       );
 
       yield* client.events.pipe(

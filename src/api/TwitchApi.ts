@@ -27,7 +27,7 @@ export class TwitchApiError extends Data.TaggedError('TwitchApiError')<{
   readonly cause?: unknown;
 }> {}
 
-type AnySchema = Schema.Schema<any, any, never>;
+type AnySchema = Schema.ConstraintCodec<unknown, unknown, never, never>;
 
 type SchemaTypes<T extends ReadonlyArray<AnySchema>> = { -readonly [K in keyof T]: Schema.Schema.Type<T[K]> };
 
@@ -36,10 +36,10 @@ type SchemaType<S extends AnySchema> = Schema.Schema.Type<S>;
 export interface TwitchApi {
   readonly init: Effect.Effect<void, TwitchApiError>;
   readonly userId: Effect.Effect<string, TwitchApiError>;
-  readonly graphql: <A, I>(
+  readonly graphql: <S extends AnySchema>(
     requests: ReadonlyArray<GraphqlRequest>,
-    schema: Schema.Schema<A, I, never>,
-  ) => Effect.Effect<ReadonlyArray<A>, TwitchApiError>;
+    schema: S,
+  ) => Effect.Effect<ReadonlyArray<SchemaType<S>>, TwitchApiError>;
   readonly graphqlBatch: <const S extends ReadonlyArray<AnySchema>>(
     requests: ReadonlyArray<GraphqlRequest>,
     schemas: S,
@@ -53,7 +53,7 @@ export interface TwitchApi {
   readonly watch: (channel: Channel) => Effect.Effect<{ readonly success: boolean; readonly hlsUrl?: string }, TwitchApiError>;
 }
 
-export class TwitchApiTag extends Context.Tag('@services/TwitchApi')<TwitchApiTag, TwitchApi>() {}
+export class TwitchApiTag extends Context.Service<TwitchApiTag, TwitchApi>()('@services/TwitchApi') {}
 
 const parseUniqueCookies = (setCookie: readonly string[]): Readonly<Record<string, string>> => {
   const result: Record<string, string> = {};
@@ -140,7 +140,7 @@ export const TwitchApiLayer = (authToken: string): Layer.Layer<TwitchApiTag, nev
         const response = yield* request<string>({
           url: Twitch.WebUrl,
           headers: { accept: 'text/html' },
-        }).pipe(Effect.catchAll((e) => Effect.dieMessage(chalk`{red Could not fetch your unique (client-version/cookies): ${e.message}}`)));
+        }).pipe(Effect.catch((e) => Effect.die(new Error(chalk`{red Could not fetch your unique (client-version/cookies): ${e.message}}`))));
 
         yield* Ref.update(headersRef, (h) => {
           const next = { ...h };
@@ -162,7 +162,7 @@ export const TwitchApiLayer = (authToken: string): Layer.Layer<TwitchApiTag, nev
           url: 'https://id.twitch.tv/oauth2/validate',
           responseType: 'json',
         }).pipe(
-          Effect.catchAll((e) =>
+          Effect.catch((e) =>
             Effect.logError(chalk`{red Could not validate your auth token: ${e.message}}`).pipe(Effect.flatMap(() => Effect.die(e))),
           ),
         );
@@ -213,7 +213,7 @@ export const TwitchApiLayer = (authToken: string): Layer.Layer<TwitchApiTag, nev
                 );
               }
 
-              return Schema.decodeUnknown(schemas[index])(res.data).pipe(
+              return Schema.decodeUnknownEffect(schemas[index])(res.data).pipe(
                 Effect.tapError((e) =>
                   debug.write(
                     { operation: opName, variables: op?.variables, response: res, error: e },
@@ -235,18 +235,18 @@ export const TwitchApiLayer = (authToken: string): Layer.Layer<TwitchApiTag, nev
         }).pipe(
           Effect.retry({
             while: (e) => e.retryable === true,
-            schedule: Schedule.exponential('1 seconds').pipe(Schedule.compose(Schedule.recurs(5))),
+            schedule: Schedule.max([Schedule.exponential('1 seconds'), Schedule.recurs(5)]),
           }),
         );
 
-      const graphql = <A, I>(
+      const graphql = <S extends AnySchema>(
         requests: ReadonlyArray<GraphqlRequest>,
-        schema: Schema.Schema<A, I, never>,
-      ): Effect.Effect<ReadonlyArray<A>, TwitchApiError> =>
+        schema: S,
+      ): Effect.Effect<ReadonlyArray<SchemaType<S>>, TwitchApiError> =>
         executeGql(
           requests,
-          requests.map(() => schema as AnySchema),
-        ) as Effect.Effect<ReadonlyArray<A>, TwitchApiError>;
+          requests.map(() => schema),
+        ) as Effect.Effect<ReadonlyArray<SchemaType<S>>, TwitchApiError>;
 
       const graphqlBatch = <const S extends ReadonlyArray<AnySchema>>(
         requests: ReadonlyArray<GraphqlRequest>,
@@ -388,14 +388,14 @@ export const TwitchApiLayer = (authToken: string): Layer.Layer<TwitchApiTag, nev
             return { data: [] };
           }
 
-          const res = yield* request<Schema.Schema.Encoded<typeof HelixStreamsSchema>>({
+          const res = yield* request<Schema.Codec.Encoded<typeof HelixStreamsSchema>>({
             url: 'https://api.twitch.tv/helix/streams',
             headers: { 'client-id': 'uaw3vx1k0ttq74u9b2zfvt768eebh1' },
             searchParams: new URLSearchParams(userIds.map((id) => ['user_id', id] as [string, string])),
             responseType: 'json',
           });
 
-          return yield* Schema.decodeUnknown(HelixStreamsSchema)(res.body).pipe(
+          return yield* Schema.decodeEffect(HelixStreamsSchema)(res.body).pipe(
             Effect.mapError((e) => new TwitchApiError({ message: `Helix validation failed: ${e}`, cause: e })),
           );
         });

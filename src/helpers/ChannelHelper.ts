@@ -16,7 +16,7 @@ export const resetChannel = (channelRef: Ref.Ref<Option.Option<Channel>>): Effec
     }
 
     const socket = yield* TwitchSocketTag;
-    yield* socket.unlisten(CHANNEL_LISTENER_TOPICS, curOpt.value.id).pipe(Effect.catchAllCause(() => Effect.void));
+    yield* socket.unlisten(CHANNEL_LISTENER_TOPICS, curOpt.value.id).pipe(Effect.ignoreCause);
     yield* Ref.set(channelRef, Option.none());
   });
 

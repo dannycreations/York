@@ -1,5 +1,5 @@
 import { chalk } from '@vegapunk/utilities';
-import { Array, Effect, Option, Order, pipe, Ref, Schedule } from 'effect';
+import { Array, Effect, Filter, Option, Order, pipe, Ref, Schedule } from 'effect';
 
 import { ConfigStoreTag, gamePriorityRank } from '../core/Config.js';
 import { calculatePriority, getDropStatus } from '../helpers/TwitchHelper.js';
@@ -16,7 +16,7 @@ const processOfflineCampaign = (campaign: Campaign, state: MainState) =>
 
     const channels = yield* campaignService
       .getChannelsForCampaign(campaign)
-      .pipe(Effect.catchAll((e) => warn('channels', e.message).pipe(Effect.as([]))));
+      .pipe(Effect.catch((e) => warn('channels', e.message).pipe(Effect.as([]))));
 
     if (channels.length === 0) {
       return;
@@ -44,10 +44,10 @@ export const OfflineWorkflow = (state: MainState) =>
       const config = yield* configStore.get;
       const now = Date.now();
 
-      const [expired, pending] = pipe(
+      const [pending, expired] = pipe(
         campaigns,
         Array.filter((c) => c.isOffline && c.game !== null),
-        Array.partition((c) => !getDropStatus(c.startAt, c.endAt, now).isExpired),
+        Array.partition(Filter.fromPredicate((c) => !getDropStatus(c.startAt, c.endAt, now).isExpired)),
       );
 
       yield* Effect.forEach(expired, (c) => campaignService.removeCampaign(c.id), { discard: true });
@@ -55,28 +55,28 @@ export const OfflineWorkflow = (state: MainState) =>
       const sortedOffline = Array.sort(
         pending,
         pipe(
-          Order.number,
+          Order.Number,
           Order.mapInput((c: Campaign) => gamePriorityRank(config, c.game?.displayName)),
-          Order.reverse,
+          Order.flip,
         ),
       );
 
       // Warming the details up front turns the sweep's per-campaign lookups into
       // a single batched request; the drop checks below then cost nothing.
-      yield* campaignService.primeCampaignDetails(sortedOffline.map((c) => c.id)).pipe(Effect.catchAll((e) => warn('details', e.message)));
+      yield* campaignService.primeCampaignDetails(sortedOffline.map((c) => c.id)).pipe(Effect.catch((e) => warn('details', e.message)));
 
       // Resolving drops also refreshes the stored campaign, so the survivors are
       // re-read to discover channels against an up-to-date allow list.
       const withDrops = yield* Effect.forEach(sortedOffline, (campaign) =>
         campaignService.getDropsForCampaign(campaign.id).pipe(
           Effect.flatMap((drops) => (drops.length === 0 ? Effect.succeedNone : campaignService.getCampaign(campaign.id))),
-          Effect.catchAll((e) => warn('drops', e.message).pipe(Effect.as(Option.none<Campaign>()))),
+          Effect.catch((e) => warn('drops', e.message).pipe(Effect.as(Option.none<Campaign>()))),
         ),
       ).pipe(Effect.map(Array.getSomes));
 
       // Channel discovery is the expensive half, so only the campaigns that
       // still have drops are warmed, again in one batch.
-      yield* campaignService.primeCampaignChannels(withDrops).pipe(Effect.catchAll((e) => warn('channels', e.message)));
+      yield* campaignService.primeCampaignChannels(withDrops).pipe(Effect.catch((e) => warn('channels', e.message)));
       yield* Effect.forEach(withDrops, (campaign) => processOfflineCampaign(campaign, state), { discard: true });
       yield* Effect.sleep(`${Math.floor(Math.random() * 5000)} millis`);
     });

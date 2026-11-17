@@ -143,7 +143,7 @@ const initializeCampaigns = (state: MainState): Effect.Effect<void, never, Campa
       return;
     }
 
-    yield* campaignService.updateCampaigns.pipe(Effect.catchAll(() => Effect.void));
+    yield* campaignService.updateCampaigns.pipe(Effect.ignore);
 
     const config = yield* configStore.get;
     const campaigns = yield* campaignService.getSortedActive;
@@ -328,17 +328,17 @@ export const MainWorkflow: Effect.Effect<void, never, WorkflowContext | Scope.Sc
   yield* SocketWorkflow(state).pipe(Effect.orDie);
 
   const mainTaskLoop = mainLoop(state).pipe(
-    Effect.catchAll((e) => Effect.logWarning(chalk`{yellow Main loop error: ${e.message}}`).pipe(Effect.zipRight(Effect.sleep('60 seconds')))),
+    Effect.catch((e) => Effect.logWarning(chalk`{yellow Main loop error: ${e.message}}`).pipe(Effect.andThen(Effect.sleep('60 seconds')))),
     Effect.repeat(Schedule.forever),
   );
 
   const claimInventoryLoop = campaignService.claimInventoryDrops.pipe(
     Effect.ignore,
-    Effect.zipRight(Effect.sleep('30 minutes')),
+    Effect.andThen(Effect.sleep('30 minutes')),
     Effect.repeat(Schedule.forever),
   );
 
   yield* Effect.all([mainTaskLoop, claimInventoryLoop, UpcomingWorkflow(state), OfflineWorkflow(state)], {
     concurrency: 'unbounded',
-  }).pipe(Effect.onInterrupt(() => resetChannel(state.currentChannel).pipe(Effect.zipRight(socket.disconnect))));
+  }).pipe(Effect.onInterrupt(() => resetChannel(state.currentChannel).pipe(Effect.andThen(socket.disconnect))));
 });

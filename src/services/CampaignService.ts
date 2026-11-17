@@ -128,7 +128,7 @@ export interface CampaignService {
   readonly addRewards: (rewards: ReadonlyArray<Reward>) => Effect.Effect<void>;
 }
 
-export class CampaignServiceTag extends Context.Tag('@services/CampaignService')<CampaignServiceTag, CampaignService>() {}
+export class CampaignServiceTag extends Context.Service<CampaignServiceTag, CampaignService>()('@services/CampaignService') {}
 
 const buildActiveDrops = (
   rawDrops: ReadonlyArray<TimeBasedDrop>,
@@ -232,7 +232,7 @@ export const CampaignServiceLayer: Layer.Layer<CampaignServiceTag, never, Twitch
     });
 
     const [cachedFetchCampaigns, invalidateFetchCampaigns] = yield* Effect.cachedInvalidateWithTTL(fetchCampaigns, '10 minutes');
-    const updateCampaigns = cachedFetchCampaigns.pipe(Effect.tapErrorCause(() => invalidateFetchCampaigns));
+    const updateCampaigns = cachedFetchCampaigns.pipe(Effect.tapCause(() => invalidateFetchCampaigns));
 
     const syncProgressRef = (newDrops: ReadonlyArray<Drop>, now: number) =>
       Ref.update(progressRef, (current) => {
@@ -613,7 +613,7 @@ export const CampaignServiceLayer: Layer.Layer<CampaignServiceTag, never, Twitch
       getMode: Ref.get(modeRef),
       setMode: (mode) => Ref.set(modeRef, mode),
       listCampaigns: Ref.get(campaignsRef).pipe(Effect.map((map) => Array.from(map.values()))),
-      getCampaign: (id) => Ref.get(campaignsRef).pipe(Effect.map((map) => Option.fromNullable(map.get(id)))),
+      getCampaign: (id) => Ref.get(campaignsRef).pipe(Effect.map((map) => Option.fromNullishOr(map.get(id)))),
       removeCampaign: (id) =>
         Ref.update(campaignsRef, (map) => {
           if (!map.has(id)) return map;
@@ -621,7 +621,7 @@ export const CampaignServiceLayer: Layer.Layer<CampaignServiceTag, never, Twitch
           next.delete(id);
           return next;
         }),
-      findProgress: (dropId) => Ref.get(progressRef).pipe(Effect.map((drops) => Option.fromNullable(drops.find((d) => d.id === dropId)))),
+      findProgress: (dropId) => Ref.get(progressRef).pipe(Effect.map((drops) => Option.fromNullishOr(drops.find((d) => d.id === dropId)))),
       updateCampaigns,
       updateProgress,
       claimInventoryDrops,

@@ -1,17 +1,19 @@
-import { Schema } from 'effect';
+import { Schema, SchemaGetter } from 'effect';
 
-const DateFromAny = Schema.transform(Schema.Union(Schema.String, Schema.Number, Schema.Date), Schema.instanceOf(Date), {
-  decode: (u) => new Date(u),
-  encode: (d) => d,
-});
+const DateFromAny = Schema.Union([Schema.String, Schema.Finite, Schema.Date]).pipe(
+  Schema.decodeTo(Schema.instanceOf(Date), {
+    decode: SchemaGetter.transform((u) => new Date(u)),
+    encode: SchemaGetter.transform((d) => d),
+  }),
+);
 
 const CommunityGoalSchema = Schema.Struct({
   id: Schema.String,
   title: Schema.String,
   isInStock: Schema.Boolean,
-  pointsContributed: Schema.Number,
-  amountNeeded: Schema.Number,
-  perStreamUserMaximumContribution: Schema.Number,
+  pointsContributed: Schema.Finite,
+  amountNeeded: Schema.Finite,
+  perStreamUserMaximumContribution: Schema.Finite,
   status: Schema.String,
 });
 
@@ -19,7 +21,7 @@ const GameSchema = Schema.Struct({
   id: Schema.String,
   displayName: Schema.String,
   slug: Schema.optional(Schema.String),
-}).pipe(Schema.annotations({ identifier: 'Game' }));
+}).pipe(Schema.annotate({ identifier: 'Game' }));
 
 export type Game = Schema.Schema.Type<typeof GameSchema>;
 
@@ -95,8 +97,8 @@ const TimeBasedDropSchema = Schema.Struct({
   name: Schema.String,
   startAt: DateFromAny,
   endAt: DateFromAny,
-  requiredMinutesWatched: Schema.Number,
-  requiredSubs: Schema.Number,
+  requiredMinutesWatched: Schema.Finite,
+  requiredSubs: Schema.Finite,
   benefitEdges: Schema.Array(
     Schema.Struct({
       benefit: Schema.Struct({
@@ -109,7 +111,7 @@ const TimeBasedDropSchema = Schema.Struct({
     Schema.Struct({
       isClaimed: Schema.Boolean,
       hasPreconditionsMet: Schema.Boolean,
-      currentMinutesWatched: Schema.Number,
+      currentMinutesWatched: Schema.Finite,
       dropInstanceID: Schema.NullOr(Schema.String),
     }),
   ),
@@ -133,6 +135,22 @@ export const CampaignDetailsSchema = Schema.Struct({
   }),
 });
 
+const InProgressCampaignSchema = Schema.Struct({
+  id: Schema.String,
+  timeBasedDrops: Schema.Array(TimeBasedDropSchema),
+});
+
+const NullAsEmptyArray = <A extends Schema.Constraint>(schema: A) =>
+  Schema.Union([
+    Schema.Array(schema),
+    Schema.Null.pipe(
+      Schema.decodeTo(Schema.Array(schema), {
+        decode: SchemaGetter.transform(() => []),
+        encode: SchemaGetter.transform(() => null),
+      }),
+    ),
+  ]);
+
 export const InventorySchema = Schema.Struct({
   currentUser: Schema.Struct({
     inventory: Schema.Struct({
@@ -142,12 +160,7 @@ export const InventorySchema = Schema.Struct({
           lastAwardedAt: DateFromAny,
         }),
       ),
-      dropCampaignsInProgress: Schema.Array(
-        Schema.Struct({
-          id: Schema.String,
-          timeBasedDrops: Schema.Array(TimeBasedDropSchema),
-        }),
-      ),
+      dropCampaignsInProgress: NullAsEmptyArray(InProgressCampaignSchema),
     }),
   }),
 });
@@ -160,7 +173,7 @@ export const ChannelPointsSchema = Schema.Struct({
       }),
       self: Schema.Struct({
         communityPoints: Schema.Struct({
-          balance: Schema.Number,
+          balance: Schema.Finite,
           availableClaim: Schema.NullOr(Schema.Struct({ id: Schema.String })),
         }),
       }),
@@ -255,7 +268,7 @@ export const UserPointsContributionSchema = Schema.Struct({
         communityPoints: Schema.Struct({
           goalContributions: Schema.Array(
             Schema.Struct({
-              userPointsContributedThisStream: Schema.Number,
+              userPointsContributedThisStream: Schema.Finite,
               goal: Schema.Struct({
                 id: Schema.String,
               }),
@@ -275,7 +288,7 @@ const SocketMessageDropProgressSchema = Schema.Struct({
   type: Schema.Literal('drop-progress'),
   data: Schema.Struct({
     drop_id: Schema.String,
-    current_progress_min: Schema.Number,
+    current_progress_min: Schema.Finite,
   }),
 });
 
@@ -312,16 +325,16 @@ const SocketMessageBroadcastUpdateSchema = Schema.Struct({
   type: Schema.Literal('broadcast_settings_update'),
   channel_id: Schema.optional(Schema.String),
   data: Schema.Struct({
-    game_id: Schema.Union(Schema.String, Schema.Number),
+    game_id: Schema.Union([Schema.String, Schema.Finite]),
     game: Schema.String,
   }),
 });
 
 const SocketMessageCommunityGoalSchema = Schema.Struct({
-  type: Schema.Literal('community-goal-created', 'community-goal-updated'),
+  type: Schema.Literals(['community-goal-created', 'community-goal-updated']),
 });
 
-const SocketMessagePayloadSchema = Schema.Union(
+const SocketMessagePayloadSchema = Schema.Union([
   SocketMessageDropProgressSchema,
   SocketMessageDropClaimSchema,
   SocketMessagePointClaimSchema,
@@ -329,7 +342,7 @@ const SocketMessagePayloadSchema = Schema.Union(
   SocketMessageMomentActiveSchema,
   SocketMessageBroadcastUpdateSchema,
   SocketMessageCommunityGoalSchema,
-);
+]);
 
 export const SocketMessageSchema = Schema.Struct({
   topicType: Schema.String,

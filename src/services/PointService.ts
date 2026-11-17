@@ -18,7 +18,7 @@ export interface PointService {
   readonly claimAndContribute: (channel: Channel) => Effect.Effect<void, TwitchApiError>;
 }
 
-export class PointServiceTag extends Context.Tag('@services/PointService')<PointServiceTag, PointService>() {}
+export class PointServiceTag extends Context.Service<PointServiceTag, PointService>()('@services/PointService') {}
 
 interface PointMutation {
   readonly request: GraphqlRequest;
@@ -114,7 +114,7 @@ export const PointServiceLayer = Layer.effect(
       });
 
     return {
-      contributeGoals: (channel) => Effect.whenEffect(run(channel, false), isGoalRunAllowed(channel.id)).pipe(Effect.asVoid),
+      contributeGoals: (channel) => Effect.when(run(channel, false), isGoalRunAllowed(channel.id)).pipe(Effect.asVoid),
       claimAndContribute: (channel) => run(channel, true),
     } satisfies PointService;
   }),
